@@ -53,6 +53,7 @@ import org.eclipse.jdt.core.dom.StringLiteral;
 import org.eclipse.jdt.core.dom.SuperFieldAccess;
 import org.eclipse.jdt.core.dom.SuperMethodInvocation;
 import org.eclipse.jdt.core.dom.TagElement;
+import org.eclipse.jdt.core.dom.TextBlock;
 import org.eclipse.jdt.core.dom.TextElement;
 import org.eclipse.jdt.core.dom.ThisExpression;
 import org.eclipse.jdt.core.dom.Type;
@@ -800,6 +801,15 @@ public abstract class TransformWriter extends ASTVisitor {
 		hardDep(node.getAST().resolveWellKnownType(String.class.getName()));
 
 		return false;
+	}
+
+	@Override
+	public boolean visit(TextBlock node) {
+		// Text blocks are plain strings once indentation and escapes are
+		// processed; re-escape the value exactly like a string literal
+		StringLiteral literal = node.getAST().newStringLiteral();
+		literal.setLiteralValue(node.getLiteralValue());
+		return visit(literal);
 	}
 
 	@Override

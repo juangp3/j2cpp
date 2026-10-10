@@ -12,12 +12,15 @@ const fixtureDirectory = path.join(sourceRoot, "se", "arnetheduck", "j2c", "test
 const sealedFixture = path.join(fixtureDirectory, "Java17Unsupported.java");
 const recordsFixture = path.join(fixtureDirectory, "Java17Records.java");
 const controlFlowFixture = path.join(fixtureDirectory, "Java17ControlFlow.java");
+const featuresFixture = path.join(fixtureDirectory, "Java17Features.java");
+const extensionVersion = require(path.join(extensionDirectory, "package.json")).version;
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "j2c-cli test "));
 const outputDirectory = path.join(tempDirectory, "generated output");
 
-function runCli(args) {
+function runCli(args, options = {}) {
 	return childProcess.spawnSync("java", ["-jar", cliJar, ...args], {
-		encoding: "utf8"
+		encoding: "utf8",
+		...options
 	});
 }
 
@@ -45,6 +48,15 @@ try {
 	const help = runCli(["--help"]);
 	assert.strictEqual(help.status, 0, help.stderr);
 	assert(help.stdout.includes("--sealed-types <advisory|reject>"));
+	assert(help.stdout.includes("--check"));
+
+	const version = runCli(["--version"]);
+	assert.strictEqual(version.status, 0, version.stderr);
+	assert.strictEqual(version.stdout.trim(), `j2c ${extensionVersion}`);
+
+	const checkWithOutput = runCli(["--check", "--output", tempDirectory, sealedFixture]);
+	assert.strictEqual(checkWithOutput.status, 2);
+	assert(checkWithOutput.stderr.includes("--check does not write output"));
 
 	const missingInput = runCli(["--output", outputDirectory]);
 	assert.strictEqual(missingInput.status, 2);
@@ -98,6 +110,17 @@ try {
 	assert(unsupported.stderr.includes("Unsupported.java:6: Java 8 method references are not supported"));
 	assert(!unsupported.stderr.includes("\tat "), "User errors must not print a stack trace");
 
+	// --check reports every problem and writes nothing, not even into cwd
+	const checkDirectory = path.join(tempDirectory, "check cwd");
+	fs.mkdirSync(checkDirectory);
+	const checked = runCli(["--check", unsupportedSource], { cwd: checkDirectory });
+	assert.strictEqual(checked.status, 1, checked.stderr);
+	assert(checked.stdout.includes("Unsupported.java:5: Java 8 lambda expressions are not supported"));
+	assert(checked.stdout.includes("Unsupported.java:6: Java 8 method references are not supported"));
+	assert(checked.stdout.includes("J2C check: 2 problem(s) in 1 of 1 file(s)"));
+	assert(checked.stdout.includes("1 x lambda expression"));
+	assert.deepStrictEqual(fs.readdirSync(checkDirectory), []);
+
 	// Sources are read as UTF-8 by default and C++ is written as UTF-8,
 	// independent of the platform charset
 	const utf8Source = path.join(scratchPackage, "Utf8.java");
@@ -134,6 +157,29 @@ try {
 				`Unresolved AST placeholder in ${file}`
 			);
 		}
+
+		const corpusCheck = runCli(["--check", "--sourcepath", sourceRoot, sourceRoot]);
+		assert.strictEqual(corpusCheck.status, 0, corpusCheck.stdout);
+		assert.match(corpusCheck.stdout, /J2C check: no problems found in \d+ file\(s\)/);
+
+		// Text blocks, enum/String switches, and try-with-resources
+		const featuresOutput = path.join(tempDirectory, "features output");
+		fs.mkdirSync(featuresOutput);
+		const features = runCli([
+			"--output", featuresOutput,
+			"--sourcepath", sourceRoot,
+			featuresFixture
+		]);
+		assert.strictEqual(features.status, 0, features.stderr);
+		const featureSource = fs.readFileSync(path.join(
+			featuresOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Features.cpp"
+		), "utf8");
+		assert(featureSource.includes(String.raw`u"J2C\n  \"text block\"\n"_j`));
+		assert.match(featureSource, /\(v == Java17Features_Shape::CIRCLE\)/);
+		assert(featureSource.includes(String.raw`(npc(v)->equals(u"sat"_j)) || (npc(v)->equals(u"sun"_j))`));
+		assert(featureSource.includes(String.raw`(npc(v)->equals(u"go"_j)) || (npc(v)->equals(u"run"_j))`));
+		assert(featureSource.includes("finally([&] { if (reader != nullptr) { reader->close(); } })"));
+		assert(!featureSource.includes("try ("), "try-with-resources must not be emitted verbatim");
 
 		const advisory = runCli([
 			"--output", outputDirectory,

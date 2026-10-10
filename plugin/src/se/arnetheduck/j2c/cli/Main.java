@@ -10,24 +10,30 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 
+import se.arnetheduck.j2c.transform.Problem;
 import se.arnetheduck.j2c.transform.SourceProject;
 import se.arnetheduck.j2c.transform.SourceUnit;
 import se.arnetheduck.j2c.transform.TranslationException;
 import se.arnetheduck.j2c.transform.Transformer;
 
 public class Main {
-	private static final String USAGE = "Usage: j2c --output <directory> "
+	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "<java-file-or-source-directory>...";
+			+ "<java-file-or-source-directory>..." + System.lineSeparator()
+			+ "       j2c --version" + System.lineSeparator()
+			+ "--check reports every problem that would stop translation "
+			+ "without writing output.";
 
 	public static void main(String[] args) {
 		try {
-			run(args);
+			System.exit(run(args));
 		} catch (IllegalArgumentException e) {
 			System.err.println(e.getMessage());
 			System.err.println(USAGE);
@@ -43,8 +49,9 @@ public class Main {
 		}
 	}
 
-	private static void run(String[] args) throws Exception {
+	private static int run(String[] args) throws Exception {
 		File output = null;
+		boolean check = false;
 		String name = null;
 		Transformer.SealedTypes sealedTypes = Transformer.SealedTypes.ADVISORY;
 		Charset encoding = StandardCharsets.UTF_8;
@@ -56,7 +63,12 @@ public class Main {
 			String arg = args[i];
 			if ("--help".equals(arg) || "-h".equals(arg)) {
 				System.out.println(USAGE);
-				return;
+				return 0;
+			} else if ("--version".equals(arg)) {
+				System.out.println("j2c " + version());
+				return 0;
+			} else if ("--check".equals(arg)) {
+				check = true;
 			} else if ("--output".equals(arg)) {
 				output = new File(value(args, ++i, arg));
 			} else if ("--sourcepath".equals(arg)) {
@@ -85,10 +97,14 @@ public class Main {
 			}
 		}
 
-		if (output == null) {
+		if (check && output != null) {
+			throw new IllegalArgumentException(
+					"--check does not write output; omit --output");
+		}
+		if (!check && output == null) {
 			throw new IllegalArgumentException("Missing --output directory");
 		}
-		if (!output.isDirectory()) {
+		if (!check && !output.isDirectory()) {
 			throw new IllegalArgumentException(
 					"Output directory must already exist: " + output);
 		}
@@ -150,14 +166,55 @@ public class Main {
 		for (File file : selectedFiles) {
 			units.add(project.getUnit(file));
 		}
+		SourceUnit[] selected = units.toArray(new SourceUnit[units.size()]);
+		if (check) {
+			// Checking writes nothing, so the output root is never used
+			Transformer checker = new Transformer(project, "check",
+					new Path(new File(".").getAbsolutePath()), sealedTypes);
+			return report(checker.check(new NullProgressMonitor(), selected),
+					selected.length);
+		}
+
 		if (name == null) {
 			name = output.getName();
 		}
 
 		Transformer transformer = new Transformer(project, name,
 				new Path(output.getAbsolutePath()), sealedTypes);
-		transformer.process(new NullProgressMonitor(),
-				units.toArray(new SourceUnit[units.size()]));
+		transformer.process(new NullProgressMonitor(), selected);
+		return 0;
+	}
+
+	/** Prints each problem and a per-kind summary; nonzero if any */
+	private static int report(List<Problem> problems, int fileCount) {
+		Map<String, Integer> kinds = new TreeMap<String, Integer>();
+		List<File> files = new ArrayList<File>();
+		for (Problem problem : problems) {
+			System.out.println(problem);
+			Integer count = kinds.get(problem.kind);
+			kinds.put(problem.kind, count == null ? 1 : count + 1);
+			if (!files.contains(problem.file)) {
+				files.add(problem.file);
+			}
+		}
+
+		if (problems.isEmpty()) {
+			System.out.println("J2C check: no problems found in " + fileCount
+					+ " file(s)");
+			return 0;
+		}
+		System.out.println("J2C check: " + problems.size()
+				+ " problem(s) in " + files.size() + " of " + fileCount
+				+ " file(s)");
+		for (Map.Entry<String, Integer> kind : kinds.entrySet()) {
+			System.out.println("  " + kind.getValue() + " x " + kind.getKey());
+		}
+		return 1;
+	}
+
+	private static String version() {
+		String version = Main.class.getPackage().getImplementationVersion();
+		return version == null ? "development build" : version;
 	}
 
 	private static String value(String[] args, int index, String option) {

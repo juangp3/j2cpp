@@ -2487,19 +2487,83 @@ public class ImplWriter extends TransformWriter {
 				+ " {");
 		println();
 		indent++;
-		printi("switch (");
-		node.getExpression().accept(this);
-		println(") {");
-		indent++;
-		for (Statement statement : (Iterable<Statement>) node.statements()) {
-			statement.accept(this);
+		ITypeBinding selector = node.getExpression().resolveTypeBinding();
+		if (selector.isEnum() || isString(selector)) {
+			conditionalSwitch(node, isString(selector));
+		} else {
+			printi("switch (");
+			node.getExpression().accept(this);
+			println(") {");
+			indent++;
+			for (Statement statement : (Iterable<Statement>) node.statements()) {
+				statement.accept(this);
+			}
+			indent--;
+			printlni("}");
 		}
 		printlni("throw \"Non-exhaustive Java switch expression\";");
 		indent--;
-		printlni("}");
-		indent--;
 		printi("}())");
 		return false;
+	}
+
+	/**
+	 * Rule-form ("case X ->") switch expression on an enum or String: each
+	 * rule has exactly one body statement, and rules never fall through, so
+	 * an if per rule with the default last is equivalent.
+	 */
+	private void conditionalSwitch(SwitchExpression node, boolean strings) {
+		String name = "v";
+		while (localInScope(name)) {
+			name = name + "_";
+		}
+		locals.add(new ArrayList<String>());
+		locals.get(locals.size() - 1).add(name);
+
+		// npc() throws NullPointerException for a null selector, as Java does
+		printi("auto " + name + " = npc(");
+		node.getExpression().accept(this);
+		println(");");
+
+		List<Statement> statements = node.statements();
+		Statement defaultBody = null;
+		for (int i = 0; i + 1 < statements.size(); i += 2) {
+			SwitchCase sc = (SwitchCase) statements.get(i);
+			Statement body = statements.get(i + 1);
+			if (sc.isDefault()) {
+				defaultBody = body;
+				continue;
+			}
+
+			printi("if (");
+			String sep = "";
+			for (Expression label : (Iterable<Expression>) sc.expressions()) {
+				print(sep);
+				sep = " || ";
+				printCaseTest(name, label, true, strings);
+			}
+			println(") {");
+			indent++;
+			ruleBody(body);
+			indent--;
+			printlni("}");
+		}
+		if (defaultBody != null) {
+			ruleBody(defaultBody);
+		}
+
+		locals.remove(locals.size() - 1);
+	}
+
+	private void ruleBody(Statement body) {
+		if (body instanceof Block) {
+			// Blocks print their braces inline, unlike other statements
+			printi();
+			body.accept(this);
+			println();
+		} else {
+			body.accept(this);
+		}
 	}
 
 	@Override
@@ -2542,8 +2606,9 @@ public class ImplWriter extends TransformWriter {
 			}
 		}
 
-		if (node.getExpression().resolveTypeBinding().isEnum()) {
-			enumSwitch(node, statements);
+		ITypeBinding selector = node.getExpression().resolveTypeBinding();
+		if (selector.isEnum() || isString(selector)) {
+			enumSwitch(node, statements, isString(selector));
 		} else {
 			nativeSwitch(node, statements);
 		}
@@ -2561,9 +2626,11 @@ public class ImplWriter extends TransformWriter {
 	private int enumSwitchCount = 0;
 	private final List<String> enumSwitchLabels = new ArrayList<String>();
 
-	private void enumSwitch(SwitchStatement node, List<Statement> statements) {
-		// Enum constants as we translate them are not C++ constexpr:s so we
-		// have to rewrite the switch to if:s
+	private void enumSwitch(SwitchStatement node, List<Statement> statements,
+			boolean strings) {
+		// Enum constants as we translate them are not C++ constexpr:s, and
+		// strings compare with equals(), so we have to rewrite the switch to
+		// if:s
 		printlni("{");
 		indent++;
 
@@ -2619,9 +2686,7 @@ public class ImplWriter extends TransformWriter {
 								.expressions()) {
 							print(sep);
 							sep = " || ";
-							print("(" + name + " == ");
-							label.accept(this);
-							print(")");
+							printCaseTest(name, label, true, strings);
 						}
 					}
 
@@ -2634,10 +2699,12 @@ public class ImplWriter extends TransformWriter {
 									.expressions()) {
 								print(sep);
 								sep = " && ";
-								print("(" + name + " != ");
-								label.accept(this);
-								print(")");
+								printCaseTest(name, label, false, strings);
 							}
+						}
+						if (sep.isEmpty()) {
+							// default is the only label
+							print("true");
 						}
 						print("))");
 					}
@@ -2673,6 +2740,23 @@ public class ImplWriter extends TransformWriter {
 		indent--;
 		locals.remove(locals.size() - 1);
 		printlni("}");
+	}
+
+	private static boolean isString(ITypeBinding tb) {
+		return tb != null && "java.lang.String".equals(tb.getQualifiedName());
+	}
+
+	private void printCaseTest(String name, Expression label, boolean equal,
+			boolean strings) {
+		if (strings) {
+			print("(" + (equal ? "" : "!") + "npc(" + name + ")->equals(");
+			label.accept(this);
+			print("))");
+		} else {
+			print("(" + name + (equal ? " == " : " != "));
+			label.accept(this);
+			print(")");
+		}
 	}
 
 	private String enumSwitchLabel() {
@@ -2860,21 +2944,11 @@ public class ImplWriter extends TransformWriter {
 			printi();
 		}
 
-		List<VariableDeclarationExpression> resources = node.resources();
-		if (!node.resources().isEmpty()) {
-			print("(");
-			for (Iterator<VariableDeclarationExpression> it = resources
-					.iterator(); it.hasNext();) {
-				VariableDeclarationExpression variable = it.next();
-				variable.accept(this);
-				if (it.hasNext()) {
-					print(";");
-				}
-			}
-			print(")");
+		if (node.resources().isEmpty()) {
+			node.getBody().accept(this);
+		} else {
+			resourceBlock(node);
 		}
-
-		node.getBody().accept(this);
 
 		visitAll(node.catchClauses());
 
@@ -2889,6 +2963,43 @@ public class ImplWriter extends TransformWriter {
 		println();
 
 		return false;
+	}
+
+	/**
+	 * Java closes resources in reverse order after the body and before any
+	 * catch or finally clause runs. Scoped finally guards declared in
+	 * resource order give the same order, and the enclosing block ends before
+	 * the surrounding try's handlers run.
+	 */
+	private void resourceBlock(TryStatement node) {
+		deps.setNeedsFinally();
+		println("{");
+		indent++;
+		for (Expression resource : (List<Expression>) node.resources()) {
+			Expression ref = resource;
+			if (resource instanceof VariableDeclarationExpression) {
+				VariableDeclarationExpression vde = (VariableDeclarationExpression) resource;
+				printi();
+				vde.accept(this);
+				println(";");
+				ref = ((VariableDeclarationFragment) vde.fragments().get(0))
+						.getName();
+			}
+
+			hardDep(ref.resolveTypeBinding());
+			printi("auto finally" + fc + " = finally([&] { if (");
+			ref.accept(this);
+			print(" != nullptr) { ");
+			ref.accept(this);
+			println("->close(); } });");
+			fc++;
+		}
+
+		printi();
+		node.getBody().accept(this);
+		println();
+		indent--;
+		printi("}");
 	}
 
 	@Override

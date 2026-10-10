@@ -33,11 +33,9 @@ import org.eclipse.jdt.core.dom.MethodReference;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.SwitchCase;
 import org.eclipse.jdt.core.dom.SwitchExpression;
-import org.eclipse.jdt.core.dom.TextBlock;
-import org.eclipse.jdt.core.dom.TryStatement;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.dom.VariableDeclarationExpression;
 
 import se.arnetheduck.j2c.snippets.GetSetSnippet;
 import se.arnetheduck.j2c.snippets.ReplaceInvocation;
@@ -244,8 +242,10 @@ public class Transformer {
 							cur = ext;
 						}
 						try {
-							throwIfErrors(source, ast);
-							throwIfUnsupported(source, ast);
+							List<Problem> problems = problems(source, ast);
+							if (!problems.isEmpty()) {
+								throw new TranslationException(join(problems));
+							}
 							writeImpl(monitor, source, ast);
 						} finally {
 							currentAST = null;
@@ -293,75 +293,90 @@ public class Transformer {
 		return TransformUtil.paramName(method, index);
 	}
 
-	private static void throwIfErrors(SourceUnit source, CompilationUnit ast) {
-		StringBuilder errors = new StringBuilder();
-		for (IProblem p : ast.getProblems()) {
-			if (p.isError()) {
-				if (errors.length() > 0) {
-					errors.append(System.lineSeparator());
-				}
-				errors.append(source.file().getPath()).append(':')
-						.append(p.getSourceLineNumber()).append(": ")
-						.append(p.getMessage());
-			}
-		}
+	/**
+	 * Reports every problem in the units that would stop their translation,
+	 * without writing anything.
+	 */
+	public List<Problem> check(IProgressMonitor monitor, SourceUnit... units)
+			throws Exception {
+		final List<Problem> problems = new ArrayList<Problem>();
+		project.parse(Arrays.asList(units), monitor,
+				new SourceProject.UnitHandler() {
+					@Override
+					public void accept(SourceUnit source, CompilationUnit ast) {
+						problems.addAll(problems(source, ast));
+					}
+				});
+		return problems;
+	}
 
-		if (errors.length() > 0) {
-			throw new TranslationException(errors.toString());
+	private static String join(List<Problem> problems) {
+		StringBuilder text = new StringBuilder();
+		for (Problem problem : problems) {
+			if (text.length() > 0) {
+				text.append(System.lineSeparator());
+			}
+			text.append(problem);
 		}
+		return text.toString();
 	}
 
 	/**
-	 * Fails before any output is written when the unit uses syntax that the
-	 * writers would otherwise silently mistranslate.
+	 * Compile errors and syntax that the writers would otherwise silently
+	 * mistranslate, found before any output is written.
 	 */
-	private void throwIfUnsupported(SourceUnit source,
+	private List<Problem> problems(final SourceUnit source,
 			final CompilationUnit ast) {
-		final StringBuilder unsupported = new StringBuilder();
+		final List<Problem> problems = new ArrayList<Problem>();
+		for (IProblem p : ast.getProblems()) {
+			if (p.isError()) {
+				problems.add(Problem.of("compile error", p.getMessage()).at(
+						source.file(), p.getSourceLineNumber()));
+			}
+		}
+
 		ast.accept(new ASTVisitor() {
 			@Override
 			public void preVisit(ASTNode node) {
-				String problem = unsupportedFeature(node);
+				Problem problem = unsupportedFeature(node);
 				if (problem != null) {
-					if (unsupported.length() > 0) {
-						unsupported.append(System.lineSeparator());
-					}
-					unsupported.append(source.file().getPath()).append(':')
-							.append(ast.getLineNumber(node.getStartPosition()))
-							.append(": ").append(problem);
+					problems.add(problem.at(source.file(),
+							ast.getLineNumber(node.getStartPosition())));
 				}
 			}
 		});
-
-		if (unsupported.length() > 0) {
-			throw new TranslationException(unsupported.toString());
-		}
+		return problems;
 	}
 
-	private String unsupportedFeature(ASTNode node) {
+	private Problem unsupportedFeature(ASTNode node) {
 		if (node instanceof LambdaExpression) {
-			return "Java 8 lambda expressions are not supported";
+			return Problem.of("lambda expression",
+					"Java 8 lambda expressions are not supported");
 		}
 		if (node instanceof MethodReference) {
-			return "Java 8 method references are not supported";
-		}
-		if (node instanceof TextBlock) {
-			return "Java 15 text blocks are not supported";
-		}
-		if (node instanceof TryStatement) {
-			for (Object resource : ((TryStatement) node).resources()) {
-				if (!(resource instanceof VariableDeclarationExpression)) {
-					return "Java 9 try-with-resources on an existing variable "
-							+ "is not supported";
-				}
-			}
+			return Problem.of("method reference",
+					"Java 8 method references are not supported");
 		}
 		if (node instanceof SwitchExpression) {
-			ITypeBinding selector = ((SwitchExpression) node).getExpression()
+			SwitchExpression switchExpression = (SwitchExpression) node;
+			ITypeBinding selector = switchExpression.getExpression()
 					.resolveTypeBinding();
-			if (selector != null && !selector.isPrimitive()) {
-				return "switch expressions on " + selector.getName()
-						+ " are not supported (primitive selectors only)";
+			if (selector == null || selector.isPrimitive()) {
+				return null;
+			}
+			if (!selector.isEnum()
+					&& !"java.lang.String".equals(selector.getQualifiedName())) {
+				return Problem.of("switch expression selector",
+						"switch expressions on " + selector.getName()
+								+ " are not supported; switch on the primitive value");
+			}
+			for (Object statement : switchExpression.statements()) {
+				if (statement instanceof SwitchCase
+						&& !((SwitchCase) statement).isSwitchLabeledRule()) {
+					return Problem.of("switch expression selector",
+							"switch expressions on " + selector.getName()
+									+ " must use \"case X ->\" rules, not \"case X:\"");
+				}
 			}
 		}
 		if (sealedTypes == SealedTypes.REJECT) {
@@ -370,7 +385,7 @@ public class Transformer {
 		return null;
 	}
 
-	private static String sealedFeature(ASTNode node) {
+	private static Problem sealedFeature(ASTNode node) {
 		String feature = null;
 		if (node instanceof AbstractTypeDeclaration) {
 			ITypeBinding binding = ((AbstractTypeDeclaration) node)
@@ -390,8 +405,8 @@ public class Transformer {
 			}
 		}
 
-		return feature == null ? null : "Java 17 " + feature
-				+ " rejected by --sealed-types reject";
+		return feature == null ? null : Problem.of(feature, "Java 17 "
+				+ feature + " rejected by --sealed-types reject");
 	}
 
 	private void writeHeader(SourceUnit unit, ITypeBinding tb)
