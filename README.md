@@ -65,8 +65,36 @@ every compile error and unsupported construct in the selected files as
 Select a source root to check a whole project. `--version` prints the CLI
 version.
 
+The output directory must be empty or earlier J2C output, which is marked with
+a `.j2c-output` file. Translation first moves the directory's current
+contents to a backup in the temporary folder, so J2C refuses other non-empty
+directories unless you pass `--force`.
+
+Each problem has a stable ID (such as `J2C-LAMBDA-ANONYMOUS-THIS`).
+`j2c explain <id>` describes it and how to fix it; `j2c explain` lists them
+all. `--format json` makes translation and `--check` print a single JSON
+object (problems with ID, file, line, column, message and hint; or the
+generated files). `j2c capabilities` prints the supported features and
+limitations as JSON.
+
 The CLI exits with status 0 on success (or a clean check), 1 when translation
 fails or a check finds problems, and 2 for invalid arguments.
+
+## Using J2C with AI agents
+
+`j2c mcp` serves J2C as a Model Context Protocol server, so agents such as
+GitHub Copilot agent mode, Claude Code and Claude Desktop can check, translate
+and explain problems through typed tools. The VS Code extension registers it
+automatically for each workspace folder. For Claude Code:
+
+```sh
+claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
+```
+
+See [docs/AGENTS.md](docs/AGENTS.md) for setup in each client, the tool
+reference, and the recommended workflow. A ready-made
+[Claude Code skill](agents/claude/skills/j2c-translate/SKILL.md) and
+[Copilot instructions](agents/copilot/j2c.instructions.md) are included.
 
 ## VS Code extension
 

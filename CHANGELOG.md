@@ -20,6 +20,24 @@ C++20-targeted output.
 - VS Code: **J2C: Translate to C++** and **J2C: Check Translatability** in the
   editor and Explorer menus. Problems appear in the Problems panel; runs can
   be cancelled, and only one runs at a time.
+- Problems have stable IDs with fix hints (`j2c explain`), and `--format json`
+  prints machine-readable results with line and column. `j2c capabilities`
+  describes supported features and limitations.
+- Translation refuses to replace a non-empty output directory that J2C did
+  not create (its contents would be moved to a backup) unless `--force` is
+  given; the extension asks first.
+
+### AI agents
+
+- `j2c mcp` serves J2C as a Model Context Protocol server with `j2c_check`,
+  `j2c_translate`, `j2c_explain`, and `j2c_capabilities` tools, confined to a
+  workspace root, for Claude Code, Claude Desktop, Copilot, and other MCP
+  clients.
+- The VS Code extension registers the server for each workspace folder
+  (`j2c.mcp.enabled`), so Copilot agent mode gets the tools without setup.
+- `docs/AGENTS.md`, a Claude Code skill, and Copilot instructions describe the
+  check-fix-translate workflow; `AGENTS.md` and `CLAUDE.md` guide agents
+  working on J2C itself.
 
 ### Java language support
 

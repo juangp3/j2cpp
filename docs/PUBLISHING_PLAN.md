@@ -774,6 +774,83 @@ Risks:
 | 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run |
 | 0.8.0 | Milestone 2: collections and enums; milestone 3: optional garbage collection |
 
+## Phase 11 — AI agent support (implemented 2026-10-11)
+
+Goal: agents (Copilot agent mode, Claude Code, Claude Desktop, any MCP
+client) can check Java for translation problems, fix them in the Java source
+using J2C's hints, and translate, without parsing human-readable output.
+User documentation is in `docs/AGENTS.md`.
+
+1. **A — Agent-ready CLI:**
+   - `--format json` for check and translate, with a versioned schema.
+   - 1-based columns.
+   - Stable problem IDs with explanations and hints (`ProblemCatalog`,
+     `j2c explain`), and `j2c capabilities`.
+   - Generated files listed in translate results.
+   - An output-directory guard: translation moves a directory's contents
+     aside, so it refuses a non-empty directory without the `.j2c-output`
+     marker unless `--force` is given.
+2. **B — MCP server:**
+   - `j2c mcp [--root <dir>]` speaks JSON-RPC 2.0 over stdio, with protocol
+     versions 2025-06-18, 2025-03-26 and 2024-11-05.
+   - Four tools with input schemas and annotations: read-only `j2c_check`,
+     `j2c_explain` and `j2c_capabilities`, and destructive `j2c_translate`.
+   - Inputs, source paths and output must be inside the root. The
+     translator's progress goes to stderr, so stdout carries only protocol
+     messages.
+   - The JSON code is hand-written (`Json`), adding no dependency.
+3. **C — VS Code:**
+   - The extension registers the bundled CLI as an MCP server per workspace
+     folder (`contributes.mcpServerDefinitionProviders`,
+     `onMcpCollection:j2c`, `j2c.mcp.enabled`). The API is detected at
+     runtime, so the engine stays `^1.85`.
+   - Commands use `--format json`, so diagnostics get exact columns, problem
+     IDs as codes, and fix hints. Text output is still parsed for a custom
+     older `j2c.cliJar`.
+   - A modal confirmation is shown before passing `--force`.
+4. **D — Agent guidance:**
+   - `docs/AGENTS.md`: setup for each client, tool reference, workflow,
+     safety.
+   - `agents/claude/skills/j2c-translate/SKILL.md` and
+     `agents/copilot/j2c.instructions.md`.
+   - The repository's `AGENTS.md`, imported by `CLAUDE.md`, for agents
+     working on J2C.
+
+Tests:
+
+- **CLI suite:**
+  - The JSON schema, IDs, columns and hints.
+  - `explain` (text, JSON, unknown ID).
+  - `capabilities`, matched against the catalog.
+  - JSON usage errors.
+  - The guard refusing and preserving a user file, `--force`, and the marker
+    making later translations unforced.
+- **`test-mcp.js`:**
+  - Initialize, including version fallback.
+  - Tool listing and annotations.
+  - A clean check, a check with problems (data, not an error), and a
+    translation with generated files.
+  - Writes and reads outside the root refused.
+  - Explain, capabilities, unknown tool, invalid arguments, unknown method,
+    ping, and a parse error.
+  - Exactly one response per request, and only JSON-RPC on stdout.
+- **Extension suite:**
+  - JSON diagnostics.
+  - The guard's decline, confirm and marker cases.
+  - MCP definitions, refresh on settings change, disabled setting, and
+    editors without the API.
+- **Verified by hand:** the anonymous-`this` hint's fix translates and
+  compiles.
+
+Pending manual checks with real clients:
+
+1. In VS Code with Copilot agent mode, the J2C tools appear for an open
+   workspace. `j2c_check` returns problems, and `j2c_translate` asks for
+   confirmation.
+2. In Claude Code (`claude mcp add j2c -- java -jar <jar> mcp --root .`),
+   the agent completes the check, fix and translate workflow on a project
+   with a `J2C-LAMBDA-ANONYMOUS-THIS` problem.
+
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.
@@ -796,6 +873,9 @@ Risks:
 - [x] Release workflow builds artifacts from the tag, writes checksums and
       notes, and drafts a pre-release; rollback path documented.
 - [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
+- [ ] Agent tools checked with a real client: Copilot agent mode lists the
+      J2C tools, and Claude Code completes the check, fix and translate
+      workflow (Phase 11).
 - [x] Phase 9 gaps G1–G6 fixed and covered by fixtures, runtime smoke tests,
       and probes; G7 and G8 are documented as known limitations.
 

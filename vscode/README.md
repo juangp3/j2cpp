@@ -24,6 +24,17 @@ declarations. Lambdas and method references are translated into small
 generated classes; the few forms that cannot be are reported in the Problems
 panel. Sources are read as UTF-8.
 
+The extension also offers J2C to AI agents: with `j2c.mcp.enabled` (on by
+default), it registers the bundled CLI as an MCP server for each workspace
+folder, so Copilot agent mode can check and translate Java through the
+`j2c_check`, `j2c_translate`, `j2c_explain`, and `j2c_capabilities` tools.
+This needs a VS Code version with MCP support. See `docs/AGENTS.md` in the
+repository.
+
+If the chosen output folder is not empty and was not created by J2C, the
+extension asks before translating, because translation moves the folder's
+contents to a backup in the temporary folder.
+
 Commands run with a progress notification that can be cancelled; a cancelled
 translation may leave a partially written output directory. Only one command
 runs at a time. The J2C output channel logs the extension version with each
