@@ -3,23 +3,80 @@ const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
 
-let translating = false;
+// "path:line: message", as printed by the CLI for problems in Java sources
+const PROBLEM_PATTERN = /^(.+\.java):(\d+): (.+?)\r?$/;
+
+let running = false;
 
 function activate(context) {
 	const output = vscode.window.createOutputChannel("J2C");
-	context.subscriptions.push(output);
+	const diagnostics = vscode.languages.createDiagnosticCollection("j2c");
+	const session = { context, output, diagnostics };
+	context.subscriptions.push(output, diagnostics);
 	context.subscriptions.push(vscode.commands.registerCommand(
 		"j2c.translate",
-		(target) => translate(context, output, target)
+		(target) => translate(session, target)
+	));
+	context.subscriptions.push(vscode.commands.registerCommand(
+		"j2c.check",
+		(target) => check(session, target)
 	));
 }
 
-async function translate(context, output, target) {
-	if (translating) {
-		vscode.window.showWarningMessage(
-			"J2C: A translation is already running."
-		);
+async function translate(session, target) {
+	const invocation = await prepare(session, target, true);
+	if (!invocation) {
 		return;
+	}
+	await execute(session, invocation, "Translating Java to C++", (result, problems) => {
+		if (result.code === 0) {
+			vscode.window.showInformationMessage(
+				`J2C: Translation complete. Output: ${invocation.outputDirectory}`
+			);
+		} else if (problems > 0) {
+			vscode.window.showErrorMessage(
+				`J2C: ${problems} problem(s) stop translation. See the Problems panel.`
+			);
+		} else {
+			vscode.window.showErrorMessage(
+				`J2C: Translation failed (exit code ${result.code}). See the J2C output channel.`
+			);
+		}
+	});
+}
+
+async function check(session, target) {
+	const invocation = await prepare(session, target, false);
+	if (!invocation) {
+		return;
+	}
+	await execute(session, invocation, "Checking translatability", (result, problems) => {
+		if (result.code === 0) {
+			vscode.window.showInformationMessage(
+				"J2C: No problems found; the selection can be translated."
+			);
+		} else if (result.code === 1 && problems > 0) {
+			vscode.window.showWarningMessage(
+				`J2C: ${problems} problem(s) would stop translation. See the Problems panel.`
+			);
+		} else {
+			vscode.window.showErrorMessage(
+				`J2C: Check failed (exit code ${result.code}). See the J2C output channel.`
+			);
+		}
+	});
+}
+
+/**
+ * Validates the selection and settings and builds the CLI invocation, or
+ * shows an error and returns undefined.
+ */
+async function prepare(session, target, writesOutput) {
+	if (running) {
+		vscode.window.showWarningMessage(
+			"J2C: A translation or check is already running."
+		);
+		return undefined;
 	}
 
 	const targets = getTargets(target);
@@ -27,20 +84,20 @@ async function translate(context, output, target) {
 		vscode.window.showErrorMessage(
 			"J2C: Select a Java file or source folder, or open a Java file first."
 		);
-		return;
+		return undefined;
 	}
 
 	for (const file of targets) {
 		if (!fs.existsSync(file)) {
 			vscode.window.showErrorMessage(`J2C: Input does not exist: ${file}`);
-			return;
+			return undefined;
 		}
 		const stat = fs.statSync(file);
 		if (!stat.isDirectory() && path.extname(file).toLowerCase() !== ".java") {
 			vscode.window.showErrorMessage(
 				`J2C: Expected a Java file or source folder: ${file}`
 			);
-			return;
+			return undefined;
 		}
 	}
 
@@ -56,34 +113,39 @@ async function translate(context, output, target) {
 		vscode.window.showErrorMessage(
 			"J2C: Translate files from one workspace folder at a time."
 		);
-		return;
+		return undefined;
 	}
 	const configuration = vscode.workspace.getConfiguration("j2c");
 	const sourcePaths = getSourcePaths(configuration, workspaceFolder);
 	const classPath = getClassPath(configuration, workspaceFolder);
-	const outputSelection = await vscode.window.showOpenDialog({
-		canSelectFiles: false,
-		canSelectFolders: true,
-		canSelectMany: false,
-		openLabel: "Use as J2C output directory"
-	});
-	if (!outputSelection || outputSelection.length === 0) {
-		return;
+
+	let outputDirectory;
+	if (writesOutput) {
+		const outputSelection = await vscode.window.showOpenDialog({
+			canSelectFiles: false,
+			canSelectFolders: true,
+			canSelectMany: false,
+			openLabel: "Use as J2C output directory"
+		});
+		if (!outputSelection || outputSelection.length === 0) {
+			return undefined;
+		}
+		outputDirectory = outputSelection[0].fsPath;
 	}
 
-	const outputDirectory = outputSelection[0].fsPath;
 	const configuredJar = configuration.get("cliJar", "");
 	const cliJar = configuredJar
 		? path.resolve(configuredJar)
-		: path.join(context.extensionPath, "lib", "j2c-cli.jar");
+		: path.join(session.context.extensionPath, "lib", "j2c-cli.jar");
 	if (!fs.existsSync(cliJar)) {
 		vscode.window.showErrorMessage(
 			`J2C CLI jar not found: ${cliJar}. Build/package the extension or set j2c.cliJar.`
 		);
-		return;
+		return undefined;
 	}
 
-	const args = ["-jar", cliJar, "--output", outputDirectory];
+	const args = ["-jar", cliJar];
+	args.push(...(writesOutput ? ["--output", outputDirectory] : ["--check"]));
 	args.push("--sealed-types", configuration.get("sealedTypes", "advisory"));
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
@@ -91,56 +153,90 @@ async function translate(context, output, target) {
 	if (classPath.length > 0) {
 		args.push("--classpath", classPath.join(path.delimiter));
 	}
-	if (workspaceFolder) {
+	if (workspaceFolder && writesOutput) {
 		args.push("--name", path.basename(workspaceFolder.uri.fsPath));
 	}
 	args.push(...targets);
 
-	output.appendLine(`Translating ${targets.join(", ")}`);
-	output.appendLine(`Output: ${outputDirectory}`);
-	translating = true;
+	return {
+		args,
+		cwd: workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(targets[0]),
+		executable: configuration.get("javaExecutable", "java"),
+		outputDirectory,
+		targets
+	};
+}
+
+async function execute(session, invocation, title, onComplete) {
+	const { context, output, diagnostics } = session;
+	const version = context.extension && context.extension.packageJSON
+		? context.extension.packageJSON.version
+		: "unknown";
+	output.appendLine(`J2C ${version}: ${title} ${invocation.targets.join(", ")}`);
+	if (invocation.outputDirectory) {
+		output.appendLine(`Output: ${invocation.outputDirectory}`);
+	}
+
+	running = true;
 	try {
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: "J2C: Translating Java to C++",
+			title: `J2C: ${title}`,
 			cancellable: true
-		}, (_progress, token) => runAndReport(
-			configuration.get("javaExecutable", "java"),
-			args,
-			workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(targets[0]),
-			output,
-			outputDirectory,
-			token
-		));
+		}, async (_progress, token) => {
+			try {
+				const result = await runCli(
+					invocation.executable, invocation.args, invocation.cwd, output, token
+				);
+				if (result.cancelled) {
+					output.appendLine("Cancelled; any output directory may be incomplete.");
+					vscode.window.showWarningMessage(
+						"J2C: Cancelled. Any output directory may be incomplete."
+					);
+					return;
+				}
+				onComplete(result, publishProblems(diagnostics, result.text));
+			} catch (error) {
+				output.appendLine(String(error));
+				vscode.window.showErrorMessage(
+					"J2C: Could not start the translator. See the J2C output channel."
+				);
+			}
+		});
 	} finally {
-		translating = false;
+		running = false;
 	}
 	output.show(true);
 }
 
-async function runAndReport(executable, args, cwd, output, outputDirectory, token) {
-	try {
-		const result = await runCli(executable, args, cwd, output, token);
-		if (result.cancelled) {
-			output.appendLine("Translation cancelled; the output directory may be incomplete.");
-			vscode.window.showWarningMessage(
-				"J2C: Translation cancelled. The output directory may be incomplete."
-			);
-		} else if (result.code === 0) {
-			vscode.window.showInformationMessage(
-				`J2C: Translation complete. Output: ${outputDirectory}`
-			);
-		} else {
-			vscode.window.showErrorMessage(
-				`J2C: Translation failed (exit code ${result.code}). See the J2C output channel.`
-			);
+/** Replaces the J2C diagnostics with the problems in the CLI output */
+function publishProblems(diagnostics, text) {
+	const byFile = new Map();
+	for (const line of text.split("\n")) {
+		const match = line.match(PROBLEM_PATTERN);
+		if (!match) {
+			continue;
 		}
-	} catch (error) {
-		output.appendLine(String(error));
-		vscode.window.showErrorMessage(
-			`J2C: Could not start the translator. See the J2C output channel.`
+		const lineIndex = Math.max(Number(match[2]) - 1, 0);
+		const diagnostic = new vscode.Diagnostic(
+			new vscode.Range(lineIndex, 0, lineIndex, Number.MAX_SAFE_INTEGER),
+			match[3],
+			vscode.DiagnosticSeverity.Error
 		);
+		diagnostic.source = "j2c";
+		if (!byFile.has(match[1])) {
+			byFile.set(match[1], []);
+		}
+		byFile.get(match[1]).push(diagnostic);
 	}
+
+	diagnostics.clear();
+	let count = 0;
+	for (const [file, fileDiagnostics] of byFile) {
+		diagnostics.set(vscode.Uri.file(file), fileDiagnostics);
+		count += fileDiagnostics.length;
+	}
+	return count;
 }
 
 function getTargets(target) {
@@ -218,10 +314,15 @@ function runCli(executable, args, cwd, output, token) {
 		// are not corrupted
 		child.stdout.setEncoding("utf8");
 		child.stderr.setEncoding("utf8");
-		child.stdout.on("data", (data) => output.append(data));
-		child.stderr.on("data", (data) => output.append(data));
+		let text = "";
+		const capture = (data) => {
+			text += data;
+			output.append(data);
+		};
+		child.stdout.on("data", capture);
+		child.stderr.on("data", capture);
 		child.on("error", settle(reject));
-		child.on("close", settle((code) => resolve({ code, cancelled })));
+		child.on("close", settle((code) => resolve({ code, cancelled, text })));
 	});
 }
 

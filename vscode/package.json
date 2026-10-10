@@ -28,13 +28,18 @@
     "@vscode/vsce": "4.0.0"
   },
   "activationEvents": [
-    "onCommand:j2c.translate"
+    "onCommand:j2c.translate",
+    "onCommand:j2c.check"
   ],
   "contributes": {
     "commands": [
       {
         "command": "j2c.translate",
         "title": "J2C: Translate to C++"
+      },
+      {
+        "command": "j2c.check",
+        "title": "J2C: Check Translatability"
       }
     ],
     "menus": {
@@ -42,11 +47,20 @@
         {
           "command": "j2c.translate",
           "when": "editorLangId == java"
+        },
+        {
+          "command": "j2c.check",
+          "when": "editorLangId == java"
         }
       ],
       "explorer/context": [
         {
           "command": "j2c.translate",
+          "when": "resourceLangId == java || resourceIsFolder",
+          "group": "navigation"
+        },
+        {
+          "command": "j2c.check",
           "when": "resourceLangId == java || resourceIsFolder",
           "group": "navigation"
         }

@@ -27,8 +27,36 @@ function createHarness(options = {}) {
 	const config = options.config || {};
 	const sourcePathConfig = options.javaSourcePaths || [];
 
+	const diagnostics = {
+		entries: new Map(),
+		clear() {
+			this.entries.clear();
+		},
+		set(uri, fileDiagnostics) {
+			this.entries.set(uri.fsPath, fileDiagnostics);
+		},
+		dispose() {}
+	};
+
 	const vscode = {
+		Diagnostic: class {
+			constructor(range, message, severity) {
+				Object.assign(this, { range, message, severity });
+			}
+		},
+		DiagnosticSeverity: { Error: 0 },
 		ProgressLocation: { Notification: 1 },
+		Range: class {
+			constructor(startLine, startCharacter, endLine, endCharacter) {
+				Object.assign(this, { startLine, startCharacter, endLine, endCharacter });
+			}
+		},
+		languages: {
+			createDiagnosticCollection: (name) => {
+				assert.strictEqual(name, "j2c");
+				return diagnostics;
+			}
+		},
 		Uri: {
 			file: (fsPath) => ({ fsPath })
 		},
@@ -107,7 +135,9 @@ function createHarness(options = {}) {
 				killed.push(child);
 				process.nextTick(() => child.emit("close", null));
 			};
-			const outcome = options.spawnOutcome || { code: 0 };
+			const outcome = (options.spawnOutcomes && options.spawnOutcomes.shift())
+				|| options.spawnOutcome
+				|| { code: 0 };
 			process.nextTick(() => {
 				assert.strictEqual(child.stdout.encoding, "utf8");
 				assert.strictEqual(child.stderr.encoding, "utf8");
@@ -158,6 +188,7 @@ function createHarness(options = {}) {
 		cancel: () => cancellationListeners.forEach((listener) => listener()),
 		commands,
 		context,
+		diagnostics,
 		errors,
 		information,
 		killed,
@@ -301,7 +332,7 @@ async function testCancellationStopsTranslator() {
 	harness.cancel();
 	await running;
 	assert.strictEqual(harness.killed.length, 1);
-	assert(harness.warnings[1].includes("Translation cancelled"));
+	assert(harness.warnings[1].includes("Cancelled"));
 	assert.deepStrictEqual(harness.errors, []);
 	assert.deepStrictEqual(harness.information, []);
 
@@ -310,6 +341,72 @@ async function testCancellationStopsTranslator() {
 	assert.strictEqual(harness.spawned.length, 2, "A run must be possible after cancelling");
 	harness.cancel();
 	await rerun;
+}
+
+async function testCheckPublishesProblems() {
+	const root = path.join(tempDirectory, "check workspace");
+	const input = makeFile(path.join(root, "src", "Lambdas.java"));
+	const other = path.join(root, "src", "Other.java");
+	const bundledJar = makeFile(path.join(tempDirectory, "check extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		spawnOutcomes: [
+			{
+				code: 1,
+				stdout: [
+					`${input}:5: Java 8 lambda expressions are not supported`,
+					`${input}:9: Java 8 method references are not supported`,
+					`${other}:2: Syntax error on token "}"`,
+					"J2C check: 3 problem(s) in 2 of 2 file(s)",
+					"  1 x lambda expression",
+					""
+				].join("\r\n")
+			},
+			{ code: 0, stdout: "J2C check: no problems found in 2 file(s)\n" }
+		],
+		workspaceFolders: [createWorkspace(root)]
+	});
+	const check = harness.commands.get("j2c.check");
+	await check({ fsPath: path.join(root, "src") });
+
+	assert.strictEqual(harness.spawned.length, 1);
+	const args = harness.spawned[0][1];
+	assert(args.includes("--check"));
+	assert(!args.includes("--output"), "A check must not write output");
+	assert(!args.includes("--name"));
+	assert.strictEqual(args[args.length - 1], path.join(root, "src"));
+
+	const inputProblems = harness.diagnostics.entries.get(input);
+	assert.strictEqual(inputProblems.length, 2);
+	assert.strictEqual(inputProblems[0].range.startLine, 4);
+	assert.strictEqual(inputProblems[0].message, "Java 8 lambda expressions are not supported");
+	assert.strictEqual(inputProblems[0].source, "j2c");
+	assert.strictEqual(harness.diagnostics.entries.get(other)[0].range.startLine, 1);
+	assert(harness.warnings[0].includes("3 problem(s) would stop translation"));
+	assert.deepStrictEqual(harness.errors, []);
+
+	await check({ fsPath: path.join(root, "src") });
+	assert.strictEqual(harness.diagnostics.entries.size, 0, "A clean check clears old problems");
+	assert(harness.information[0].includes("No problems found"));
+}
+
+async function testTranslationProblemsArePublished() {
+	const root = path.join(tempDirectory, "problem workspace");
+	const input = makeFile(path.join(root, "Broken.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "problem extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		outputDirectory: path.join(tempDirectory, "problem output"),
+		spawnOutcome: {
+			code: 1,
+			stderr: `J2C translation failed:\n${input}:3: Java 8 lambda expressions are not supported\n`
+		},
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.translate")({ fsPath: input });
+
+	assert.strictEqual(harness.diagnostics.entries.get(input).length, 1);
+	assert(harness.errors[0].includes("1 problem(s) stop translation"));
 }
 
 async function testNoTargetIsReported() {
@@ -330,6 +427,8 @@ async function main() {
 		await testSpawnFailureIsReported();
 		await testMissingCliJarDoesNotSpawn();
 		await testCancellationStopsTranslator();
+		await testCheckPublishesProblems();
+		await testTranslationProblemsArePublished();
 		await testNoTargetIsReported();
 		console.log("Extension configuration and failure checks passed");
 		process.exitCode = 0;
