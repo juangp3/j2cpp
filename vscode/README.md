@@ -1,9 +1,17 @@
 # J2C Java to C++ for VS Code
 
-This extension adds **J2C: Translate to C++** to Java editor and Explorer
-context menus. Select a Java source file or source folder, then choose an
-existing output directory. Generated implementation files are written below
-`src`; dependency headers and stubs are written below `ext`.
+This extension adds **J2C: Translate to C++** and **J2C: Check
+Translatability** to Java editor and Explorer context menus.
+
+- **Translate**: select a Java source file or source folder, then choose an
+  existing output directory. Generated implementation files are written below
+  `src`; dependency headers and stubs are written below `ext`.
+- **Check**: reports every compile error and unsupported construct in the
+  selection without writing anything. Run it on a source folder to see whether
+  a project can be translated.
+
+Problems from either command appear in the **Problems** panel at their source
+lines; a clean run clears them.
 
 The extension requires VS Code 1.85 or newer and runs the bundled J2C CLI,
 which requires Java 11 or newer. The
@@ -12,13 +20,13 @@ translator accepts Java 17 source and generated Makefiles target C++20. Java
 default to advisory translation as ordinary C++ inheritance, with comments
 listing permitted direct subtypes; C++ does not enforce the permits restriction.
 Set `j2c.sealedTypes` to `reject` to stop translation on sealed or non-sealed
-declarations. Lambdas, method references, and text blocks are not supported;
-translation stops and the J2C output channel lists each `file:line`. Sources
-are read as UTF-8.
+declarations. Lambdas and method references are not supported yet; they are
+reported in the Problems panel. Sources are read as UTF-8.
 
-Translation runs with a progress notification that can be cancelled; a
-cancelled run may leave a partially written output directory. Only one
-translation runs at a time.
+Commands run with a progress notification that can be cancelled; a cancelled
+translation may leave a partially written output directory. Only one command
+runs at a time. The J2C output channel logs the extension version with each
+run.
 
 The VSIX includes the project license, the third-party dependency inventory,
 and the dependencies' license texts and original notices; see `LICENSE.txt`,

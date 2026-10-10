@@ -2,6 +2,15 @@
 
 ## 0.6.0 — Preview
 
+- Add `--check`, which lists every compile error and unsupported construct
+  with `file:line` and a per-kind summary without writing output, and
+  `--version`.
+- VS Code: add **J2C: Check Translatability** and show problems from checks
+  and failed translations in the Problems panel.
+- Translate text blocks, try-with-resources (previously emitted as invalid
+  C++, in all forms), `case X ->` switch expressions on enums and strings,
+  and `switch` statements on strings.
+
 - Add a standalone Java-to-C++ CLI and a VS Code extension that bundles it.
 - Enable Java 17 source parsing and C++20 Makefile targets.
 - Add initial translation for supported `instanceof` patterns and switch
@@ -12,9 +21,9 @@
 - Add focused CLI integration checks, C++20 compilation smoke tests for
   control-flow and record fixtures, and a GitHub Actions build/package workflow.
 - Fail with `file:line` diagnostics, instead of emitting invalid C++, for
-  lambdas, method references, text blocks, `try (existingResource)`, and
-  switch expressions on non-primitive selectors. Java compile errors and
-  unsupported syntax are reported without a stack trace.
+  lambdas, method references, and switch expressions on boxed selectors or in
+  colon form on enums and strings. Java compile errors and unsupported syntax
+  are reported without a stack trace.
 - Fix regressions from moving to the Java 17 AST: array class literals and
   array types no longer crash translation, and enum `switch` labels are no
   longer emitted as `MISSING`.

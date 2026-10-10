@@ -180,15 +180,21 @@ workflow):
 - **License consistency** (`check-licenses.js`): inventory, notice directories,
   and JAR contents match the resolved runtime dependencies.
 - **CLI behavior** (`test-cli.js`):
-  - `--help`, missing input, missing option values, and invalid
-    `--sealed-types` and `--encoding` values.
+  - `--help`, `--version` (matches the extension version), missing input,
+    missing option values, invalid `--sealed-types` and `--encoding` values,
+    and `--check` combined with `--output`.
+  - `--check` lists every problem with a per-kind summary, exits 1, and
+    writes nothing, not even into the working directory.
   - Translation and output paths containing spaces.
   - Lambdas and method references fail with `file:line` diagnostics and no
     stack trace.
   - A non-ASCII string literal survives as UTF-8 in the generated C++.
   - Java 17 fixtures, gated on the Java version running the tests:
-    - The whole 144-file `test/src` corpus translates, with no `MISSING`
-      placeholders in the generated sources.
+    - The whole `test/src` corpus translates, with no `MISSING`
+      placeholders in the generated sources, and `--check` reports it clean.
+    - `Java17Features`: text blocks, enum and String switch expressions,
+      String switch statements, and both try-with-resources forms. CI also
+      compiles the generated C++ for this fixture.
     - Pattern `instanceof`, switch expressions, and arrow-rule switch
       statements over ints and enums.
     - Records.
@@ -232,15 +238,28 @@ uncompilable output while still exiting 0:
    never generated for small projects.
 7. Extension: no cancellation, chunk-wise output decoding, concurrent runs.
 
+Features added after the review (2026-10-10):
+
+- `--check`, which reports all problems with a per-kind summary and writes
+  nothing; `--version`, stamped from the Maven version into the JAR
+  manifest.
+- VS Code: **J2C: Check Translatability**, and Problems-panel diagnostics
+  for both commands.
+- Translation of text blocks, try-with-resources (previously emitted
+  verbatim as invalid C++), `case X ->` switch expressions on enums and
+  strings, and `String` switch statements.
+
 Deferred (not release blockers):
 
 - A Java error in a dependency unit, not just a selected one, fails the whole
   run. Upstream fell back to header-only output for such units.
 - Validation runs per unit as it is processed, so a failure can leave earlier
   output written. Validating every selected unit first would avoid that.
-- Switch statements on `String` or boxed selectors still emit a native C++
-  `switch`, which does not compile. This behavior predates the
-  modernization.
+- Switch statements on boxed selectors (`Integer` and so on) still emit a
+  native C++ `switch`, which does not compile. `String` switches are now
+  translated as `equals` chains. This behavior predates the modernization.
+- `if`-chain switches (enum and `String`) whose cases all return trigger a
+  harmless GCC `-Wreturn-type` warning.
 - The shaded CLI JAR is 10 MB. `minimizeJar` is risky with Eclipse's
   reflective loading, so it was not attempted.
 - There is no `j2c.encoding` extension setting; the CLI default of UTF-8
@@ -288,7 +307,12 @@ explicit.
       shows the CLI log, and C++ files are written.
    3. Run it once from the Explorer context menu on the `src` folder.
    4. Set `j2c.sealedTypes` to `reject`, translate `Java17Unsupported.java`,
-      and confirm an error is shown.
+      and confirm an error is shown and the Problems panel marks both
+      declarations.
+   5. Run **J2C: Check Translatability** on a Java file that contains a
+      lambda. Confirm the Problems panel marks it, and that clicking the
+      entry opens the right line. Remove the lambda, check again, and
+      confirm the entry clears.
 
    Record the outcome here.
 

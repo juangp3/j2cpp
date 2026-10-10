@@ -53,9 +53,20 @@ Additional optional arguments are `--classpath <paths>`, `--name <name>`,
 read as UTF-8 unless `--encoding` says otherwise; generated C++ is always
 written as UTF-8.
 
-The CLI exits with status 0 on success, 1 when translation fails (Java compile
-errors or unsupported syntax are reported as `file:line: message`), and 2 for
-invalid arguments.
+Check whether code can be translated before writing anything:
+
+```sh
+java -jar target/j2c-cli.jar --check --sourcepath src/main/java src/main/java
+```
+
+`--check` takes the same inputs as a translation but no `--output`. It prints
+every compile error and unsupported construct in the selected files as
+`file:line: message`, followed by a summary per kind, and writes no files.
+Select a source root to check a whole project. `--version` prints the CLI
+version.
+
+The CLI exits with status 0 on success (or a clean check), 1 when translation
+fails or a check finds problems, and 2 for invalid arguments.
 
 ## VS Code extension
 
@@ -98,7 +109,15 @@ Java 17 parsing is enabled, but feature translation is incomplete. The current
 documented modern-language slice includes:
 
 - Pattern-matching `instanceof` in supported `if` conditions.
-- Switch expressions.
+- Switch expressions on primitive values, and `case X ->` switch expressions
+  on enums and strings.
+- Arrow-form (`case X ->`) switch statements, and `switch` statements on
+  strings.
+- Text blocks.
+- Try-with-resources, including `try (existingResource)`. Resources are closed
+  in reverse order before `catch` and `finally` clauses run. An exception from
+  `close()` while another exception is propagating terminates the program
+  instead of being recorded as suppressed.
 - Records, including generated component storage/accessors, construction,
   `equals`, `hashCode`, and `toString`.
 - Sealed and non-sealed declarations under the advisory/reject policy above.
@@ -113,10 +132,10 @@ The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:
 
 - Lambda expressions and method references.
-- Text blocks.
-- `try` with resources that name an existing variable (`try (resource)`).
-- Switch expressions whose selector is not a primitive type (for example
-  enums or strings).
+- Switch expressions on boxed values (for example `Integer`), and colon-form
+  (`case X:`) switch expressions on enums or strings.
+
+Use `--check` to list all of these at once.
 
 ## Build and validation
 
