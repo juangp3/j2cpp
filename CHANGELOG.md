@@ -2,61 +2,84 @@
 
 ## 0.6.0 — Preview
 
-- Translate lambda expressions and method references by rewriting each into
-  the equivalent anonymous class. `this`, `super`, and calls whose names the
-  functional interface also declares keep their enclosing-class meaning.
-- Capture effectively final variables in anonymous classes and lambdas; only
-  explicitly `final` ones were captured before, so Java 8+ code did not
-  compile.
-- Generate stub definitions for default and static interface methods
-  (Java 8+), without which classes implementing interfaces such as
-  `Comparator` or `Function` failed to link.
-- Fix generated JDK library stubs so programs using `java.util` collections
-  compile: stubs now define exactly the methods their headers declare, and
-  default methods a class inherits from an interface forward to that
-  interface instead of the superclass (`AbstractCollection.toArray`,
-  `AbstractMap.remove`).
+First release of J2C Modern Edition: a standalone Java-to-C++ CLI and a VS
+Code extension that bundles it, parsing Java 17 source and generating
+C++20-targeted output.
 
-- Add `--check`, which lists every compile error and unsupported construct
-  with `file:line` and a per-kind summary without writing output, and
-  `--version`.
-- VS Code: add **J2C: Check Translatability** and show problems from checks
-  and failed translations in the Problems panel.
-- Translate text blocks, try-with-resources (previously emitted as invalid
-  C++, in all forms), `case X ->` switch expressions on enums and strings,
-  and `switch` statements on strings.
+### Command line and extension
 
-- Add a standalone Java-to-C++ CLI and a VS Code extension that bundles it.
-- Enable Java 17 source parsing and C++20 Makefile targets.
-- Add initial translation for supported `instanceof` patterns and switch
-  expressions, plus Java records.
-- Translate sealed and non-sealed declarations as ordinary C++ inheritance by
-  default, with advisory permits comments; add `--sealed-types reject` and the
-  matching VS Code setting.
-- Add focused CLI integration checks, C++20 compilation smoke tests for
-  control-flow and record fixtures, and a GitHub Actions build/package workflow.
-- Fail with `file:line` diagnostics, instead of emitting invalid C++, for the
-  lambda and method reference forms that cannot be rewritten, and for switch
-  expressions on boxed selectors or in colon form on enums and strings. Java compile errors and unsupported syntax
-  are reported without a stack trace.
-- Fix regressions from moving to the Java 17 AST: array class literals and
-  array types no longer crash translation, and enum `switch` labels are no
-  longer emitted as `MISSING`.
-- Fix arrow-form (`case X ->`) switch statements, which returned from the
-  enclosing method or fell through instead of breaking.
-- Parse each batch of sources in one shared compiler environment: faster, and
-  dependency headers that per-file parsing omitted are now generated.
-- Read Java sources as UTF-8 by default (`--encoding` overrides) and always
-  write generated C++ as UTF-8, independent of the platform charset.
-- Always generate the `Cloneable` and `Serializable` headers that the bundled
-  `ObjectArray.hpp` includes, so small projects using enums or object arrays
-  compile.
-- VS Code: translation can be cancelled, concurrent runs are prevented, and
-  translator output is decoded as UTF-8 streams.
-- Ship a runtime dependency inventory, full EPL-2.0 and Apache-2.0 texts, and
-  each dependency's original notice files in both the CLI JAR and the VSIX.
+- Standalone CLI with `--sourcepath`, `--classpath`, `--name`,
+  `--sealed-types advisory|reject`, `--encoding`, `--check`, and `--version`.
+- `--check` lists every compile error and unsupported construct as
+  `file:line: message`, with a summary per kind, without writing output.
+- Translation problems are reported as `file:line` diagnostics without a stack
+  trace. Exit status is 0 on success, 1 for translation problems, and 2 for
+  invalid arguments.
+- Sources are read as UTF-8 by default and generated C++ is always UTF-8,
+  independent of the platform charset.
+- VS Code: **J2C: Translate to C++** and **J2C: Check Translatability** in the
+  editor and Explorer menus. Problems appear in the Problems panel; runs can
+  be cancelled, and only one runs at a time.
 
-This preview is not a complete Java 17 translator. Generated C++ may need
-manual changes and a compatible Java runtime implementation. Sealed
-restrictions are not enforced by C++; compilation smoke tests cover only the
-listed fixtures and do not establish broad compatibility or semantic parity.
+### Java language support
+
+- Lambda expressions and method references in every form, including generic
+  functional methods and intersection-cast targets. Each is rewritten into the
+  equivalent anonymous class.
+- Pattern-matching `instanceof` in any expression position, with Java's flow
+  scoping.
+- Switch expressions and statements in arrow and colon form on primitive,
+  boxed, enum, and string selectors.
+- Records, including records with object, array, and nested-type components,
+  and sealed hierarchies of records.
+- Text blocks, try-with-resources (including `try (existingResource)`), and
+  default, static, and private interface methods.
+- Sealed and non-sealed declarations become ordinary C++ inheritance with
+  advisory permits comments; `--sealed-types reject` rejects them instead.
+
+### Java semantics in generated C++
+
+- Integer division and remainder by zero throw `ArithmeticException`,
+  `MIN_VALUE / -1` wraps, shift counts are masked, floating-point to integer
+  casts saturate, and generated Makefiles build with `-fwrapv`.
+- Generated constructors no longer bind a reference through a null pointer.
+- Effectively final variables are captured by anonymous classes and lambdas,
+  not only explicitly `final` ones.
+
+### Fixes to the original translator
+
+- Moving to the Java 17 AST no longer crashes on array class literals, and
+  enum `switch` labels are no longer emitted as `MISSING`.
+- Arrow-form switch statements no longer return from the enclosing method or
+  fall through.
+- `x %= y` on floating-point values computed `fmod(x, x)`.
+- Casts to intersection types produced an invalid include and are now checked
+  per component.
+- JDK library stubs now match their headers: default and static interface
+  methods get definitions, and inherited default methods forward to their
+  interface, so programs using `java.util` collections compile and link.
+- `Cloneable` and `Serializable` headers needed by `ObjectArray.hpp` are
+  always generated.
+- Sources are parsed in batches with one shared compiler environment: faster,
+  and dependency headers that per-file parsing omitted are generated.
+
+### Quality checks and licensing
+
+- CLI and extension integration suites run during packaging; CI compiles the
+  generated C++ for every Java 17 fixture and runs native smoke tests under
+  UndefinedBehaviorSanitizer.
+- `test/probes` and `npm run probe` report which Java constructs translate and
+  compile, to find and track translation gaps.
+- The CLI JAR and VSIX ship a runtime dependency inventory, the full EPL-2.0
+  and Apache-2.0 texts, and each dependency's original notice files.
+
+### Known limitations
+
+This preview is not a complete Java 17 translator. Generated programs need a
+C++ implementation of the Java classes they use: JDK classes are generated as
+stubs, so output compiles and links but does not run until a runtime is
+provided. Objects are never freed without a garbage collector. Lambdas that
+use `this` inside an anonymous class, and `instanceof` patterns in field
+initializers, are reported instead of translated. Sealed restrictions are not
+enforced by C++. The smoke tests cover the listed fixtures and do not
+establish broad compatibility or semantic parity.

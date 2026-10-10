@@ -73,11 +73,10 @@ Last rechecked on 2026-10-10 against local `modern-release`.
   The version check, artifact staging, checksums, and notes steps were
   dry-run locally. The `gh release` step has not run yet.
 - **Translation gaps.** A probe of Java 9–17 features (2026-10-10) found
-  three bugs in documented features: `instanceof` patterns outside plain
-  `if`, records with object components, and records with nested component
-  types. It also confirmed that output does not run without a Java runtime
-  library and that Java arithmetic semantics are not preserved. Phase 9
-  lists every gap with its implementation and test plan.
+  gaps that are now fixed: `instanceof` patterns, record components, switch
+  forms, lambda edge cases, and Java integer arithmetic (G1–G6). The
+  remaining limits are the Java runtime library and memory management (G7,
+  G8). Phase 9 has the details, and `npm run probe` tracks coverage.
 - **Marketplace.** Publisher is `juangp3` at the user's direction. The item URL
   for `juangp3.j2c` returns 404; publisher ownership and a publishing token
   remain unverified.
@@ -273,9 +272,6 @@ Deferred (not release blockers):
   run. Upstream fell back to header-only output for such units.
 - Validation runs per unit as it is processed, so a failure can leave earlier
   output written. Validating every selected unit first would avoid that.
-- Switch statements on boxed selectors (`Integer` and so on) still emit a
-  native C++ `switch`, which does not compile. `String` switches are now
-  translated as `equals` chains. This behavior predates the modernization.
 - `if`-chain switches (enum and `String`) whose cases all return trigger a
   harmless GCC `-Wreturn-type` warning.
 - The shaded CLI JAR is 10 MB. `minimizeJar` is risky with Eclipse's
@@ -382,6 +378,7 @@ documented requirements.
 
 On 2026-10-10, probe files exercising Java 9–17 features and common JDK
 idioms were translated and compiled with GCC 13.3. Most of it works:
+
 - Interface default, private and static methods, and `Interface.super`.
 - Every switch form tested.
 - Generics, streams, `Optional`, lambdas and method references.
@@ -389,6 +386,7 @@ idioms were translated and compiled with GCC 13.3. Most of it works:
 - Labeled loops, multi-catch, anonymous diamond, varargs and `synchronized`.
 
 The gaps below remain. They fall into three groups:
+
 - G1–G4 and G6 are language gaps.
 - G5 and G9 are semantic differences.
 - G7 and G8 are runtime gaps that decide whether translated programs can run.
@@ -396,6 +394,8 @@ The gaps below remain. They fall into three groups:
 ### Gaps
 
 #### G1 — `instanceof` patterns outside plain `if` conditions
+
+**Status (2026-10-10):** Done: hoisting with unique names, braces for unbraced bodies and `else if`; `Java17Patterns` and its runtime smoke test cover nine forms. Patterns in field initializers are reported.
 
 - **Symptom:** the translator crashes (`NullPointerException` in
   `ImplWriter.visit(InfixExpression)`) when a pattern appears in `&&`,
@@ -429,6 +429,8 @@ The gaps below remain. They fall into three groups:
 
 #### G2 — Record with an object component (e.g. `List<String>`)
 
+**Status (2026-10-10):** Done: record components are hard dependencies; covered by `Java17Records.Tagged`.
+
 - **Symptom:** C++ compile error "invalid use of incomplete type" in the
   generated `equals`.
 - **Cause:** `RecordSupport` calls component methods (`equals`, `hashCode`)
@@ -441,6 +443,8 @@ The gaps below remain. They fall into three groups:
 - **Effort:** small. **Release:** blocks documented record support.
 
 #### G3 — Record whose component type is a nested type
+
+**Status (2026-10-10):** Done: accessors print qualified return types; `Java17Records` evaluates a sealed record hierarchy at runtime.
 
 - **Symptom:** `'Sealed_Expr' does not name a type` in an out-of-class
   accessor definition. This happens, for example, for records implementing a
@@ -455,6 +459,8 @@ The gaps below remain. They fall into three groups:
   support.
 
 #### G4 — Remaining switch forms
+
+**Status (2026-10-10):** Done: boxed selectors were already unboxed for statements and now work for expressions; colon-form enum and String switch expressions reuse the if-chain writer. Covered by `Java17Features`.
 
 - **Symptom:**
   - Switch expressions on boxed selectors (`Integer`, `Character`) and
@@ -474,6 +480,8 @@ The gaps below remain. They fall into three groups:
 - **Effort:** small to medium.
 
 #### G5 — Java arithmetic semantics
+
+**Status (2026-10-10):** Done: `java_math.hpp` helpers and `-fwrapv`; `Java17ArithmeticSmoke.cpp` checks 28 cases under UBSan. UBSan also exposed, and this fixed, the null-reference constructor tag in every generated constructor, and an unrelated `x %= y` bug (`fmod(x, x)`) for floating-point values. Not covered: implicit narrowing in compound assignments with a floating-point right side (`i += 1.5`), which stays a C++ conversion.
 
 - **Symptom:** the generated C++ uses raw operators, so these cases are
   undefined behavior instead of Java's defined results:
@@ -503,6 +511,8 @@ The gaps below remain. They fall into three groups:
 
 #### G6 — Lambda forms that cannot be rewritten
 
+**Status (2026-10-10):** Done for generic functional methods and intersection targets (a generated member interface keeps `instanceof` true for every component; casts to intersection types elsewhere are now checked per component). `this` inside an anonymous class stays unsupported by design.
+
 - **Symptom:** `--check` rejects lambdas with an intersection-type target,
   method references to generic functional methods, and `this` inside an
   anonymous class.
@@ -520,6 +530,8 @@ The gaps below remain. They fall into three groups:
 - **Effort:** small (generic) to medium (intersection).
 
 #### G7 — Java class library at runtime
+
+**Status (2026-10-10):** Open: needs the bundled-runtime versus documented-integration decision.
 
 - **Symptom:** JDK classes are generated as stubs that call
   `unimplemented_()`. Translated programs compile and link, but any call into
@@ -544,6 +556,8 @@ The gaps below remain. They fall into three groups:
   run without a runtime.
 
 #### G8 — Memory management
+
+**Status (2026-10-10):** Open: follows G7.
 
 - **Symptom:** objects are allocated with `new` and never freed.
 - **Implement:** add an optional Makefile switch (`J2C_GC=boehm`) that links
@@ -643,8 +657,8 @@ failure:
 - [x] Release workflow builds artifacts from the tag, writes checksums and
       notes, and drafts a pre-release; rollback path documented.
 - [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
-- [ ] Phase 9 gaps G1–G3 fixed, or the README's feature claims narrowed to
-      match; G5 fixed or listed as a known limitation.
+- [x] Phase 9 gaps G1–G6 fixed and covered by fixtures, runtime smoke tests,
+      and probes; G7 and G8 are documented as known limitations.
 
 ## Recommended release posture
 

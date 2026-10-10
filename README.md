@@ -105,24 +105,23 @@ Configuration:
 
 ## Java feature support
 
-Java 17 parsing is enabled, but feature translation is incomplete. The current
-documented modern-language slice includes:
+Java 17 parsing is enabled. Translated language features:
 
-- Pattern-matching `instanceof` in supported `if` conditions.
-- Switch expressions on primitive values, and `case X ->` switch expressions
-  on enums and strings.
-- Arrow-form (`case X ->`) switch statements, and `switch` statements on
-  strings.
+- Pattern-matching `instanceof` anywhere a condition or expression can
+  appear (`&&`, `?:`, loops, negated `if`), with Java's flow scoping: after
+  `if (!(o instanceof T t)) return;`, `t` remains usable.
+- Switch expressions and statements in both arrow (`case X ->`) and colon
+  (`case X:`) form, on primitive, boxed, enum, and string selectors.
 - Text blocks.
 - Lambda expressions and method references (static, bound, unbound, `this::`,
-  `super::`, constructor, and array constructor references). Each is
-  rewritten into the anonymous class Java defines it to be equivalent to and
-  translated like any anonymous class, so every lambda becomes a small C++
-  class. A bound receiver (`expr::method`) is evaluated once, when the
-  reference is created; a null receiver fails when the reference is invoked,
-  not when it is created.
-- Default and static interface methods of library types get stub definitions
-  like class methods do.
+  `super::`, constructor, array constructor, and generic functional
+  methods), including intersection-cast targets such as
+  `(Runnable & Serializable) () -> ...`. Each is rewritten into the anonymous
+  class Java defines it to be equivalent to and translated like any anonymous
+  class, so every lambda becomes a small C++ class. A bound receiver
+  (`expr::method`) is evaluated once, when the reference is created; a null
+  receiver fails when the reference is invoked, not when it is created.
+- Default, static, and private interface methods.
 - Try-with-resources, including `try (existingResource)`. Resources are closed
   in reverse order before `catch` and `finally` clauses run. An exception from
   `close()` while another exception is propagating terminates the program
@@ -131,21 +130,28 @@ documented modern-language slice includes:
   `equals`, `hashCode`, and `toString`.
 - Sealed and non-sealed declarations under the advisory/reject policy above.
 
+Integer arithmetic follows Java rather than C++: division and remainder by
+zero throw `ArithmeticException`, `MIN_VALUE / -1` wraps, shift counts are
+masked to the type width, and floating-point to integer casts saturate
+(NaN becomes 0). Generated Makefiles compile with `-fwrapv` so overflow wraps;
+keep that flag if you build the output another way.
+
 Review the generated C++ for each project. In particular, record component
 assignment, array identity hashing, and reference stringification can differ
-from JVM behavior. The generated program may depend on Java runtime classes
-and helpers that need to be implemented or replaced for the target project.
-Unsupported Java syntax or runtime behavior may require manual translation.
+from JVM behavior. **The generated program does not run on its own:** JDK
+classes (`String`, collections, `System.out`, and so on) are generated as
+stubs that call `unimplemented_()`, so a runtime implementation of the Java
+classes you use must be provided. Generated objects are never freed unless
+you link a garbage collector.
 
 The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:
 
-- Lambdas and method references whose target is an intersection type (for
-  example `(Runnable & Serializable) () -> ...`), whose functional interface
-  method is generic, or that use `this` inside an anonymous class (which
-  cannot be named from the generated class).
-- Switch expressions on boxed values (for example `Integer`), and colon-form
-  (`case X:`) switch expressions on enums or strings.
+- Lambdas and method references that use `this` inside an anonymous class
+  (which cannot be named from the generated class), or whose
+  intersection-cast target uses a type variable.
+- `instanceof` patterns outside method bodies, such as in field
+  initializers.
 
 Use `--check` to list all of these at once.
 
@@ -165,13 +171,19 @@ npm run vscode:prepublish
 ```
 
 The `test/src` directory contains translator fixtures. Generated output has not
-been validated for every Java feature or compiler/toolchain combination. CI
-translates the Java 17 control-flow and records fixtures, then compiles both
-generated C++20 projects with their generated Makefiles. This smoke check is
-not a guarantee of semantic parity or general Java compatibility.
-Running `npm run vscode:prepublish` from `vscode` also runs focused CLI
-integration checks for records and sealed-type policies before bundling the
-CLI.
+been validated for every Java feature or compiler/toolchain combination.
+Running `npm run vscode:prepublish` from `vscode` runs the license check and
+the CLI and extension integration suites. CI also translates the Java 17
+fixtures, compiles each generated project, and runs native smoke tests for
+control flow, records, lambdas, `instanceof` patterns, and integer arithmetic
+under UndefinedBehaviorSanitizer. These checks are not a guarantee of semantic
+parity or general Java compatibility.
+
+`test/probes` holds feature probes, each declaring on its first line whether
+it should compile or be rejected. `npm run probe` (from `vscode`) translates
+every probe, compiles it when `make` is available, and fails when an outcome
+changes, which surfaces both new gaps and fixed ones. Add a probe for any Java
+construct you want to check.
 
 See [CHANGELOG.md](CHANGELOG.md) for the preview candidate's scope and changes.
 
