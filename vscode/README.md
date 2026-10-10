@@ -12,7 +12,13 @@ translator accepts Java 17 source and generated Makefiles target C++20. Java
 default to advisory translation as ordinary C++ inheritance, with comments
 listing permitted direct subtypes; C++ does not enforce the permits restriction.
 Set `j2c.sealedTypes` to `reject` to stop translation on sealed or non-sealed
-declarations.
+declarations. Lambdas, method references, and text blocks are not supported;
+translation stops and the J2C output channel lists each `file:line`. Sources
+are read as UTF-8.
+
+Translation runs with a progress notification that can be cancelled; a
+cancelled run may leave a partially written output directory. Only one
+translation runs at a time.
 
 The VSIX includes the project license, the third-party dependency inventory,
 and the dependencies' license texts and original notices; see `LICENSE.txt`,

@@ -48,8 +48,14 @@ permitted direct subtypes; **C++ does not enforce Java's `permits` restriction**
 Choose `--sealed-types reject` to stop translation when sealed or non-sealed
 declarations are encountered.
 
-Additional optional arguments are `--classpath <paths>`, `--name <name>`, and
-`--sealed-types advisory|reject`.
+Additional optional arguments are `--classpath <paths>`, `--name <name>`,
+`--sealed-types advisory|reject`, and `--encoding <charset>`. Java sources are
+read as UTF-8 unless `--encoding` says otherwise; generated C++ is always
+written as UTF-8.
+
+The CLI exits with status 0 on success, 1 when translation fails (Java compile
+errors or unsupported syntax are reported as `file:line: message`), and 2 for
+invalid arguments.
 
 ## VS Code extension
 
@@ -102,6 +108,15 @@ assignment, array identity hashing, and reference stringification can differ
 from JVM behavior. The generated program may depend on Java runtime classes
 and helpers that need to be implemented or replaced for the target project.
 Unsupported Java syntax or runtime behavior may require manual translation.
+
+The following syntax is detected and stops translation with a `file:line`
+diagnostic instead of producing incorrect C++:
+
+- Lambda expressions and method references.
+- Text blocks.
+- `try` with resources that name an existing variable (`try (resource)`).
+- Switch expressions whose selector is not a primitive type (for example
+  enums or strings).
 
 ## Build and validation
 

@@ -11,6 +11,24 @@
   matching VS Code setting.
 - Add focused CLI integration checks, C++20 compilation smoke tests for
   control-flow and record fixtures, and a GitHub Actions build/package workflow.
+- Fail with `file:line` diagnostics, instead of emitting invalid C++, for
+  lambdas, method references, text blocks, `try (existingResource)`, and
+  switch expressions on non-primitive selectors. Java compile errors and
+  unsupported syntax are reported without a stack trace.
+- Fix regressions from moving to the Java 17 AST: array class literals and
+  array types no longer crash translation, and enum `switch` labels are no
+  longer emitted as `MISSING`.
+- Fix arrow-form (`case X ->`) switch statements, which returned from the
+  enclosing method or fell through instead of breaking.
+- Parse each batch of sources in one shared compiler environment: faster, and
+  dependency headers that per-file parsing omitted are now generated.
+- Read Java sources as UTF-8 by default (`--encoding` overrides) and always
+  write generated C++ as UTF-8, independent of the platform charset.
+- Always generate the `Cloneable` and `Serializable` headers that the bundled
+  `ObjectArray.hpp` includes, so small projects using enums or object arrays
+  compile.
+- VS Code: translation can be cancelled, concurrent runs are prevented, and
+  translator output is decoded as UTF-8 streams.
 - Ship a runtime dependency inventory, full EPL-2.0 and Apache-2.0 texts, and
   each dependency's original notice files in both the CLI JAR and the VSIX.
 

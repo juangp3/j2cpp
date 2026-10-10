@@ -181,10 +181,16 @@ workflow):
   and JAR contents match the resolved runtime dependencies.
 - **CLI behavior** (`test-cli.js`):
   - `--help`, missing input, missing option values, and invalid
-    `--sealed-types` values.
+    `--sealed-types` and `--encoding` values.
   - Translation and output paths containing spaces.
+  - Lambdas and method references fail with `file:line` diagnostics and no
+    stack trace.
+  - A non-ASCII string literal survives as UTF-8 in the generated C++.
   - Java 17 fixtures, gated on the Java version running the tests:
-    - Pattern `instanceof` and switch expressions.
+    - The whole 144-file `test/src` corpus translates, with no `MISSING`
+      placeholders in the generated sources.
+    - Pattern `instanceof`, switch expressions, and arrow-rule switch
+      statements over ints and enums.
     - Records.
     - Sealed advisory, reject, and invalid policies.
 - **Extension logic** (`test-extension.js`, mocked `vscode`):
@@ -193,13 +199,52 @@ workflow):
   - `j2c.sealedTypes` pass-through.
   - Invalid or missing inputs and a missing CLI JAR.
   - Nonzero exits and process-start failures.
+  - Cancellation kills the CLI, and a second concurrent run is refused.
+  - The runner fails if a test never settles.
 
 Not yet covered: record component combinations beyond the fixture, and real
 VS Code host integration (see Phase 7 step 5). Consider `@vscode/test-electron`
 after the preview.
 
-**Gate (passed):** All automated checks pass locally and passed in CI on
-`789d478`.
+**Gate:** All automated checks pass locally on Java 17, and the generated C++
+builds and the smoke harness passes with GCC 13.3. No local JDK 11 is
+available, so the Java 11 CI job must pass on the pushed commit.
+
+### Senior review findings (2026-10-10)
+
+Fixed. These were release blockers; the first five gave wrong or
+uncompilable output while still exiting 0:
+
+1. Moving the parser from JLS4 to JLS17 broke legacy DOM calls.
+   `ArrayType.getComponentType()` crashed on array class literals, and
+   `SwitchCase.getExpression()` printed `MISSING` for every enum `case`
+   label.
+2. Lambdas, method references, and text blocks produced invalid C++. They now
+   fail before writing, as do `try (existingVar)` (previously a crash) and
+   switch expressions on non-primitive selectors.
+3. Arrow-rule switch statements were emitted as `return` or fell through.
+4. Per-file parsing omitted dependency headers that generated sources
+   include (for example `java/util/ArrayList.hpp`). Batched parsing fixes
+   this and is about 1.5× faster on the corpus (3.6 s → 2.4 s).
+5. Sources were read, and C++ written, in the platform charset (cp1252 on
+   Windows with Java 11/17). Both are now UTF-8.
+6. `ObjectArray.hpp` included `Cloneable`/`Serializable` headers that were
+   never generated for small projects.
+7. Extension: no cancellation, chunk-wise output decoding, concurrent runs.
+
+Deferred (not release blockers):
+
+- A Java error in a dependency unit, not just a selected one, fails the whole
+  run. Upstream fell back to header-only output for such units.
+- Validation runs per unit as it is processed, so a failure can leave earlier
+  output written. Validating every selected unit first would avoid that.
+- Switch statements on `String` or boxed selectors still emit a native C++
+  `switch`, which does not compile. This behavior predates the
+  modernization.
+- The shaded CLI JAR is 10 MB. `minimizeJar` is risky with Eclipse's
+  reflective loading, so it was not attempted.
+- There is no `j2c.encoding` extension setting; the CLI default of UTF-8
+  applies.
 
 ## Phase 6 — Validate generated C++ and practical end-to-end use
 
