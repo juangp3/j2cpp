@@ -687,6 +687,7 @@ provide.
    builds headers from the running JDK, and Java 11 and 17 differ.
 
 Tests:
+
 - A tiny fake runtime in `test/runtime-fake/` (for example, only
   `java.io.PrintStream` and `java.lang.System`).
 - The CLI suite checks that no stubs are generated for the provided
@@ -694,6 +695,7 @@ Tests:
   deliberately missing method.
 
 Exit criteria:
+
 - A Hello World translated with the fake runtime prints `hi` in CI.
 - `docs/RUNTIME.md` is complete enough to write a runtime from.
 
@@ -705,6 +707,7 @@ Goal: "translate and run" works for ordinary programs without writing any
 C++.
 
 Design:
+
 - The runtime is hand-written C++ built on the C++ standard library, not
   translated from OpenJDK. That keeps licensing simple (OpenJDK is GPL),
   keeps it small, and allows an idiomatic representation, such as UTF-16
@@ -741,6 +744,7 @@ Milestones, each finished only when its differential tests pass:
    regular expressions, threads and `synchronized`, and file I/O.
 
 Tests — differential testing:
+
 - `test/programs/*.java` are small programs with `main`. For each, CI runs
   `java`, records the output and exit code, then translates the program,
   builds it with the runtime, runs it under UBSan and ASan, and requires
@@ -752,6 +756,7 @@ Tests — differential testing:
 - `npm run probe` gains a "runs" outcome for probes with a `main`.
 
 Risks:
+
 - Fidelity to Java behavior is ongoing work. Each class needs its own tests
   against the JVM.
 - The runtime's headers must keep matching what J2C generates. The step 1
@@ -763,7 +768,7 @@ Risks:
 ### Order and release mapping
 
 | Release | Delivers |
-|---|---|
+| --- | --- |
 | 0.6.0 | Translator as documented; output compiles and links; runtime limitation stated |
 | 0.6.x | Step 1: `--runtime`, `docs/RUNTIME.md`, conformance check, fake-runtime tests |
 | 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run |
