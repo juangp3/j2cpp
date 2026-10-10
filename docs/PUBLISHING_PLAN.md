@@ -531,7 +531,7 @@ The gaps below remain. They fall into three groups:
 
 #### G7 — Java class library at runtime
 
-**Status (2026-10-10):** Open: needs the bundled-runtime versus documented-integration decision.
+**Status (2026-10-10):** Planned in Phase 10. Option (b), runtime integration, comes first (0.6.x), then option (a), the bundled runtime (0.7.0 onwards).
 
 - **Symptom:** JDK classes are generated as stubs that call
   `unimplemented_()`. Translated programs compile and link, but any call into
@@ -557,7 +557,7 @@ The gaps below remain. They fall into three groups:
 
 #### G8 — Memory management
 
-**Status (2026-10-10):** Open: follows G7.
+**Status (2026-10-10):** Planned as Phase 10, step 2, milestone 3.
 
 - **Symptom:** objects are allocated with `new` and never freed.
 - **Implement:** add an optional Makefile switch (`J2C_GC=boehm`) that links
@@ -634,6 +634,140 @@ failure:
   and compare JVM output with native output.
 - **Track gaps.** Record each new gap as a GitHub issue labelled `language`,
   `semantics` or `runtime`, with the probe that shows it.
+
+## Phase 10 — Feature roadmap: running translated programs
+
+### Why
+
+J2C turns Java into the same calls made on C++ versions of the Java classes.
+`System.out.println("hi")` becomes
+`npc(::java::lang::System::out())->println(u"hi"_j)`. For every JDK class the
+code uses, J2C generates the C++ class's shape (a header) but not its
+behavior: each method body is an `unimplemented_()` stub, and static fields
+such as `System.out` are never initialized. Translated programs therefore
+compile and link, but any call into the Java class library fails. C++'s own
+library (`std::cout`, containers) can provide the behavior, but something has
+to connect the Java API to it. That glue is a *runtime*.
+
+The roadmap delivers this in two steps. Step 1 (option b) lets users bring
+their own runtime. Step 2 (option a) ships one. Step 1 comes first because
+it is small, useful on its own, and builds the mechanism step 2 needs.
+
+### Step 1 (option b) — Runtime integration (target: 0.6.x)
+
+Goal: a user who has C++ implementations of some JDK classes can use them
+instead of J2C's stubs, and anyone can see exactly what a runtime must
+provide.
+
+1. **`--runtime <dir>` CLI option and `j2c.runtime` setting.** The directory
+   contains:
+   - `include/`, with headers for the classes the runtime provides.
+   - A library to link (`lib/libj2c-runtime.a`).
+   - `j2c-runtime.properties`, listing the provided classes, the targeted
+     Java API version (17), and the runtime version.
+2. **Generator changes:**
+   - For each class the manifest lists, generate no header or stub; include
+     the runtime's header instead.
+   - Generate stubs as today for everything else.
+   - The generated Makefile adds the runtime's include path and library.
+3. **Hooks become the runtime's job:** `class_`, string literals (`_j`),
+   `unimplemented_`, and the `main` wrapper. A project without a runtime
+   keeps today's behavior.
+4. **Runtime contract document** (`docs/RUNTIME.md`):
+   - The C++ conventions generated code relies on: name mangling (such as
+     `toArray_`), `npc`, `clinit()`, the `default_init_tag` constructor,
+     `class_()` and `getClass0()`, exceptions thrown as pointers, arrays
+     (`Array.hpp`), and boxing calls.
+   - How to start from J2C's own generated header for a class.
+5. **Conformance check:** `j2c --runtime-check <dir>` translates a probe that
+   touches every provided class and compiles it against the runtime. It
+   reports any method the runtime's headers lack, compared with what J2C
+   would declare.
+6. **Pin the API:** in runtime mode, require the CLI to run on Java 17. J2C
+   builds headers from the running JDK, and Java 11 and 17 differ.
+
+Tests:
+- A tiny fake runtime in `test/runtime-fake/` (for example, only
+  `java.io.PrintStream` and `java.lang.System`).
+- The CLI suite checks that no stubs are generated for the provided
+  classes, the Makefile links the runtime, and `--runtime-check` reports a
+  deliberately missing method.
+
+Exit criteria:
+- A Hello World translated with the fake runtime prints `hi` in CI.
+- `docs/RUNTIME.md` is complete enough to write a runtime from.
+
+Effort: about 3–5 days.
+
+### Step 2 (option a) — Bundled `j2c-runtime` (target: 0.7.0 onwards)
+
+Goal: "translate and run" works for ordinary programs without writing any
+C++.
+
+Design:
+- The runtime is hand-written C++ built on the C++ standard library, not
+  translated from OpenJDK. That keeps licensing simple (OpenJDK is GPL),
+  keeps it small, and allows an idiomatic representation, such as UTF-16
+  strings in a `std::u16string`.
+- It lives in this repository (`runtime/`), is built by Maven or CMake for
+  Linux, macOS and Windows, and is shipped in the release and the VSIX.
+- `--runtime bundled` (the extension default) selects it. Classes it does not
+  provide still get stubs, and `--check` lists library members a program
+  uses that the runtime lacks, so users know before running.
+
+Milestones, each finished only when its differential tests pass:
+
+1. **Milestone 1 — Core (about 1–2 weeks).**
+   - `Object`, `String`, `StringBuilder`, and the boxed types (with the
+     `valueOf` cache and `parseInt`).
+   - `Math`, and the `Throwable`, `Exception` and `RuntimeException`
+     hierarchy, including the exceptions generated code throws.
+   - `System.out` and `System.err` (`print` and `println`),
+     `System.arraycopy`, and the clocks.
+   - The hooks, and a `main` wrapper that prints "Exception in thread
+     "main" …" with exit status 1.
+
+   Done when Hello World, string processing, arithmetic and exception
+   programs match the JVM's output.
+2. **Milestone 2 — Collections and enums (about 2–3 weeks).**
+   - `ArrayList`, `LinkedList`, `HashMap`, `HashSet`, and iterators.
+   - `Arrays`, `Collections`, `Objects` and `Optional`.
+   - Enum `values()` and `valueOf()`, and default methods such as
+     `Comparator.comparing`.
+3. **Milestone 3 — Memory (G8).** A `J2C_GC=boehm` build option that routes
+   runtime and generated allocation through the Boehm collector. An
+   allocation-loop test must keep resident memory bounded.
+4. **Later, driven by probes and real programs:** streams, `String.format`,
+   regular expressions, threads and `synchronized`, and file I/O.
+
+Tests — differential testing:
+- `test/programs/*.java` are small programs with `main`. For each, CI runs
+  `java`, records the output and exit code, then translates the program,
+  builds it with the runtime, runs it under UBSan and ASan, and requires
+  identical output.
+- Every runtime class lands with programs that exercise it, plus C++ unit
+  tests for behavior that is easy to get subtly wrong: `String.hashCode`
+  values, the `Integer` cache bounds, and `HashMap` iteration with
+  collisions.
+- `npm run probe` gains a "runs" outcome for probes with a `main`.
+
+Risks:
+- Fidelity to Java behavior is ongoing work. Each class needs its own tests
+  against the JVM.
+- The runtime's headers must keep matching what J2C generates. The step 1
+  conformance check runs in CI to catch drift.
+- Library breadth grows with demand. The probes and `--check` summaries over
+  real code decide what comes next, rather than implementing the JDK
+  wholesale.
+
+### Order and release mapping
+
+| Release | Delivers |
+|---|---|
+| 0.6.0 | Translator as documented; output compiles and links; runtime limitation stated |
+| 0.6.x | Step 1: `--runtime`, `docs/RUNTIME.md`, conformance check, fake-runtime tests |
+| 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run |
+| 0.8.0 | Milestone 2: collections and enums; milestone 3: optional garbage collection |
 
 ## Go/no-go checklist
 
