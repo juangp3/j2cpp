@@ -72,6 +72,12 @@ Last rechecked on 2026-10-10 against local `modern-release`.
 
   The version check, artifact staging, checksums, and notes steps were
   dry-run locally. The `gh release` step has not run yet.
+- **Translation gaps.** A probe of Java 9–17 features (2026-10-10) found
+  three bugs in documented features: `instanceof` patterns outside plain
+  `if`, records with object components, and records with nested component
+  types. It also confirmed that output does not run without a Java runtime
+  library and that Java arithmetic semantics are not preserved. Phase 9
+  lists every gap with its implementation and test plan.
 - **Marketplace.** Publisher is `juangp3` at the user's direction. The item URL
   for `juangp3.j2c` returns 404; publisher ownership and a publishing token
   remain unverified.
@@ -372,6 +378,249 @@ explicit.
 and commit, verify against `SHA256SUMS`, install cleanly, and match the
 documented requirements.
 
+## Phase 9 — Close translation gaps
+
+On 2026-10-10, probe files exercising Java 9–17 features and common JDK
+idioms were translated and compiled with GCC 13.3. Most of it works:
+- Interface default, private and static methods, and `Interface.super`.
+- Every switch form tested.
+- Generics, streams, `Optional`, lambdas and method references.
+- Local records, enums and interfaces, and text blocks.
+- Labeled loops, multi-catch, anonymous diamond, varargs and `synchronized`.
+
+The gaps below remain. They fall into three groups:
+- G1–G4 and G6 are language gaps.
+- G5 and G9 are semantic differences.
+- G7 and G8 are runtime gaps that decide whether translated programs can run.
+
+### Gaps
+
+#### G1 — `instanceof` patterns outside plain `if` conditions
+
+- **Symptom:** the translator crashes (`NullPointerException` in
+  `ImplWriter.visit(InfixExpression)`) when a pattern appears in `&&`,
+  `while`, `?:`, or a negated `if` such as
+  `if (!(o instanceof String s)) return; use(s);`.
+- **Cause:**
+  - JDT gives no type for a `PatternInstanceofExpression` operand, so `lt`
+    is null.
+  - Pattern variables are only declared for the plain `if` form.
+- **Implement:**
+  1. Before writing any statement that contains patterns (skipping nested
+     lambda, anonymous and local class bodies), declare each pattern
+     variable in the enclosing block as `T* name = nullptr;`.
+  2. Emit the test as `((name = dynamic_cast<T*>(expr)) != nullptr)`, which
+     evaluates the operand once.
+  3. Declaring in the enclosing block gives Java's flow scoping for free:
+     the negated-`if` form and `while` conditions just work.
+  4. Make names unique with the existing `localInScope` helper, and print
+     each variable through a binding-to-name map.
+  5. Treat a pattern operand's type as `boolean` in infix expressions.
+  6. Move the existing `if` path onto the same mechanism.
+- **Test:**
+  - A `Java17Patterns` fixture with every probe form.
+  - CLI assertions that translation succeeds.
+  - CI `make`.
+  - A runtime smoke harness. Use user-defined classes, not `String`, so no
+    library code is needed. Check the `&&`, `while`, ternary and negated
+    forms, plus a null operand (which must not match).
+- **Effort:** medium. **Release:** blocks documented `instanceof` support;
+  fix before 0.6.0 or narrow the README claim.
+
+#### G2 — Record with an object component (e.g. `List<String>`)
+
+- **Symptom:** C++ compile error "invalid use of incomplete type" in the
+  generated `equals`.
+- **Cause:** `RecordSupport` calls component methods (`equals`, `hashCode`)
+  without a hard dependency on the component type, so its header is not
+  included.
+- **Implement:** call `hardDep` for every reference-typed component in
+  `RecordSupport`.
+- **Test:** add a `List<String>` component and an array component to
+  `Java17Records`; CI `make`.
+- **Effort:** small. **Release:** blocks documented record support.
+
+#### G3 — Record whose component type is a nested type
+
+- **Symptom:** `'Sealed_Expr' does not name a type` in an out-of-class
+  accessor definition. This happens, for example, for records implementing a
+  nested sealed interface.
+- **Cause:** the accessor's return type is printed relative to the class
+  scope, but out-of-class definitions need the qualified name.
+- **Implement:** print accessor return types with the qualified name, as
+  the other out-of-class definitions do (`TransformUtil.qualifiedRef`).
+- **Test:** a sealed-interface-plus-records fixture (`Expr`, `Num`, `Add`,
+  `eval`); CI `make`.
+- **Effort:** small. **Release:** blocks documented record and sealed
+  support.
+
+#### G4 — Remaining switch forms
+
+- **Symptom:**
+  - Switch expressions on boxed selectors (`Integer`, `Character`) and
+    colon-form (`case X:`) switch expressions on enums or strings are
+    rejected by `--check`.
+  - Switch *statements* on boxed selectors emit a native C++ `switch` on a
+    pointer, which does not compile. This predates the modernization.
+- **Implement:**
+  - Unbox the selector (`npc(k)->intValue()` and so on) in both native
+    switch paths.
+  - For colon-form enum or String switch expressions, refactor
+    `enumSwitch` to take a selector and a statement list instead of a
+    `SwitchStatement`, and reuse it inside the expression lambda.
+    `yield` already becomes `return` there.
+- **Test:** fixture methods for each form; CLI assertions; CI `make`. Check
+  int-valued boxed switches at runtime in the control-flow smoke harness.
+- **Effort:** small to medium.
+
+#### G5 — Java arithmetic semantics
+
+- **Symptom:** the generated C++ uses raw operators, so these cases are
+  undefined behavior instead of Java's defined results:
+  - Integer `/` and `%` by zero (Java throws `ArithmeticException`).
+  - `Integer.MIN_VALUE / -1` (traps on x86).
+  - Signed overflow (Java wraps).
+  - Shift counts of 32 or more for `int`, or 64 or more for `long` (Java
+    masks the count).
+  - `(int) NaN` and out-of-range floating-point casts (Java saturates).
+- **Implement:**
+  - Add `-fwrapv` to `Makefile.tmpl`.
+  - Add a resource header with inline helpers: division and remainder
+    (check for zero, special-case `-1`), shift with masking, and saturating
+    `d2i`, `d2l`, `f2i` and `f2l`.
+  - Emit them from `ImplWriter` for `/`, `%`, `<<`, `>>`, `>>>`, their
+    compound assignments, and narrowing casts from `float` or `double`.
+  - Fold the helpers away for constant operands to keep the output
+    readable.
+- **Test:**
+  - An arithmetic smoke harness: wrap-around, `MIN_VALUE / -1`, shift by 33
+    and 65, casts of NaN and of ±1e20, and division by zero caught as an
+    exception.
+  - Run every smoke harness with `-fsanitize=undefined` so any remaining UB
+    fails CI.
+- **Effort:** small to medium. **Release:** silent wrong results; fix
+  early, or at least document before 0.6.0.
+
+#### G6 — Lambda forms that cannot be rewritten
+
+- **Symptom:** `--check` rejects lambdas with an intersection-type target,
+  method references to generic functional methods, and `this` inside an
+  anonymous class.
+- **Implement:**
+  - **Intersection targets:** when every extra interface has no abstract
+    methods (`Serializable`, other marker interfaces), implement only the
+    functional interface and record the dropped markers in a generated
+    comment.
+  - **Generic functional methods:** render the method's type parameters on
+    the generated method (`public <T> R m(...)`).
+  - **`this` in an anonymous class:** keep it unsupported. The anonymous
+    class cannot be named from the generated class.
+- **Test:** extend `Java17Lambdas`; keep the `--check` negative test for
+  `this` in an anonymous class.
+- **Effort:** small (generic) to medium (intersection).
+
+#### G7 — Java class library at runtime
+
+- **Symptom:** JDK classes are generated as stubs that call
+  `unimplemented_()`. Translated programs compile and link, but any call into
+  the library (`String`, `StringBuilder`, boxing, collections, streams,
+  `System.out`) does nothing or aborts. The lambda runtime test passes only
+  because it calls no library code.
+- **Implement:** this needs a decision first.
+  - **(a) Bundled minimal runtime:** a hand-written `j2c-runtime` C++
+    library for `Object`, `String` (UTF-16), `StringBuilder`, boxed types,
+    `Math`, the `Throwable` hierarchy, `System.out` and arrays, then
+    `ArrayList`, `HashMap`, `HashSet` and iterators. The generator would
+    skip stubs for types the runtime provides.
+  - **(b) Documented integration** with an existing runtime the user
+    supplies.
+
+  Option (a) makes "translate and run" work for small programs; option (b)
+  is far smaller.
+- **Test:** differential testing. Run each test program with `java` and as a
+  translated native binary, then compare standard output and exit codes.
+- **Effort:** large (weeks for a useful subset). **Release:** already a
+  documented limitation; make the README say plainly that output does not
+  run without a runtime.
+
+#### G8 — Memory management
+
+- **Symptom:** objects are allocated with `new` and never freed.
+- **Implement:** add an optional Makefile switch (`J2C_GC=boehm`) that links
+  the Boehm conservative collector and routes allocation through
+  `GC_MALLOC`. Finalizers stay unsupported.
+- **Test:** an allocation loop whose resident memory must stay bounded,
+  run in CI with the switch on.
+- **Effort:** small to medium, once G7 makes long-running programs possible.
+
+#### G9 — Smaller semantic differences (documentation only)
+
+- An exception thrown by `close()` while another propagates terminates the
+  program instead of being recorded as suppressed.
+- Every lambda evaluation creates a new object.
+- For a bound method reference with a null receiver, the failure happens
+  when it is called rather than when it is created.
+- Reflection, serialization and class loading are unsupported.
+
+The deferred items listed under Phase 5 also remain: falling back to
+header-only output for dependency units with errors, and validating every
+selected unit before writing anything.
+
+### How to test a gap fix
+
+Every fix goes through the same layers, each catching a different class of
+failure:
+
+1. **Fixture:** a `test/src/.../Java17<Feature>.java` file covering the form
+   and its edge cases.
+2. **CLI suite** (`test-cli.js`): translation exit code, key fragments of the
+   generated C++, and `--check` messages for forms that stay unsupported.
+3. **Corpus guard:** the whole `test/src` folder still translates, `--check`
+   reports it clean, and no `MISSING` placeholders appear.
+4. **Compile:** CI runs `make` on the fixture's generated project. This
+   catches header and stub mismatches like the ones fixed in `daa16f1`.
+5. **Runtime smoke harness** (`test/cpp/*Smoke.cpp`): link the generated
+   libraries and assert results. It provides the `class_`, `unimplemented_`
+   and `operator"" _j` hooks and avoids library calls until G7 exists. Run
+   it under `-fsanitize=undefined,address`.
+6. **Differential runs** (after G7): the same program on the JVM and
+   natively, with identical output.
+
+### How to find more gaps
+
+- **Keep the probe suite.** Commit the feature probes used for this review
+  under `test/probes/`, one file per feature area, with an expected-status
+  list (translates, compiles, runs). Add a `probe.js` script that
+  translates and compiles each probe in its own project and prints a
+  pass/fail matrix with the first error per probe. Run it in CI as a
+  non-blocking report, and promote a probe to a fixture when its gap is
+  fixed.
+- **Walk the JEPs.** Write one probe per language JEP from Java 8 to 17,
+  including edge cases from each JEP's text:
+  - 126: lambdas.
+  - 213: private interface methods, anonymous diamond, and effectively
+    final try-with-resources.
+  - 286 and 323: `var`.
+  - 361: switch expressions.
+  - 378: text blocks.
+  - 394: `instanceof` patterns.
+  - 395: records.
+  - 409: sealed classes.
+
+  Also mine the JLS chapters on definite assignment and on scope, since
+  pattern variables and switch rules interact with both.
+- **Translate real code.** Run `--check` over small open-source Java 17
+  projects and turn the per-kind summary into a ranked list. Then translate
+  and compile them, and group the GCC errors by message to find systematic
+  causes. That is how the `java.util` stub bugs show up.
+- **Scan generated output.** Flag `MISSING`, `unimplemented_` calls in
+  `src/` (not `ext/`), and GCC `-Wall` warnings such as `-Wreturn-type`.
+- **Sanitize and fuzz.** Run every runtime harness under UBSan and ASan.
+  Once G5 and G7 exist, generate random arithmetic and string expressions
+  and compare JVM output with native output.
+- **Track gaps.** Record each new gap as a GitHub issue labelled `language`,
+  `semantics` or `runtime`, with the probe that shows it.
+
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.
@@ -394,6 +643,8 @@ documented requirements.
 - [x] Release workflow builds artifacts from the tag, writes checksums and
       notes, and drafts a pre-release; rollback path documented.
 - [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
+- [ ] Phase 9 gaps G1–G3 fixed, or the README's feature claims narrowed to
+      match; G5 fixed or listed as a known limitation.
 
 ## Recommended release posture
 
