@@ -1,8 +1,43 @@
 J2C Modern Edition bundles the following third-party runtime dependencies in
-the CLI JAR (`lib/j2c-cli.jar`). Each dependency remains under its own license.
+the CLI JAR (`lib/j2c-cli.jar` in the VS Code extension, `target/j2c-cli.jar`
+when built from source). J2C's own code is licensed under the Eclipse Public
+License 1.0 (see `LICENSE`). Each bundled dependency remains under its own
+license, and is redistributed in unmodified binary form.
+
+License texts
+-------------
+
+- Eclipse Public License 2.0: `licenses/EPL-2.0.txt`
+  (https://www.eclipse.org/legal/epl-2.0/)
+- Apache License 2.0: `licenses/Apache-2.0.txt`
+  (https://www.apache.org/licenses/LICENSE-2.0)
+
+Each dependency's original notice files (`about.html`, `about_files/`,
+`META-INF/LICENSE`, `META-INF/NOTICE`) are preserved unchanged under
+`licenses/dependencies/<artifact>-<version>/`. Inside the CLI JAR, `LICENSE`,
+this file, and the `licenses/` directory are under `META-INF/j2c-licenses/`;
+the VS Code extension also ships them at its root. Those notices identify third-party
+content embedded in some Eclipse bundles, including OSGi materials and
+Apache Jakarta Commons Collections code, both under the Apache License 2.0.
+
+Source code
+-----------
+
+The source code for every bundled dependency is available from Maven Central
+as the matching sources JAR:
+
+  https://repo1.maven.org/maven2/<group path>/<artifact>/<version>/<artifact>-<version>-sources.jar
+
+For example:
+https://repo1.maven.org/maven2/org/eclipse/jdt/org.eclipse.jdt.core/3.32.0/org.eclipse.jdt.core-3.32.0-sources.jar
+
+Eclipse project sources are also available from https://www.eclipse.org/
+and https://github.com/eclipse-platform, https://github.com/eclipse-jdt and
+https://github.com/eclipse-equinox. OSGi sources are available from
+https://github.com/osgi/osgi.
 
 Eclipse Public License 2.0
-https://www.eclipse.org/legal/epl-2.0/
+--------------------------
 
 - org.eclipse.jdt:org.eclipse.jdt.core:3.32.0
 - org.eclipse.platform:org.eclipse.core.commands:3.10.300
@@ -12,18 +47,30 @@ https://www.eclipse.org/legal/epl-2.0/
 - org.eclipse.platform:org.eclipse.core.jobs:3.13.200
 - org.eclipse.platform:org.eclipse.core.resources:3.18.100
 - org.eclipse.platform:org.eclipse.core.runtime:3.26.100
-- org.eclipse.platform:org.eclipse.equinox.app:1.6.200
+- org.eclipse.platform:org.eclipse.equinox.app:1.6.200 (includes Apache-2.0
+  OSGi materials)
 - org.eclipse.platform:org.eclipse.equinox.common:3.17.0
-- org.eclipse.platform:org.eclipse.equinox.preferences:3.10.100
-- org.eclipse.platform:org.eclipse.equinox.registry:3.11.200
-- org.eclipse.platform:org.eclipse.osgi:3.18.200
+- org.eclipse.platform:org.eclipse.equinox.preferences:3.10.100 (includes
+  Apache-2.0 OSGi materials)
+- org.eclipse.platform:org.eclipse.equinox.registry:3.11.200 (includes
+  Apache-2.0 Jakarta Commons Collections code; see its NOTICE.txt)
+- org.eclipse.platform:org.eclipse.osgi:3.18.200 (includes Apache-2.0 OSGi
+  materials)
 - org.eclipse.platform:org.eclipse.text:3.12.300
 
 Apache License 2.0
-https://www.apache.org/licenses/LICENSE-2.0
+------------------
 
 - org.osgi:org.osgi.service.prefs:1.1.2
 - org.osgi:osgi.annotation:8.0.1
+
+Maintenance
+-----------
+
+When a dependency version changes, regenerate this list with
+`mvn dependency:list -DincludeScope=runtime` and replace the matching
+directory under `licenses/dependencies/` with the notice files from the new
+JAR. The release check fails if the bundled JAR and this inventory disagree.
 
 The VS Code packaging tool is a development dependency and is not bundled as a
 runtime dependency in the extension.

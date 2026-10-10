@@ -9,7 +9,7 @@
 	<name>J2C command-line translator</name>
 
 	<properties>
-		<maven.compiler.release>8</maven.compiler.release>
+		<maven.compiler.release>11</maven.compiler.release>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<jdt.version>3.32.0</jdt.version>
 		<eclipse.runtime.version>3.26.100</eclipse.runtime.version>
@@ -36,6 +36,18 @@
 				<includes>
 					<include>se/arnetheduck/j2c/resources/**</include>
 				</includes>
+			</resource>
+			<resource>
+				<directory>${project.basedir}</directory>
+				<targetPath>META-INF/j2c-licenses</targetPath>
+				<includes>
+					<include>LICENSE</include>
+					<include>THIRD-PARTY-NOTICES.txt</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>licenses</directory>
+				<targetPath>META-INF/j2c-licenses/licenses</targetPath>
 			</resource>
 		</resources>
 		<plugins>
@@ -72,6 +84,12 @@
 										<exclude>META-INF/*.DSA</exclude>
 										<exclude>META-INF/*.RSA</exclude>
 										<exclude>module-info.class</exclude>
+										<!-- Per-bundle notices collide when shaded; the originals
+										     are preserved under META-INF/j2c-licenses instead. -->
+										<exclude>about.html</exclude>
+										<exclude>about_files/**</exclude>
+										<exclude>META-INF/LICENSE</exclude>
+										<exclude>META-INF/NOTICE</exclude>
 									</excludes>
 								</filter>
 							</filters>

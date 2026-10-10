@@ -17,6 +17,18 @@ if (build.status !== 0) {
 	process.exit(build.status || 1);
 }
 
+const licenses = childProcess.spawnSync(
+	process.execPath,
+	[path.join(extensionDirectory, "scripts", "check-licenses.js")],
+	{ stdio: "inherit" }
+);
+if (licenses.error) {
+	throw licenses.error;
+}
+if (licenses.status !== 0) {
+	process.exit(licenses.status || 1);
+}
+
 const tests = childProcess.spawnSync(
 	process.execPath,
 	[path.join(extensionDirectory, "scripts", "test-cli.js")],
@@ -52,4 +64,14 @@ fs.copyFileSync(
 fs.copyFileSync(
 	path.join(repositoryRoot, "THIRD-PARTY-NOTICES.txt"),
 	path.join(extensionDirectory, "THIRD-PARTY-NOTICES.txt")
+);
+fs.copyFileSync(
+	path.join(repositoryRoot, "CHANGELOG.md"),
+	path.join(extensionDirectory, "CHANGELOG.md")
+);
+fs.rmSync(path.join(extensionDirectory, "licenses"), { recursive: true, force: true });
+fs.cpSync(
+	path.join(repositoryRoot, "licenses"),
+	path.join(extensionDirectory, "licenses"),
+	{ recursive: true }
 );
