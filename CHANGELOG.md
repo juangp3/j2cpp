@@ -2,6 +2,16 @@
 
 ## 0.6.0 — Preview
 
+- Translate lambda expressions and method references by rewriting each into
+  the equivalent anonymous class. `this`, `super`, and calls whose names the
+  functional interface also declares keep their enclosing-class meaning.
+- Capture effectively final variables in anonymous classes and lambdas; only
+  explicitly `final` ones were captured before, so Java 8+ code did not
+  compile.
+- Generate stub definitions for default and static interface methods
+  (Java 8+), without which classes implementing interfaces such as
+  `Comparator` or `Function` failed to link.
+
 - Add `--check`, which lists every compile error and unsupported construct
   with `file:line` and a per-kind summary without writing output, and
   `--version`.
@@ -20,9 +30,9 @@
   matching VS Code setting.
 - Add focused CLI integration checks, C++20 compilation smoke tests for
   control-flow and record fixtures, and a GitHub Actions build/package workflow.
-- Fail with `file:line` diagnostics, instead of emitting invalid C++, for
-  lambdas, method references, and switch expressions on boxed selectors or in
-  colon form on enums and strings. Java compile errors and unsupported syntax
+- Fail with `file:line` diagnostics, instead of emitting invalid C++, for the
+  lambda and method reference forms that cannot be rewritten, and for switch
+  expressions on boxed selectors or in colon form on enums and strings. Java compile errors and unsupported syntax
   are reported without a stack trace.
 - Fix regressions from moving to the Java 17 AST: array class literals and
   array types no longer crash translation, and enum `switch` labels are no

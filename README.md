@@ -114,6 +114,15 @@ documented modern-language slice includes:
 - Arrow-form (`case X ->`) switch statements, and `switch` statements on
   strings.
 - Text blocks.
+- Lambda expressions and method references (static, bound, unbound, `this::`,
+  `super::`, constructor, and array constructor references). Each is
+  rewritten into the anonymous class Java defines it to be equivalent to and
+  translated like any anonymous class, so every lambda becomes a small C++
+  class. A bound receiver (`expr::method`) is evaluated once, when the
+  reference is created; a null receiver fails when the reference is invoked,
+  not when it is created.
+- Default and static interface methods of library types get stub definitions
+  like class methods do.
 - Try-with-resources, including `try (existingResource)`. Resources are closed
   in reverse order before `catch` and `finally` clauses run. An exception from
   `close()` while another exception is propagating terminates the program
@@ -131,7 +140,10 @@ Unsupported Java syntax or runtime behavior may require manual translation.
 The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:
 
-- Lambda expressions and method references.
+- Lambdas and method references whose target is an intersection type (for
+  example `(Runnable & Serializable) () -> ...`), whose functional interface
+  method is generic, or that use `this` inside an anonymous class (which
+  cannot be named from the generated class).
 - Switch expressions on boxed values (for example `Integer`), and colon-form
   (`case X:`) switch expressions on enums or strings.
 

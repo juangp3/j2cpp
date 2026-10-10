@@ -20,8 +20,9 @@ translator accepts Java 17 source and generated Makefiles target C++20. Java
 default to advisory translation as ordinary C++ inheritance, with comments
 listing permitted direct subtypes; C++ does not enforce the permits restriction.
 Set `j2c.sealedTypes` to `reject` to stop translation on sealed or non-sealed
-declarations. Lambdas and method references are not supported yet; they are
-reported in the Problems panel. Sources are read as UTF-8.
+declarations. Lambdas and method references are translated into small
+generated classes; the few forms that cannot be are reported in the Problems
+panel. Sources are read as UTF-8.
 
 Commands run with a progress notification that can be cancelled; a cancelled
 translation may leave a partially written output directory. Only one command

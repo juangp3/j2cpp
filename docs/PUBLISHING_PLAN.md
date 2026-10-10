@@ -240,6 +240,18 @@ uncompilable output while still exiting 0:
 
 Features added after the review (2026-10-10):
 
+- Lambdas and method references, rewritten into anonymous classes before
+  parsing (`LambdaDesugarer`). Two older translator gaps surfaced and were
+  fixed:
+  - Only explicitly `final` locals were captured.
+  - Default and static interface methods had no stub definitions, so
+    implementing `Comparator`, `Function` and similar interfaces failed to
+    link.
+
+  `Java17Lambdas` covers every lambda and method-reference form, and its
+  generated C++ is compiled, linked and run by `Java17LambdasSmoke.cpp` in
+  CI. This is the first runtime check of generated objects.
+
 - `--check`, which reports all problems with a per-kind summary and writes
   nothing; `--version`, stamped from the Maven version into the JAR
   manifest.
