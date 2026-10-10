@@ -1,0 +1,22 @@
+{
+  "se_arnetheduck_j2c_test_junit_Java17JUnit5Test": {
+    "beforeEachRan": "pass",
+    "beforeAllRanOnce": "pass",
+    "freshInstancePerTest": "pass",
+    "failingCheck": "fail",
+    "unexpectedException": "fail",
+    "disabledWithReason": "skip"
+  },
+  "se_arnetheduck_j2c_test_junit_Java17JUnit4Test": {
+    "lifecycleRan": "pass",
+    "expectedThrown": "pass",
+    "expectedSubclassThrown": "pass",
+    "expectedMissing": "fail",
+    "wrongException": "fail",
+    "ignored": "skip"
+  },
+  "se_arnetheduck_j2c_test_junit_DerivedTest": {
+    "inheritedTest": "pass",
+    "overriddenTest": "pass"
+  }
+}

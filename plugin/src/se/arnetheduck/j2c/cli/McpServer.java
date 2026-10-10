@@ -178,6 +178,7 @@ final class McpServer {
 		if (sealedTypes != null) {
 			request.sealedTypes = Main.sealedTypes(sealedTypes);
 		}
+		request.tests = Boolean.TRUE.equals(arguments.get("tests"));
 		String encoding = optionalString(arguments, "encoding");
 		if (encoding != null) {
 			request.encoding = Main.charset(encoding);
@@ -287,6 +288,9 @@ final class McpServer {
 		properties.put("sealedTypes", sealedTypes);
 		properties.put("encoding", property("string",
 				"Source file encoding (default UTF-8)"));
+		properties.put("tests", property("boolean", translate
+				? "Generate GoogleTest wrappers that run the JUnit tests (make test)"
+				: "Also report JUnit test features that translated tests cannot run"));
 		List<String> required = new ArrayList<String>();
 		required.add("paths");
 		if (translate) {

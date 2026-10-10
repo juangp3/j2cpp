@@ -54,6 +54,10 @@ public class Transformer {
 
 	private final SealedTypes sealedTypes;
 
+	/** Whether JUnit tests get GoogleTest wrappers (see GTestWriter) */
+	private boolean tests;
+	private final List<JUnitSupport.TestClass> testClasses = new ArrayList<JUnitSupport.TestClass>();
+
 	private final Stats direct = new Stats();
 	private final Stats deps = new Stats();
 
@@ -111,6 +115,11 @@ public class Transformer {
 
 	protected AST currentAST;
 
+	/** Generate GoogleTest wrappers for JUnit tests in the selection */
+	public void setTests(boolean tests) {
+		this.tests = tests;
+	}
+
 	public void process(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
 		monitor.subTask("Moving old files");
@@ -122,6 +131,10 @@ public class Transformer {
 		// The ObjectArray.hpp resource includes these unconditionally
 		hardDep(resolve(Cloneable.class));
 		hardDep(resolve(java.io.Serializable.class));
+		if (tests) {
+			// The GoogleTest helper reports thrown Java exceptions
+			hardDep(resolve(Throwable.class));
+		}
 		selection.addAll(Arrays.asList(units));
 		todo.addAll(selection);
 
@@ -130,6 +143,7 @@ public class Transformer {
 		}
 
 		writeResources();
+		writeTests();
 
 		new ForwardWriter(this, root).write(forwards.values());
 
@@ -146,6 +160,28 @@ public class Transformer {
 
 		System.out.println("Done (" + (System.currentTimeMillis() - start)
 				+ " ms).");
+	}
+
+	private void collectTests(CompilationUnit ast) {
+		for (JUnitSupport.TestClass testClass : JUnitSupport.testClasses(ast)) {
+			testClasses.add(testClass);
+			for (JUnitSupport.TestMethod test : testClass.tests) {
+				if (test.expected != null) {
+					hardDep(test.expected);
+				}
+			}
+		}
+	}
+
+	private void writeTests() throws IOException {
+		if (testClasses.isEmpty()) {
+			return;
+		}
+		FileUtil.writeResource(GTestWriter.HELPER_HPP, root.append("test")
+				.append("j2c_gtest.hpp").toFile());
+		for (JUnitSupport.TestClass testClass : testClasses) {
+			sel.tests.add(GTestWriter.write(root, testClass));
+		}
 	}
 
 	private void writeResources() throws IOException {
@@ -247,6 +283,9 @@ public class Transformer {
 							if (!problems.isEmpty()) {
 								throw new TranslationException(join(problems), problems);
 							}
+							if (tests && selection.contains(source)) {
+								collectTests(ast);
+							}
 							writeImpl(monitor, source, ast);
 						} finally {
 							currentAST = null;
@@ -300,6 +339,7 @@ public class Transformer {
 	 */
 	public List<Problem> check(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
+		selection.addAll(Arrays.asList(units));
 		final List<Problem> problems = new ArrayList<Problem>();
 		project.parse(Arrays.asList(units), monitor,
 				new SourceProject.UnitHandler() {
@@ -336,6 +376,10 @@ public class Transformer {
 						p.getSourceLineNumber(),
 						ast.getColumnNumber(p.getSourceStart()) + 1));
 			}
+		}
+
+		if (tests && selection.contains(source)) {
+			problems.addAll(JUnitSupport.problems(source.file(), ast));
 		}
 
 		// Lambdas and method references are rewritten into anonymous classes

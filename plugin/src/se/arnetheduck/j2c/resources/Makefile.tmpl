@@ -41,6 +41,10 @@ EXT_NATIVE_SRCS = \
 MAIN_SRCS = \
 %8$s
 
+# GoogleTest wrappers generated from JUnit tests (j2c --tests)
+TEST_SRCS = \
+%9$s
+
 MAINS = $(MAIN_SRCS:$(SRC)/%%-main.cpp=$(BIN)/%%)
 OBJS = $(SRCS:$(SRC)/%%.cpp=$(OBJ)/%%.o)
 STUB_OBJS = $(STUB_SRCS:$(STUB)/%%.cpp=$(OBJ)/%%.o)
@@ -49,6 +53,14 @@ NATIVE_OBJS = $(NATIVE_SRCS:$(NATIVE)/%%.cpp=$(OBJ)/%%.o)
 EXT_OBJS = $(EXT_SRCS:ext/$(SRC)/%%.cpp=$(OBJ)/%%.o)
 EXT_STUB_OBJS = $(EXT_STUB_SRCS:ext/$(STUB)/%%.cpp=$(OBJ)/%%.o)
 EXT_NATIVE_OBJS = $(EXT_NATIVE_SRCS:ext/$(NATIVE)/%%.cpp=$(OBJ)/%%.o)
+
+TEST_OBJS = $(TEST_SRCS:test/%%.cpp=$(OBJ)/test/%%.o)
+TESTS_BIN = $(BIN)/$(NAME)-tests
+# Override these when GoogleTest is not known to pkg-config
+GTEST_CFLAGS ?= $(shell pkg-config --cflags gtest_main 2>/dev/null)
+GTEST_LIBS ?= $(shell pkg-config --libs gtest_main 2>/dev/null || echo -lgtest_main -lgtest -pthread)
+# Extra objects or libraries for the test binary, such as a Java runtime
+TEST_LDLIBS ?=
 
 all: $(LIBS)
 
@@ -91,12 +103,25 @@ $(MAINS):$(BIN)/%%:$(SRC)/%%-main.cpp $(LIBS)
 
 mains: $(MAINS)
 
+$(TEST_OBJS):$(OBJ)/test/%%.o: test/%%.cpp | print-opts
+	@mkdir -p $(dir $@);
+	@echo Compile $<; $(CXX) $(CPPFLAGS) -Itest $(GTEST_CFLAGS) $(CXXFLAGS) -c -o $@ $<
+
+$(TESTS_BIN): $(TEST_OBJS) $(LIBS)
+	@mkdir -p $(dir $@);
+	$(CXX) $(CXXFLAGS) -L$(BIN) -o $@ $(TEST_OBJS) -l$(NAME) $(EXTRA_LIBS) $(TEST_LDLIBS) $(GTEST_LIBS)
+
+tests: $(TESTS_BIN)
+
+test: $(TESTS_BIN)
+	$(TESTS_BIN)
+
 clean:
 	rm -rf $(OBJ) $(BIN)
 
 print-opts:
 	@echo Building with \"$(CXX) $(CPPFLAGS) $(CXXFLAGS)\"
 	
-.PHONY: all mains clean print-opts
+.PHONY: all mains tests test clean print-opts
 
--include $(OBJS:%%.o=%%.d)
+-include $(OBJS:%%.o=%%.d) $(TEST_OBJS:%%.o=%%.d)

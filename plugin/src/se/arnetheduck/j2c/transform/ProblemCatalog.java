@@ -20,6 +20,14 @@ public final class ProblemCatalog {
 	public static final String PATTERN_OUTSIDE_METHOD = "J2C-PATTERN-OUTSIDE-METHOD";
 	public static final String SEALED_REJECTED = "J2C-SEALED-REJECTED";
 	public static final String NON_SEALED_REJECTED = "J2C-NON-SEALED-REJECTED";
+	public static final String TEST_MOCKING = "J2C-TEST-MOCKING";
+	public static final String TEST_EXTENSION = "J2C-TEST-EXTENSION";
+	public static final String TEST_UNSUPPORTED_KIND = "J2C-TEST-UNSUPPORTED-KIND";
+	public static final String TEST_NESTED = "J2C-TEST-NESTED";
+	public static final String TEST_TIMEOUT = "J2C-TEST-TIMEOUT";
+	public static final String TEST_INSTANCE_LIFECYCLE = "J2C-TEST-INSTANCE-LIFECYCLE";
+	public static final String TEST_PRIVATE_METHOD = "J2C-TEST-PRIVATE-METHOD";
+	public static final String TEST_PARAMETERS = "J2C-TEST-PARAMETERS";
 
 	public static final class Entry {
 		public final String id;
@@ -84,6 +92,50 @@ public final class ProblemCatalog {
 				"Non-sealed type rejected",
 				"--sealed-types reject was given and this type is declared non-sealed.",
 				"Use --sealed-types advisory (the default) to translate it as ordinary C++ inheritance.");
+		add(TEST_MOCKING,
+				"Mocking library in a translated test",
+				"Mockito, PowerMock and EasyMock create classes at run time through "
+						+ "reflection, which has no C++ equivalent.",
+				"Replace the mock with a small hand-written fake class in Java (it "
+						+ "translates like any class), or keep this test on the JVM.");
+		add(TEST_EXTENSION,
+				"JUnit runner, rule or extension",
+				"@RunWith, @Rule, @ClassRule, @ExtendWith and @RegisterExtension change how "
+						+ "JUnit runs tests, which the generated GoogleTest wrappers cannot reproduce.",
+				"Move the setup the extension provides into @BeforeEach/@AfterEach methods, "
+						+ "or keep this test on the JVM.");
+		add(TEST_UNSUPPORTED_KIND,
+				"Parameterized, repeated or dynamic test",
+				"@ParameterizedTest, @RepeatedTest, @TestFactory and @TestTemplate generate "
+						+ "test cases at run time; only plain @Test methods are translated.",
+				"Write one @Test method per case (calling a shared helper), or keep this "
+						+ "test on the JVM.");
+		add(TEST_NESTED,
+				"Nested test class",
+				"@Nested test classes are inner classes whose tests run inside an instance "
+						+ "of the enclosing test, which the wrappers do not support.",
+				"Move the nested tests into a separate top-level or static nested test class.");
+		add(TEST_TIMEOUT,
+				"Test timeout",
+				"Timeouts (@Timeout or @Test(timeout = ...)) need the test to run on a "
+						+ "separate thread that can be abandoned, which the wrappers do not do.",
+				"Remove the timeout, or enforce it with your C++ test runner's options.");
+		add(TEST_INSTANCE_LIFECYCLE,
+				"Non-default test instance lifecycle",
+				"@TestInstance(PER_CLASS) shares one instance across tests; the wrappers "
+						+ "create a new instance for every test, as JUnit does by default.",
+				"Use the default lifecycle: make @BeforeAll/@AfterAll methods static and "
+						+ "keep per-test state in fields set by @BeforeEach.");
+		add(TEST_PRIVATE_METHOD,
+				"Private test or lifecycle method",
+				"JUnit does not run private test or lifecycle methods, and the generated "
+						+ "wrappers cannot call them.",
+				"Make the method package-private, protected or public.");
+		add(TEST_PARAMETERS,
+				"Test method with parameters",
+				"JUnit can inject parameters such as TestInfo through extensions; the "
+						+ "wrappers call test and lifecycle methods without arguments.",
+				"Remove the parameters, and obtain what they provided in another way.");
 	}
 
 	private static void add(String id, String title, String explanation,

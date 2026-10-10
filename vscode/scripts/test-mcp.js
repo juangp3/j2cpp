@@ -105,6 +105,7 @@ try {
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
 	assert.strictEqual(byName.get("j2c_translate").annotations.destructiveHint, true);
 	assert.deepStrictEqual(byName.get("j2c_translate").inputSchema.required, ["paths", "output"]);
+	assert.strictEqual(byName.get("j2c_translate").inputSchema.properties.tests.type, "boolean");
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);

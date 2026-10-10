@@ -55,6 +55,23 @@ jobs:
           done
           g++ -std=c++20 -fwrapv $CFLAGS -ffunction-sections -fdata-sections -Wl,--gc-sections -Itarget/cpp-control-flow/src -Itarget/cpp-control-flow/ext/src test/cpp/Java17ControlFlowSmoke.cpp target/cpp-control-flow/src/se/arnetheduck/j2c/test/Java17ControlFlow.cpp -o target/cpp-control-flow/bin/switch-value-smoke
           target/cpp-control-flow/bin/switch-value-smoke
+      - name: Install GoogleTest
+        if: matrix.java-version == '17'
+        run: sudo apt-get update && sudo apt-get install -y libgtest-dev
+      - name: Run translated JUnit tests with GoogleTest
+        if: matrix.java-version == '17'
+        env:
+          CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
+        run: |
+          out=target/cpp-junit
+          mkdir -p "$out"
+          java -jar target/j2c-cli.jar --tests --output "$out" --sourcepath "test/junit:test/junit-api" test/junit
+          mkdir -p "$out/obj"
+          g++ -std=c++20 -fwrapv $CFLAGS -I"$out/src" -I"$out/ext/src" -c test/cpp/j2c_test_hooks.cpp -o "$out/obj/hooks.o"
+          make -C "$out" tests TEST_LDLIBS=obj/hooks.o
+          # Some fixture tests fail on purpose; every outcome is compared instead
+          "$out/bin/cpp-junit-tests" --gtest_output=json:"$out/results.json" || true
+          node vscode/scripts/check-gtest.js "$out/results.json" test/junit/expected-results.json
       - name: Probe translation gaps
         if: matrix.java-version == '17'
         working-directory: vscode

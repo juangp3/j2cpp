@@ -21,7 +21,7 @@ public class Main {
 	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "[--format <text|json>] [--force] "
+			+ "[--format <text|json>] [--force] [--tests] "
 			+ "<java-file-or-source-directory>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
@@ -31,6 +31,8 @@ public class Main {
 			+ "without writing output." + NL
 			+ "--force translates into a non-empty directory that J2C did not "
 			+ "create; its contents are moved to a backup in the temporary folder." + NL
+			+ "--tests checks JUnit tests and generates GoogleTest wrappers that run "
+			+ "them (make test)." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents.";
 
@@ -137,6 +139,8 @@ public class Main {
 				format(value(args, ++i, arg));
 			} else if ("--force".equals(arg)) {
 				request.force = true;
+			} else if ("--tests".equals(arg)) {
+				request.tests = true;
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {

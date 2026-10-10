@@ -231,6 +231,84 @@ try {
 	// Once marked as J2C output, translating again needs no --force
 	assert.strictEqual(runCli(["--output", guarded, utf8Source]).status, 0);
 
+	// JUnit tests (--tests): runnable test classes get GoogleTest wrappers;
+	// test/junit-api declares the JUnit annotations the fixtures use
+	const junitRoot = path.join(repositoryRoot, "test", "junit");
+	const junitApi = path.join(repositoryRoot, "test", "junit-api");
+	const junitSourcePath = [junitRoot, junitApi].join(path.delimiter);
+	const junitCheck = runCli(["--check", "--tests", "--format", "json", "--sourcepath", junitSourcePath, junitRoot]);
+	assert.strictEqual(junitCheck.status, 0, junitCheck.stdout);
+
+	const junitOutput = path.join(tempDirectory, "junit output");
+	fs.mkdirSync(junitOutput);
+	const junit = runCli(["--tests", "--format", "json", "--output", junitOutput, "--sourcepath", junitSourcePath, junitRoot]);
+	assert.strictEqual(junit.status, 0, junit.stderr);
+	const junitReport = JSON.parse(junit.stdout);
+	const wrapperDirectory = "test/se/arnetheduck/j2c/test/junit";
+	assert.deepStrictEqual(junitReport.testFiles, [
+		`${wrapperDirectory}/DerivedTest_test.cpp`,
+		`${wrapperDirectory}/Java17JUnit4Test_test.cpp`,
+		`${wrapperDirectory}/Java17JUnit5Test_test.cpp`
+	], "Abstract test classes get no wrapper of their own");
+	assert(junitReport.generatedFiles.includes("test/j2c_gtest.hpp"));
+	const junitMakefile = fs.readFileSync(path.join(junitOutput, "Makefile"), "utf8");
+	assert(junitMakefile.includes(`${wrapperDirectory}/Java17JUnit5Test_test.cpp`));
+	assert(junitMakefile.includes("$(TESTS_BIN)"));
+	const derivedWrapper = fs.readFileSync(path.join(junitOutput, wrapperDirectory, "DerivedTest_test.cpp"), "utf8");
+	assert.match(derivedWrapper, /test->baseSetUp\(\);\s*test->derivedSetUp\(\);/,
+		"Superclass @BeforeEach methods run first");
+	const junit4Wrapper = fs.readFileSync(path.join(junitOutput, wrapperDirectory, "Java17JUnit4Test_test.cpp"), "utf8");
+	assert(junit4Wrapper.includes("dynamic_cast< ::java::lang::IllegalArgumentException* >(thrown)"));
+	assert(junit4Wrapper.includes("{ \"ignored\", \"\" }"));
+
+	const plainOutput = path.join(tempDirectory, "junit without tests");
+	fs.mkdirSync(plainOutput);
+	assert.strictEqual(runCli(["--output", plainOutput, "--sourcepath", junitSourcePath, junitRoot]).status, 0);
+	assert(!fs.existsSync(path.join(plainOutput, "test")), "Without --tests no wrappers are generated");
+
+	// Test features the wrappers cannot run are reported in tests mode
+	const testScratch = path.join(tempDirectory, "test scratch");
+	fs.mkdirSync(path.join(testScratch, "scratch"), { recursive: true });
+	const unsupportedTests = path.join(testScratch, "scratch", "UnsupportedTests.java");
+	fs.writeFileSync(unsupportedTests, [
+		"package scratch;",
+		"import org.junit.jupiter.api.Nested;",
+		"import org.junit.jupiter.api.Test;",
+		"import org.junit.jupiter.api.TestInstance;",
+		"import org.junit.jupiter.api.Timeout;",
+		"import org.junit.jupiter.api.extension.ExtendWith;",
+		"import org.junit.jupiter.params.ParameterizedTest;",
+		"import org.mockito.Mockito;",
+		"@ExtendWith(Object.class)",
+		"@TestInstance(TestInstance.Lifecycle.PER_CLASS)",
+		"class UnsupportedTests {",
+		"\t@ParameterizedTest void parameterized() {}",
+		"\t@Test @Timeout(5) void slow() {}",
+		"\t@Test private void hidden() {}",
+		"\t@Test void injected(Object info) {}",
+		"\t@Nested class Inner { @Test void inner() {} }",
+		"}",
+		""
+	].join("\n"));
+	const testSourcePath = [testScratch, junitApi].join(path.delimiter);
+	const testProblems = JSON.parse(runCli(["--check", "--tests", "--format", "json", "--sourcepath", testSourcePath, unsupportedTests]).stdout);
+	const testIds = testProblems.problems.map((problem) => `${problem.id}@${problem.line}`).sort();
+	assert.deepStrictEqual(testIds, [
+		"J2C-COMPILE-ERROR@8",
+		"J2C-TEST-EXTENSION@11",
+		"J2C-TEST-INSTANCE-LIFECYCLE@11",
+		"J2C-TEST-MOCKING@8",
+		"J2C-TEST-NESTED@16",
+		"J2C-TEST-PARAMETERS@15",
+		"J2C-TEST-PRIVATE-METHOD@14",
+		"J2C-TEST-TIMEOUT@13",
+		"J2C-TEST-UNSUPPORTED-KIND@12"
+	], JSON.stringify(testProblems.problems, null, 1));
+	assert.strictEqual(testProblems.summary.byKind["unit test"], 8);
+	const withoutTestsMode = JSON.parse(runCli(["--check", "--format", "json", "--sourcepath", testSourcePath, unsupportedTests]).stdout);
+	assert.deepStrictEqual(withoutTestsMode.problems.map((problem) => problem.id), ["J2C-COMPILE-ERROR"],
+		"Test problems are only reported with --tests");
+
 	if (javaMajorVersion() >= 17) {
 		// Every legacy fixture exercises translator paths that the Java 17
 		// AST level can break; the whole tree must keep translating.
