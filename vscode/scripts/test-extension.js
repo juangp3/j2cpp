@@ -561,6 +561,19 @@ async function testMcpServerDefinitions() {
 	assert(withoutApi.commands.has("j2c.translate"));
 }
 
+async function testTestsSettingPassesFlag() {
+	const root = path.join(tempDirectory, "tests workspace");
+	const input = makeFile(path.join(root, "src", "CalculatorTest.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "tests extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		config: { tests: true },
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.check")({ fsPath: input });
+	assert(harness.spawned[0][1].includes("--tests"), "j2c.tests checks JUnit tests");
+}
+
 async function testNoTargetIsReported() {
 	const harness = createHarness();
 	await harness.commands.get("j2c.translate")();
@@ -584,6 +597,7 @@ async function main() {
 		await testJsonReportPublishesDiagnostics();
 		await testOutputDirectoryGuard();
 		await testMcpServerDefinitions();
+		await testTestsSettingPassesFlag();
 		await testNoTargetIsReported();
 		console.log("Extension configuration and failure checks passed");
 		process.exitCode = 0;

@@ -218,6 +218,9 @@ async function prepare(session, target, writesOutput) {
 		args.push("--force");
 	}
 	args.push("--sealed-types", configuration.get("sealedTypes", "advisory"));
+	if (configuration.get("tests", false)) {
+		args.push("--tests");
+	}
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
 	}

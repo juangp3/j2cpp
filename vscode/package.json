@@ -108,6 +108,11 @@
           "type": "boolean",
           "default": true,
           "description": "Offer J2C's check, translate, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
+        },
+        "j2c.tests": {
+          "type": "boolean",
+          "default": false,
+          "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath."
         }
       }
     },
