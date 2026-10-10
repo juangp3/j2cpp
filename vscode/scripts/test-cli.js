@@ -123,6 +123,7 @@ try {
 	assert(checked.stdout.includes("1 x compile error"));
 	assert.deepStrictEqual(fs.readdirSync(checkDirectory), []);
 
+
 	// Lambdas and method references are rewritten into anonymous classes
 	const lambdaSource = path.join(scratchPackage, "Lambdas.java");
 	fs.writeFileSync(lambdaSource, [
@@ -170,6 +171,65 @@ try {
 			.includes("u\"ação\""),
 		"Non-ASCII string literal was not preserved as UTF-8"
 	);
+
+	// Machine-readable output for scripts and AI agents
+	const jsonCheck = runCli(["--check", "--format", "json", unsupportedSource]);
+	assert.strictEqual(jsonCheck.status, 1, jsonCheck.stderr);
+	const checkReport = JSON.parse(jsonCheck.stdout);
+	assert.strictEqual(checkReport.schemaVersion, 1);
+	assert.strictEqual(checkReport.command, "check");
+	assert.strictEqual(checkReport.status, "problems");
+	assert.strictEqual(checkReport.summary.problemCount, 2);
+	const patternEntry = checkReport.problems.find((problem) => problem.id === "J2C-PATTERN-OUTSIDE-METHOD");
+	assert(patternEntry, jsonCheck.stdout);
+	assert.strictEqual(patternEntry.line, 3);
+	assert(patternEntry.column > 1);
+	assert(patternEntry.hint.includes("constructor"));
+	assert(checkReport.problems.some((problem) => problem.id === "J2C-COMPILE-ERROR"));
+
+	const badFormat = runCli(["--check", "--format", "xml", unsupportedSource]);
+	assert.strictEqual(badFormat.status, 2);
+	const jsonUsage = runCli(["--check", "--format", "json"]);
+	assert.strictEqual(jsonUsage.status, 2);
+	assert.strictEqual(JSON.parse(jsonUsage.stdout).status, "usage-error");
+
+	const explained = runCli(["explain", "J2C-PATTERN-OUTSIDE-METHOD"]);
+	assert.strictEqual(explained.status, 0, explained.stderr);
+	assert(explained.stdout.includes("How to fix:"));
+	const allExplained = JSON.parse(runCli(["explain", "--format", "json"]).stdout);
+	assert(allExplained.problems.length >= 8);
+	for (const entry of allExplained.problems) {
+		assert(entry.id.startsWith("J2C-") && entry.title && entry.explanation && entry.hint, entry.id);
+	}
+	assert.strictEqual(runCli(["explain", "J2C-NO-SUCH-ID"]).status, 2);
+
+	const capabilities = JSON.parse(runCli(["capabilities"]).stdout);
+	assert.strictEqual(capabilities.version, extensionVersion);
+	assert.strictEqual(capabilities.javaSourceLevel, "17");
+	assert.deepStrictEqual(
+		capabilities.problemIds,
+		allExplained.problems.map((entry) => entry.id)
+	);
+
+	// Translation refuses to move aside a directory J2C did not create
+	const guarded = path.join(tempDirectory, "guarded output");
+	fs.mkdirSync(guarded);
+	fs.writeFileSync(path.join(guarded, "notes.txt"), "user data");
+	const refused = runCli(["--output", guarded, utf8Source]);
+	assert.strictEqual(refused.status, 2);
+	assert(refused.stderr.includes("was not created by J2C"));
+	assert.deepStrictEqual(fs.readdirSync(guarded), ["notes.txt"]);
+
+	const jsonTranslate = runCli(["--output", guarded, "--force", "--format", "json", utf8Source]);
+	assert.strictEqual(jsonTranslate.status, 0, jsonTranslate.stderr);
+	const translateReport = JSON.parse(jsonTranslate.stdout);
+	assert.strictEqual(translateReport.status, "ok");
+	assert.strictEqual(translateReport.makefile, "Makefile");
+	assert(translateReport.generatedFiles.includes("src/scratch/Utf8.cpp"));
+	assert(!translateReport.generatedFiles.includes(".j2c-output"));
+	assert(fs.existsSync(path.join(guarded, ".j2c-output")));
+	// Once marked as J2C output, translating again needs no --force
+	assert.strictEqual(runCli(["--output", guarded, utf8Source]).status, 0);
 
 	if (javaMajorVersion() >= 17) {
 		// Every legacy fixture exercises translator paths that the Java 17

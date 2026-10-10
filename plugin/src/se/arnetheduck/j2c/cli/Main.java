@@ -1,196 +1,228 @@
 package se.arnetheduck.j2c.cli;
 
 import java.io.File;
-import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
-import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.core.runtime.Path;
-
 import se.arnetheduck.j2c.transform.Problem;
-import se.arnetheduck.j2c.transform.SourceProject;
-import se.arnetheduck.j2c.transform.SourceUnit;
+import se.arnetheduck.j2c.transform.ProblemCatalog;
 import se.arnetheduck.j2c.transform.TranslationException;
 import se.arnetheduck.j2c.transform.Transformer;
 
 public class Main {
+	private static final String NL = System.lineSeparator();
 	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "<java-file-or-source-directory>..." + System.lineSeparator()
-			+ "       j2c --version" + System.lineSeparator()
+			+ "[--format <text|json>] [--force] "
+			+ "<java-file-or-source-directory>..." + NL
+			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
+			+ "       j2c capabilities" + NL
+			+ "       j2c mcp [--root <directory>]" + NL
+			+ "       j2c --version" + NL
 			+ "--check reports every problem that would stop translation "
-			+ "without writing output.";
+			+ "without writing output." + NL
+			+ "--force translates into a non-empty directory that J2C did not "
+			+ "create; its contents are moved to a backup in the temporary folder." + NL
+			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
+			+ "for AI agents.";
 
 	public static void main(String[] args) {
+		boolean json = isJson(args);
+		String command = command(args);
+		PrintStream stdout = json ? utf8(System.out) : System.out;
+		if (json) {
+			// The translator reports progress on stdout; keep it for JSON
+			System.setOut(System.err);
+		}
 		try {
-			System.exit(run(args));
+			System.exit(run(args, stdout, json));
 		} catch (IllegalArgumentException e) {
-			System.err.println(e.getMessage());
-			System.err.println(USAGE);
+			if (json) {
+				stdout.println(Json.write(J2cService.errorJson(command,
+						"usage-error", e.getMessage())));
+			} else {
+				System.err.println(e.getMessage());
+				System.err.println(USAGE);
+			}
 			System.exit(2);
 		} catch (TranslationException e) {
-			System.err.println("J2C translation failed:");
-			System.err.println(e.getMessage());
+			if (json) {
+				stdout.println(Json.write(J2cService.failedJson(command,
+						e.problems())));
+			} else {
+				System.err.println("J2C translation failed:");
+				System.err.println(e.getMessage());
+			}
 			System.exit(1);
 		} catch (Exception e) {
-			System.err.println("J2C translation failed: " + e.getMessage());
+			if (json) {
+				stdout.println(Json.write(J2cService.errorJson(command, "error",
+						String.valueOf(e.getMessage()))));
+			} else {
+				System.err.println("J2C translation failed: " + e.getMessage());
+			}
 			e.printStackTrace(System.err);
 			System.exit(1);
 		}
 	}
 
-	private static int run(String[] args) throws Exception {
-		File output = null;
-		boolean check = false;
-		String name = null;
-		Transformer.SealedTypes sealedTypes = Transformer.SealedTypes.ADVISORY;
-		Charset encoding = StandardCharsets.UTF_8;
-		List<File> sourcePaths = new ArrayList<File>();
-		List<File> classPaths = new ArrayList<File>();
-		List<File> inputs = new ArrayList<File>();
+	private static boolean isJson(String[] args) {
+		for (int i = 0; i + 1 < args.length; ++i) {
+			if ("--format".equals(args[i]) && "json".equals(args[i + 1])) {
+				return true;
+			}
+		}
+		return args.length > 0 && "capabilities".equals(args[0]);
+	}
 
+	private static String command(String[] args) {
+		if (args.length > 0
+				&& ("explain".equals(args[0]) || "capabilities".equals(args[0]))) {
+			return args[0];
+		}
+		for (String arg : args) {
+			if ("--check".equals(arg)) {
+				return "check";
+			}
+		}
+		return "translate";
+	}
+
+	private static int run(String[] args, PrintStream stdout, boolean json)
+			throws Exception {
+		if (args.length > 0 && "mcp".equals(args[0])) {
+			return mcp(args);
+		}
+		if (args.length > 0 && "capabilities".equals(args[0])) {
+			stdout.println(Json.write(J2cService.capabilitiesJson()));
+			return 0;
+		}
+		if (args.length > 0 && "explain".equals(args[0])) {
+			return explain(args, stdout, json);
+		}
+
+		J2cService.Request request = new J2cService.Request();
+		boolean check = false;
 		for (int i = 0; i < args.length; i++) {
 			String arg = args[i];
 			if ("--help".equals(arg) || "-h".equals(arg)) {
-				System.out.println(USAGE);
+				stdout.println(USAGE);
 				return 0;
 			} else if ("--version".equals(arg)) {
-				System.out.println("j2c " + version());
+				stdout.println("j2c " + J2cService.version());
 				return 0;
 			} else if ("--check".equals(arg)) {
 				check = true;
 			} else if ("--output".equals(arg)) {
-				output = new File(value(args, ++i, arg));
+				request.output = new File(value(args, ++i, arg));
 			} else if ("--sourcepath".equals(arg)) {
-				sourcePaths.addAll(pathList(value(args, ++i, arg)));
+				request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
 			} else if ("--classpath".equals(arg)) {
-				classPaths.addAll(pathList(value(args, ++i, arg)));
+				request.classPaths.addAll(pathList(value(args, ++i, arg)));
 			} else if ("--name".equals(arg)) {
-				name = value(args, ++i, arg);
+				request.name = value(args, ++i, arg);
 			} else if ("--sealed-types".equals(arg)) {
-				String policy = value(args, ++i, arg);
-				if ("advisory".equals(policy)) {
-					sealedTypes = Transformer.SealedTypes.ADVISORY;
-				} else if ("reject".equals(policy)) {
-					sealedTypes = Transformer.SealedTypes.REJECT;
-				} else {
-					throw new IllegalArgumentException(
-							"Invalid --sealed-types value: " + policy
-									+ " (expected advisory or reject)");
-				}
+				request.sealedTypes = sealedTypes(value(args, ++i, arg));
 			} else if ("--encoding".equals(arg)) {
-				encoding = charset(value(args, ++i, arg));
+				request.encoding = charset(value(args, ++i, arg));
+			} else if ("--format".equals(arg)) {
+				format(value(args, ++i, arg));
+			} else if ("--force".equals(arg)) {
+				request.force = true;
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {
-				inputs.add(new File(arg));
+				request.inputs.add(new File(arg));
 			}
 		}
 
-		if (check && output != null) {
+		if (check && request.output != null) {
 			throw new IllegalArgumentException(
 					"--check does not write output; omit --output");
 		}
-		if (!check && output == null) {
-			throw new IllegalArgumentException("Missing --output directory");
-		}
-		if (!check && !output.isDirectory()) {
-			throw new IllegalArgumentException(
-					"Output directory must already exist: " + output);
-		}
-		if (inputs.isEmpty()) {
-			throw new IllegalArgumentException("No Java input was provided");
-		}
 
-		for (File input : inputs) {
-			if (!input.exists()) {
-				throw new IllegalArgumentException("Input does not exist: "
-						+ input);
-			}
-			if (!input.isDirectory() && !input.getName().endsWith(".java")) {
-				throw new IllegalArgumentException(
-						"Input must be a .java file or source directory: "
-								+ input);
-			}
-		}
-
-		if (sourcePaths.isEmpty()) {
-			for (File input : inputs) {
-				File sourcePath = input.isDirectory() ? input
-						: inferSourcePath(input.getAbsoluteFile(), encoding);
-				if (!containsPath(sourcePaths, sourcePath)) {
-					sourcePaths.add(sourcePath);
-				}
-			}
-		}
-
-		for (File sourcePath : sourcePaths) {
-			if (!sourcePath.isDirectory()) {
-				throw new IllegalArgumentException(
-						"Source path is not a directory: " + sourcePath);
-			}
-		}
-		for (File classPath : classPaths) {
-			if (!classPath.exists()) {
-				throw new IllegalArgumentException(
-						"Class path does not exist: " + classPath);
-			}
-		}
-
-		List<File> selectedFiles = new ArrayList<File>();
-		for (File input : inputs) {
-			if (input.isDirectory()) {
-				collectSources(input, selectedFiles);
-			} else {
-				selectedFiles.add(input);
-			}
-		}
-		if (selectedFiles.isEmpty()) {
-			throw new IllegalArgumentException(
-					"No Java source files found in the selected inputs");
-		}
-
-		SourceProject project = new SourceProject(sourcePaths, classPaths,
-				encoding);
-		Collection<SourceUnit> units = new ArrayList<SourceUnit>();
-		for (File file : selectedFiles) {
-			units.add(project.getUnit(file));
-		}
-		SourceUnit[] selected = units.toArray(new SourceUnit[units.size()]);
+		J2cService service = new J2cService(null);
 		if (check) {
-			// Checking writes nothing, so the output root is never used
-			Transformer checker = new Transformer(project, "check",
-					new Path(new File(".").getAbsolutePath()), sealedTypes);
-			return report(checker.check(new NullProgressMonitor(), selected),
-					selected.length);
+			J2cService.CheckResult result = service.check(request);
+			if (json) {
+				stdout.println(Json.write(J2cService.checkJson(result)));
+			} else {
+				report(stdout, result);
+			}
+			return result.problems.isEmpty() ? 0 : 1;
 		}
 
-		if (name == null) {
-			name = output.getName();
+		J2cService.TranslateResult result = service.translate(request);
+		if (json) {
+			stdout.println(Json.write(J2cService.translateJson(result)));
 		}
-
-		Transformer transformer = new Transformer(project, name,
-				new Path(output.getAbsolutePath()), sealedTypes);
-		transformer.process(new NullProgressMonitor(), selected);
 		return 0;
 	}
 
-	/** Prints each problem and a per-kind summary; nonzero if any */
-	private static int report(List<Problem> problems, int fileCount) {
+	private static int mcp(String[] args) throws Exception {
+		File root = new File(".");
+		for (int i = 1; i < args.length; i++) {
+			if ("--root".equals(args[i])) {
+				root = new File(value(args, ++i, args[i - 1]));
+			} else {
+				throw new IllegalArgumentException("Unknown mcp option: "
+						+ args[i]);
+			}
+		}
+		if (!root.isDirectory()) {
+			throw new IllegalArgumentException("MCP root is not a directory: "
+					+ root);
+		}
+		new McpServer(root.getCanonicalFile()).serve(System.in, System.out);
+		return 0;
+	}
+
+	private static int explain(String[] args, PrintStream stdout, boolean json) {
+		String id = null;
+		for (int i = 1; i < args.length; i++) {
+			if ("--format".equals(args[i])) {
+				format(value(args, ++i, args[i - 1]));
+			} else if (args[i].startsWith("-")) {
+				throw new IllegalArgumentException("Unknown option: " + args[i]);
+			} else {
+				id = args[i];
+			}
+		}
+
+		Map<String, Object> explanation = J2cService.explainJson(id);
+		if (json) {
+			stdout.println(Json.write(explanation));
+			return 0;
+		}
+		if (id == null) {
+			for (ProblemCatalog.Entry entry : ProblemCatalog.all()) {
+				stdout.println(entry.id + "  " + entry.title);
+			}
+			return 0;
+		}
+		ProblemCatalog.Entry entry = ProblemCatalog.get(id);
+		stdout.println(entry.id + ": " + entry.title);
+		stdout.println();
+		stdout.println(entry.explanation);
+		stdout.println();
+		stdout.println("How to fix: " + entry.hint);
+		return 0;
+	}
+
+	/** Prints each problem and a per-kind summary */
+	private static void report(PrintStream stdout, J2cService.CheckResult result) {
 		Map<String, Integer> kinds = new TreeMap<String, Integer>();
 		List<File> files = new ArrayList<File>();
-		for (Problem problem : problems) {
-			System.out.println(problem);
+		for (Problem problem : result.problems) {
+			stdout.println(problem);
 			Integer count = kinds.get(problem.kind);
 			kinds.put(problem.kind, count == null ? 1 : count + 1);
 			if (!files.contains(problem.file)) {
@@ -198,23 +230,43 @@ public class Main {
 			}
 		}
 
-		if (problems.isEmpty()) {
-			System.out.println("J2C check: no problems found in " + fileCount
+		if (result.problems.isEmpty()) {
+			stdout.println("J2C check: no problems found in " + result.fileCount
 					+ " file(s)");
-			return 0;
+			return;
 		}
-		System.out.println("J2C check: " + problems.size()
-				+ " problem(s) in " + files.size() + " of " + fileCount
-				+ " file(s)");
+		stdout.println("J2C check: " + result.problems.size() + " problem(s) in "
+				+ files.size() + " of " + result.fileCount + " file(s)");
 		for (Map.Entry<String, Integer> kind : kinds.entrySet()) {
-			System.out.println("  " + kind.getValue() + " x " + kind.getKey());
+			stdout.println("  " + kind.getValue() + " x " + kind.getKey());
 		}
-		return 1;
 	}
 
-	private static String version() {
-		String version = Main.class.getPackage().getImplementationVersion();
-		return version == null ? "development build" : version;
+	private static void format(String format) {
+		if (!"text".equals(format) && !"json".equals(format)) {
+			throw new IllegalArgumentException("Invalid --format value: " + format
+					+ " (expected text or json)");
+		}
+	}
+
+	static Transformer.SealedTypes sealedTypes(String policy) {
+		if ("advisory".equals(policy)) {
+			return Transformer.SealedTypes.ADVISORY;
+		}
+		if ("reject".equals(policy)) {
+			return Transformer.SealedTypes.REJECT;
+		}
+		throw new IllegalArgumentException("Invalid --sealed-types value: "
+				+ policy + " (expected advisory or reject)");
+	}
+
+	static Charset charset(String name) {
+		try {
+			return Charset.forName(name);
+		} catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
+			throw new IllegalArgumentException("Unsupported --encoding value: "
+					+ name);
+		}
 	}
 
 	private static String value(String[] args, int index, String option) {
@@ -222,15 +274,6 @@ public class Main {
 			throw new IllegalArgumentException("Missing value for " + option);
 		}
 		return args[index];
-	}
-
-	private static Charset charset(String name) {
-		try {
-			return Charset.forName(name);
-		} catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
-			throw new IllegalArgumentException("Unsupported --encoding value: "
-					+ name);
-		}
 	}
 
 	private static List<File> pathList(String value) {
@@ -244,50 +287,8 @@ public class Main {
 		return paths;
 	}
 
-	private static boolean containsPath(List<File> paths, File candidate) {
-		String absolute = candidate.getAbsolutePath();
-		for (File path : paths) {
-			if (absolute.equals(path.getAbsolutePath())) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private static void collectSources(File directory, List<File> sources)
-			throws java.io.IOException {
-		File[] entries = directory.listFiles();
-		if (entries == null) {
-			throw new java.io.IOException("Could not read input directory "
-					+ directory);
-		}
-		for (File entry : entries) {
-			if (entry.isDirectory()) {
-				collectSources(entry, sources);
-			} else if (entry.getName().endsWith(".java")) {
-				sources.add(entry);
-			}
-		}
-	}
-
-	private static File inferSourcePath(File sourceFile, Charset encoding)
-			throws IOException {
-		java.util.regex.Matcher packageName = java.util.regex.Pattern.compile(
-				"(?m)^\\s*package\\s+([\\w.$]+)\\s*;")
-				.matcher(new String(Files.readAllBytes(sourceFile.toPath()),
-						encoding));
-		if (!packageName.find()) {
-			return sourceFile.getParentFile();
-		}
-
-		String[] segments = packageName.group(1).split("\\.");
-		File root = sourceFile.getParentFile();
-		for (int i = segments.length - 1; i >= 0; i--) {
-			if (root == null || !root.getName().equals(segments[i])) {
-				return sourceFile.getParentFile();
-			}
-			root = root.getParentFile();
-		}
-		return root == null ? sourceFile.getParentFile() : root;
+	/** UTF-8, so JSON on stdout is not mangled by the platform charset */
+	static PrintStream utf8(PrintStream stream) {
+		return new PrintStream(stream, true, StandardCharsets.UTF_8);
 	}
 }

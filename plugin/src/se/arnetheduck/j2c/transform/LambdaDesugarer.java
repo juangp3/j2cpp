@@ -52,8 +52,12 @@ final class LambdaDesugarer {
 	private static final class Unsupported extends Exception {
 		private static final long serialVersionUID = 1L;
 
-		Unsupported(String reason) {
+		/** ProblemCatalog ID */
+		final String id;
+
+		Unsupported(String id, String reason) {
 			super(reason);
+			this.id = id;
 		}
 	}
 
@@ -139,9 +143,10 @@ final class LambdaDesugarer {
 			insertions.putAll(insertionsBefore);
 			intersections.clear();
 			intersections.putAll(intersectionsBefore);
-			problems.add(Problem.of(kind, "Java 8 " + kind
+			problems.add(Problem.of(e.id, kind, "Java 8 " + kind
 					+ " cannot be translated: " + e.getMessage()).at(file,
-					ast.getLineNumber(node.getStartPosition())));
+					ast.getLineNumber(node.getStartPosition()),
+					ast.getColumnNumber(node.getStartPosition()) + 1));
 		}
 	}
 
@@ -149,7 +154,8 @@ final class LambdaDesugarer {
 		ITypeBinding target = node.resolveTypeBinding();
 		IMethodBinding method = node.resolveMethodBinding();
 		if (target == null || method == null) {
-			throw new Unsupported("its target type could not be resolved");
+			throw new Unsupported(ProblemCatalog.LAMBDA_UNRESOLVED,
+					"its target type could not be resolved");
 		}
 		IMethodBinding sam = functionalMethod(target);
 
@@ -195,7 +201,8 @@ final class LambdaDesugarer {
 		boolean arrayCreation = node instanceof CreationReference
 				&& ((CreationReference) node).getType().isArrayType();
 		if (target == null || (referenced == null && !arrayCreation)) {
-			throw new Unsupported("its target type could not be resolved");
+			throw new Unsupported(ProblemCatalog.LAMBDA_UNRESOLVED,
+					"its target type could not be resolved");
 		}
 		IMethodBinding sam = functionalMethod(target);
 
@@ -297,7 +304,8 @@ final class LambdaDesugarer {
 			}
 		}
 		if (sam == null) {
-			throw new Unsupported("its target is not a functional interface");
+			throw new Unsupported(ProblemCatalog.LAMBDA_UNRESOLVED,
+					"its target is not a functional interface");
 		}
 		return sam;
 	}
@@ -343,7 +351,9 @@ final class LambdaDesugarer {
 		StringBuilder extendsClause = new StringBuilder();
 		for (ITypeBinding bound : target.getTypeBounds()) {
 			if (mentionsTypeVariable(bound)) {
-				throw new Unsupported("its intersection target uses a type "
+				throw new Unsupported(
+						ProblemCatalog.LAMBDA_INTERSECTION_TYPE_VARIABLE,
+						"its intersection target uses a type "
 						+ "variable, which a member interface cannot see");
 			}
 			if (extendsClause.length() > 0) {
@@ -399,7 +409,8 @@ final class LambdaDesugarer {
 				return (AbstractTypeDeclaration) n;
 			}
 		}
-		throw new Unsupported("its top-level class could not be found");
+		throw new Unsupported(ProblemCatalog.LAMBDA_UNTRANSLATED,
+				"its top-level class could not be found");
 	}
 
 	/**
@@ -528,12 +539,13 @@ final class LambdaDesugarer {
 				continue;
 			}
 			if (parent instanceof AnonymousClassDeclaration) {
-				throw new Unsupported(
+				throw new Unsupported(ProblemCatalog.LAMBDA_ANONYMOUS_THIS,
 						"it refers to an enclosing anonymous class, which cannot be named");
 			}
 			return ((AbstractTypeDeclaration) parent).getName().getIdentifier();
 		}
-		throw new Unsupported("its enclosing class could not be found");
+		throw new Unsupported(ProblemCatalog.LAMBDA_UNTRANSLATED,
+				"its enclosing class could not be found");
 	}
 
 	/**
@@ -583,7 +595,8 @@ final class LambdaDesugarer {
 		}
 		if (type.isIntersectionType() || type.isAnonymous()
 				|| type.isNullType()) {
-			throw new Unsupported("the type " + type.getName()
+			throw new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
+					"the type " + type.getName()
 					+ " cannot be written in Java source");
 		}
 
@@ -624,7 +637,8 @@ final class LambdaDesugarer {
 	private static String typeName(ITypeBinding type) throws Unsupported {
 		ITypeBinding erasure = type.getErasure();
 		if (erasure.isAnonymous()) {
-			throw new Unsupported("the type " + type.getName()
+			throw new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
+					"the type " + type.getName()
 					+ " cannot be written in Java source");
 		}
 		String simple = withoutArguments(erasure.getName());

@@ -245,7 +245,7 @@ public class Transformer {
 						try {
 							List<Problem> problems = problems(source, ast);
 							if (!problems.isEmpty()) {
-								throw new TranslationException(join(problems));
+								throw new TranslationException(join(problems), problems);
 							}
 							writeImpl(monitor, source, ast);
 						} finally {
@@ -331,8 +331,10 @@ public class Transformer {
 		final List<Problem> problems = new ArrayList<Problem>();
 		for (IProblem p : ast.getProblems()) {
 			if (p.isError()) {
-				problems.add(Problem.of("compile error", p.getMessage()).at(
-						source.file(), p.getSourceLineNumber()));
+				problems.add(Problem.of(ProblemCatalog.COMPILE_ERROR,
+						"compile error", p.getMessage()).at(source.file(),
+						p.getSourceLineNumber(),
+						ast.getColumnNumber(p.getSourceStart()) + 1));
 			}
 		}
 
@@ -354,7 +356,8 @@ public class Transformer {
 				}
 				Problem problem = unsupportedFeature(node);
 				if (problem != null) {
-					problems.add(problem.at(source.file(), line));
+					problems.add(problem.at(source.file(), line,
+							ast.getColumnNumber(node.getStartPosition()) + 1));
 				}
 			}
 		});
@@ -363,11 +366,13 @@ public class Transformer {
 
 	private Problem unsupportedFeature(ASTNode node) {
 		if (node instanceof LambdaExpression) {
-			return Problem.of("lambda expression",
+			return Problem.of(ProblemCatalog.LAMBDA_UNTRANSLATED,
+					"lambda expression",
 					"Java 8 lambda expression could not be translated");
 		}
 		if (node instanceof MethodReference) {
-			return Problem.of("method reference",
+			return Problem.of(ProblemCatalog.LAMBDA_UNTRANSLATED,
+					"method reference",
 					"Java 8 method reference could not be translated");
 		}
 		if (node instanceof PatternInstanceofExpression) {
@@ -379,7 +384,8 @@ public class Transformer {
 					return null;
 				}
 			}
-			return Problem.of("instanceof pattern",
+			return Problem.of(ProblemCatalog.PATTERN_OUTSIDE_METHOD,
+					"instanceof pattern",
 					"instanceof patterns outside method bodies, such as in "
 							+ "field initializers, are not supported");
 		}
@@ -409,7 +415,11 @@ public class Transformer {
 			}
 		}
 
-		return feature == null ? null : Problem.of(feature, "Java 17 "
+		if (feature == null) {
+			return null;
+		}
+		return Problem.of(feature.equals("sealed type") ? ProblemCatalog.SEALED_REJECTED
+				: ProblemCatalog.NON_SEALED_REJECTED, feature, "Java 17 "
 				+ feature + " rejected by --sealed-types reject");
 	}
 
