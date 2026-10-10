@@ -329,6 +329,14 @@ public class StubWriter {
 			return;
 		}
 
+		// Headers leave out methods a base already declares (for example
+		// List.spliterator overriding the Collection default). Skip them
+		// before registering with impl, so it computes the same hidden
+		// overloads to forward as the header declares
+		if (TransformUtil.baseDeclared(ctx, type, mb)) {
+			return;
+		}
+
 		impl.method(mb);
 
 		if (Modifier.isAbstract(mb.getModifiers())) {
@@ -380,7 +388,10 @@ public class StubWriter {
 		println("}");
 		println();
 
-		TransformUtil.defineBridge(ctx, out, type, mb, deps);
+		// Headers declare bridges only for class-like types
+		if (TypeUtil.isClassLike(type)) {
+			TransformUtil.defineBridge(ctx, out, type, mb, deps);
+		}
 	}
 
 	public void hardDep(ITypeBinding dep) {

@@ -11,6 +11,11 @@
 - Generate stub definitions for default and static interface methods
   (Java 8+), without which classes implementing interfaces such as
   `Comparator` or `Function` failed to link.
+- Fix generated JDK library stubs so programs using `java.util` collections
+  compile: stubs now define exactly the methods their headers declare, and
+  default methods a class inherits from an interface forward to that
+  interface instead of the superclass (`AbstractCollection.toArray`,
+  `AbstractMap.remove`).
 
 - Add `--check`, which lists every compile error and unsupported construct
   with `file:line` and a per-kind summary without writing output, and

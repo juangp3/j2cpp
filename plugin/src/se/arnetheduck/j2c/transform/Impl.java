@@ -393,8 +393,9 @@ public class Impl {
 				print("return ");
 			}
 
-			if (type.isInterface()) {
-				// This happens for the methods of Object for example
+			if (type.isInterface() || mb.getDeclaringClass().isInterface()) {
+				// Object methods in interfaces, and default methods that a
+				// class inherits from an interface rather than its superclass
 				print(CName.relative(mb.getDeclaringClass(), type, true) + "::");
 			} else {
 				print("super::");
