@@ -27,6 +27,18 @@ C++20-targeted output.
   not create (its contents would be moved to a backup) unless `--force` is
   given; the extension asks first.
 
+### Unit tests
+
+- `--tests` translates JUnit 4 and 5 test classes and generates a GoogleTest
+  wrapper for each runnable one, with JUnit's lifecycle order (including
+  inherited methods), skipped disabled tests, and expected exceptions; the
+  Makefile gains `tests` and `test` targets.
+- With `--tests`, `--check` reports test features the wrappers cannot run
+  (mocking libraries, runners and extensions, parameterized or repeated tests,
+  `@Nested`, timeouts, `@TestInstance`, private or parameterized methods).
+- JUnit assertion methods need the Java runtime; until it exists, translated
+  tests fail only by throwing.
+
 ### AI agents
 
 - `j2c mcp` serves J2C as a Model Context Protocol server with `j2c_check`,

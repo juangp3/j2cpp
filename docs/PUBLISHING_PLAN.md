@@ -851,6 +851,87 @@ Pending manual checks with real clients:
    the agent completes the check, fix and translate workflow on a project
    with a `J2C-LAMBDA-ANONYMOUS-THIS` problem.
 
+## Phase 12 — Agent experience beyond the basics (planned)
+
+Phase 11 gives agents typed access to J2C. These items make J2C do more of
+the agent's work, ordered by value for effort:
+
+1. **Structured quick fixes.** For mechanical problems (starting with
+   `J2C-LAMBDA-ANONYMOUS-THIS` and `J2C-PATTERN-OUTSIDE-METHOD`), problems
+   carry the exact text edits that fix them.
+   - A `j2c_fix` MCP tool previews (by default) or applies them.
+   - The VS Code extension offers them as quick fixes.
+   - Effort: about 3–5 days.
+2. **Project auto-setup.** Detect Maven and Gradle projects: use their source
+   roots and test roots, and get the dependency class path from the build
+   tool, so `paths: ["."]` just works in the CLI, MCP and the extension.
+   Effort: 2–4 days.
+3. **MCP prompts and resources.**
+   - Prompts `/j2c-migrate` and `/j2c-assess`.
+   - Resources: the problem catalog, the runtime contract, and generated
+     files.
+   - Effort: 1–2 days.
+4. **Map C++ errors back to Java.** An option to emit `#line` directives, so
+   compilers and debuggers report Java file and line numbers. A `j2c_build`
+   tool runs `make` and returns errors mapped to Java. Effort: about one week.
+5. **Migration readiness report.** A `j2c_report` tool and
+   `j2c report --format markdown|json` show:
+   - the percentage translatable;
+   - blockers by kind and package;
+   - JDK API use compared with runtime coverage, once the runtime exists.
+
+   Effort: 2–3 days.
+6. **Distribution.** Publish to the MCP registry, ship a Claude Code plugin
+   bundling the skill and server configuration, and document configuration
+   for Copilot's cloud coding agent. Effort: about 2 days.
+7. **Faster re-checks.** Keep the parsed environment cached in the
+   long-running MCP server, and re-check only changed files.
+   Effort: 2–3 days.
+8. **MCP progress and cancellation** for long translations. Effort: about one
+   day.
+9. **After the runtime:**
+   - `j2c_run`: translate, build and run, and compare with the JVM.
+   - An agent benchmark: Java projects with known problems, solved by an
+     agent through the Claude Agent SDK, measuring success rate and cost.
+     It runs nightly or on demand.
+
+## Phase 13 — Unit test translation (JUnit to GoogleTest)
+
+A project's own unit tests are the best evidence that a translation is
+correct: the same tests pass on the JVM and then run against the C++.
+GoogleTest runs and reports the tests. Assertions keep Java semantics,
+because JUnit's assertion classes are implemented in the runtime rather than
+mapped to `EXPECT_*` macros (Java equality, exceptions on failure, lambdas in
+`assertThrows`). Mockito is reported, not translated.
+
+| Step | Content | Depends on | Status |
+| --- | --- | --- | --- |
+| T1 | With `--tests`, report test features the wrappers cannot run: `J2C-TEST-*` problem IDs for mocking libraries, runners, rules and extensions, parameterized, repeated and dynamic tests, `@Nested`, timeouts, `@TestInstance`, private methods, and methods with parameters | — | Done (2026-10-11) |
+| T2 | `--tests` generates a GoogleTest wrapper per runnable JUnit 4 or 5 class: a fresh instance per test; `@BeforeAll`, `@BeforeEach`, `@AfterEach` and `@AfterAll` in JUnit's order, including inherited and overridden methods; disabled tests skipped with their reason; `@Test(expected = ...)` checked with subclasses allowed; `j2c_gtest.hpp`; and Makefile `tests` and `test` targets (`GTEST_CFLAGS`, `GTEST_LIBS`, `TEST_LDLIBS`). Also exposed through MCP (`tests`, `testFiles`) and the `j2c.tests` setting. | — | Done (2026-10-11) |
+| T3 | JUnit `Assertions`, `Assert` and `Assumptions` in the runtime, with JUnit's equality rules and messages; exception messages in failure reports | Phase 10 milestone 1 | Planned |
+| T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Planned |
+| T5 | Optional gMock classes generated from Java interfaces, for new C++ tests | T2 | Planned |
+
+Tests for T1 and T2:
+
+- `test/junit/` has JUnit 5, JUnit 4 and inheritance fixtures, plus
+  `expected-results.json` with the expected outcome of every test.
+  `test/junit-api/` declares the JUnit annotations they use, so no download
+  is needed.
+- The CLI suite checks:
+  - a clean `--check --tests`;
+  - the generated wrapper list and their lifecycle order;
+  - no wrappers without `--tests`;
+  - every `J2C-TEST-*` problem at its exact line, and none without
+    `--tests`.
+- CI installs `libgtest-dev`, translates the fixtures with `--tests`, builds
+  and runs them under UBSan, and compares all 14 outcomes (8 pass, 4 fail on
+  purpose, 2 skipped) with `vscode/scripts/check-gtest.js`. Verified locally
+  with GoogleTest 1.15.2.
+
+Not yet covered: running the same fixtures with real JUnit on the JVM and
+comparing outcomes. That needs the JUnit JARs, so it is part of T3.
+
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.

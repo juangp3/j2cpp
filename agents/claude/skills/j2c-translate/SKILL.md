@@ -31,9 +31,15 @@ JSON object with the same fields.
    or earlier J2C output. If J2C refuses because the directory has other
    content, ask the user before retrying with `force: true`: the contents
    would be moved to a backup.
-6. **Build if possible.** If a C++20 toolchain is available, run
-   `make -C <output>` and report compiler errors to the user, quoting the
-   generated file and line.
+6. **Include the tests.** If the project has JUnit tests, add the test source
+   folder to `paths` and the JUnit JARs to `classPath`, and pass
+   `tests: true` to both `j2c_check` and `j2c_translate`. Fix reported test
+   problems the same way (for example, replace Mockito mocks with small
+   hand-written fakes). The generated GoogleTest wrappers are listed in
+   `testFiles`.
+7. **Build if possible.** If a C++20 toolchain is available, run
+   `make -C <output>` (and `make -C <output> test` with tests) and report
+   compiler errors to the user, quoting the generated file and line.
 
 ## Common fixes
 

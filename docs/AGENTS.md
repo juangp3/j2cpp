@@ -88,9 +88,14 @@ source paths and the output directory must be inside it. Class path entries
 | Tool | Writes | Arguments | Result |
 | --- | --- | --- | --- |
 | `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding` | `status` (`ok` or `problems`), `problems`, `summary` |
-| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles` |
+| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles` |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
+
+Pass `tests: true` to both tools for projects with JUnit tests (JUnit JARs in
+`classPath`). `j2c_check` then also reports test features that translated
+tests cannot run, and `j2c_translate` generates GoogleTest wrappers, listed
+in `testFiles`, that `make -C <output> test` builds and runs.
 
 Each problem has a stable `id`, `file`, `line`, `column` (1-based), `message`
 and `hint`. Problems in the Java code are a normal `j2c_check` result, not a

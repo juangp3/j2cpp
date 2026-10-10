@@ -80,6 +80,38 @@ limitations as JSON.
 The CLI exits with status 0 on success (or a clean check), 1 when translation
 fails or a check finds problems, and 2 for invalid arguments.
 
+## Unit tests (JUnit to GoogleTest)
+
+`--tests` translates JUnit 4 and JUnit 5 test classes and generates a
+GoogleTest file for each runnable one, so the project's own tests can run
+against the C++ translation:
+
+```sh
+java -jar target/j2c-cli.jar --tests --output generated \
+  --sourcepath src/main/java:src/test/java \
+  --classpath junit-jupiter-api.jar src/main/java src/test/java
+make -C generated test
+```
+
+GoogleTest only runs the tests and reports results. Each test gets a new
+instance, as in JUnit; `@BeforeAll`, `@BeforeEach`, `@AfterEach` and
+`@AfterAll` (and their JUnit 4 equivalents, including inherited ones) run in
+JUnit's order. `@Disabled` and `@Ignore` tests are skipped with their reason,
+and `@Test(expected = ...)` checks the thrown exception. A test fails when it
+throws a Java exception, as in JUnit.
+
+`make test` needs GoogleTest (found with `pkg-config`, or set `GTEST_CFLAGS`
+and `GTEST_LIBS`) and, like any translated program, a C++ implementation of
+the JDK classes the tests use, passed with `TEST_LDLIBS`. JUnit's assertion
+methods are such classes, so until a runtime provides them, tests that call
+`assertEquals` and similar cannot fail.
+
+With `--tests`, `--check` also reports test features the wrappers cannot run:
+mocking libraries (Mockito, PowerMock, EasyMock), runners, rules and
+extensions, parameterized, repeated and dynamic tests, `@Nested` classes,
+timeouts, `@TestInstance(PER_CLASS)`, and private or parameterized test
+methods. Each has a problem ID and a suggested fix.
+
 ## Using J2C with AI agents
 
 `j2c mcp` serves J2C as a Model Context Protocol server, so agents such as
