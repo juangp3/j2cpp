@@ -73,16 +73,17 @@ complete; migration/push remains pending.
    VSIX packages. Generated bin contents remain on disk and are not deleted.
 4. **Done:** Preserved unrelated work. Eclipse IDE metadata and a legacy
    handler integration change remain unstaged and untouched.
-5. Create focused commits for the CLI/extension, tests, documentation, and
-   release infrastructure as appropriate. Review the final branch diff against
-   the intended upstream base.
+5. **Done locally:** Committed the reviewed modernization snapshot as
+   `94ceede` (`feat: add modern J2C CLI and VS Code extension`), preserving
+   the existing history.
 6. **Done:** Added and checked ignore rules for generated Maven output,
    Eclipse bin folders, extension dependencies, copied CLI JAR, generated
    license copy, and VSIX packages.
 
-**Gate:** Every staged file is explained by the release and unrelated work is
-preserved. The release set is staged and under final review; commit,
-clean-checkout verification, and push remain pending.
+**Gate:** Every committed file is explained by the release and unrelated work
+is preserved. A detached clean worktree reproduced the Maven build, CLI
+integration tests, extension package, and C++ checks. GitHub CI and push remain
+pending.
 
 ## Phase 3 — Define product scope and project documentation
 
@@ -210,11 +211,13 @@ release commit; keep preview limitations explicit.
 5. **Partially done:** Installed the fresh VSIX into an isolated profile and
    confirmed the `juangp3.j2c` extension ID and version. Interactive translation
    with the extension and configured path behavior remain unverified.
-6. Build from a clean clone or CI checkout rather than relying on local
-   `target`, Eclipse `bin`, or stale `vscode/lib` contents.
+6. **Done locally:** Rebuilt from a detached clean worktree with `npm ci`,
+   Maven, extension packaging, CLI integration tests, and generated-C++
+   compilation rather than relying on existing build output.
 
-**Gate:** Local packaging, dependency audit, and clean-profile installation
-pass. GitHub CI and interactive extension translation remain pending.
+**Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
+clean-profile installation pass locally. GitHub CI and interactive extension
+translation remain pending.
 
 ## Phase 8 — Release and post-release verification
 
@@ -241,7 +244,7 @@ requirements.
 - [x] Destination repository owner/name/visibility selected.
 - [x] Existing project history preserved locally; upstream repository left
       intact.
-- [ ] Release changes isolated, reviewed, and reproducible from a clean
+- [x] Release changes isolated, reviewed, and reproducible from a clean
       checkout.
 - [x] Generated output excluded or explicitly justified.
 - [x] Product scope and limitations are accurate in both READMEs.
