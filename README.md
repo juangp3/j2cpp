@@ -136,5 +136,7 @@ J2C Modern Edition is a separate project derived from
 history and Eclipse plugin remain upstream. The project is licensed under the
 Eclipse Public License 1.0; see [LICENSE](LICENSE). The extension packaging
 step copies that license into the VSIX. Third-party dependencies have their
-own licenses; see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which is
-also included in the VSIX.
+own licenses; see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) and
+[licenses/](licenses/), which hold the full license texts, each dependency's
+original notice files, and where to obtain their source code. Both are
+included in the CLI JAR (under `META-INF/j2c-licenses/`) and in the VSIX.

@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  draft-release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+      - name: Check tag matches project versions
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          extension="$(node -p "require('./vscode/package.json').version")"
+          maven="$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          echo "tag=$tag extension=$extension maven=$maven"
+          test "$tag" = "$extension"
+          test "$tag" = "$maven"
+          grep -q "^## $tag " CHANGELOG.md
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+      - name: Install extension build dependencies
+        working-directory: vscode
+        run: npm ci
+      - name: Build, test, and package extension
+        working-directory: vscode
+        run: npm run package
+      - name: Stage artifacts and checksums
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp target/j2c-cli.jar "dist/j2c-cli-$VERSION.jar"
+          cp "vscode/j2c-$VERSION.vsix" "dist/j2c-$VERSION.vsix"
+          cmp target/j2c-cli.jar <(unzip -p "dist/j2c-$VERSION.vsix" extension/lib/j2c-cli.jar)
+          (cd dist && sha256sum * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - name: Write release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v heading="## $VERSION " '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > dist/notes.md
+          cat >> dist/notes.md <<EOF
+
+          ## Requirements
+
+          - Java 11 or newer to run the CLI and the VS Code extension.
+          - A C++20 compiler for generated Makefiles and C++ output.
+          - VS Code 1.85 or newer for the extension.
+
+          ## Assets
+
+          - \`j2c-cli-$VERSION.jar\`: standalone CLI (\`java -jar j2c-cli-$VERSION.jar --help\`).
+          - \`j2c-$VERSION.vsix\`: VS Code extension with the same CLI bundled
+            (\`code --install-extension j2c-$VERSION.vsix\`).
+          - \`SHA256SUMS\`: verify downloads with \`sha256sum -c SHA256SUMS\`.
+
+          Third-party license notices are in \`THIRD-PARTY-NOTICES.txt\` and
+          \`licenses/\` in the source tree, inside the CLI JAR under
+          \`META-INF/j2c-licenses/\`, and at the root of the VSIX.
+          EOF
+          cat dist/notes.md
+      - name: Create draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --prerelease \
+            --verify-tag \
+            --title "J2C Modern Edition $VERSION (preview)" \
+            --notes-file dist/notes.md \
+            "dist/j2c-cli-$VERSION.jar" \
+            "dist/j2c-$VERSION.vsix" \
+            dist/SHA256SUMS

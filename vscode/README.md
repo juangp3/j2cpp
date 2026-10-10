@@ -5,7 +5,8 @@ context menus. Select a Java source file or source folder, then choose an
 existing output directory. Generated implementation files are written below
 `src`; dependency headers and stubs are written below `ext`.
 
-The extension runs the standalone J2C CLI and requires Java 11 or newer. The
+The extension requires VS Code 1.85 or newer and runs the bundled J2C CLI,
+which requires Java 11 or newer. The
 translator accepts Java 17 source and generated Makefiles target C++20. Java
 17 feature translation is incremental; records are translated. Sealed types
 default to advisory translation as ordinary C++ inheritance, with comments
@@ -13,8 +14,9 @@ listing permitted direct subtypes; C++ does not enforce the permits restriction.
 Set `j2c.sealedTypes` to `reject` to stop translation on sealed or non-sealed
 declarations.
 
-The VSIX includes the project license and third-party dependency inventory;
-see `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`.
+The VSIX includes the project license, the third-party dependency inventory,
+and the dependencies' license texts and original notices; see `LICENSE.txt`,
+`THIRD-PARTY-NOTICES.txt`, and `licenses/`.
 
 Generated record headers warn that C++ assignment can replace component
 values. Review generated value methods against translated component runtime
@@ -30,8 +32,11 @@ The extension uses source roots from `j2c.sourcePaths`, then
 `java.project.sourcePaths`, and finally existing conventional `src` folders.
 Set `j2c.sourcePaths` to the source roots for the Java project if automatic
 detection does not match the project layout. Dependency jars and class
-directories can be supplied with `j2c.classPath`.
+directories can be supplied with `j2c.classPath`. Set `j2c.javaExecutable`
+if `java` on the `PATH` is not Java 11 or newer, and `j2c.cliJar` to use a
+CLI JAR other than the bundled one.
 
 To run the focused integration checks separately, first build the CLI from the
 repository root with `mvn package`, then run `npm run test:cli` and
-`npm run test:extension` here.
+`npm run test:extension` here; `npm run test:licenses` checks the bundled
+license notices against the resolved dependencies.

@@ -7,276 +7,316 @@ with its own repository, release process, documentation, and issue tracking.
 Preserve the original repository as the upstream/legacy Eclipse project, and
 retain Git history in the new repository.
 
-The first public release should be described as a preview unless the validation
-gates below establish broader confidence. It must not imply complete
+The first public release is a **preview**. It must not imply complete
 Java-to-C++ semantic equivalence.
 
 ## Current known state
 
-- The public destination `juangp3/j2cpp` now contains the `modern-release`
-  branch. The original `arnetheduck/j2c` repository remains intact.
-- The local branch `modern-release` has an additional `modern` remote pointing
-  to the new repository; `origin` still points to the original. The reviewed
-  release commits were pushed; unrelated worktree changes were not.
-- The current worktree is based on `arnetheduck/j2c` and contains modernization
-  source changes, documentation, generated files, and IDE metadata. Generated
-  `plugin/bin` and `test/bin` are ignored, not deleted. IDE-generated
-  `.project` and Eclipse manifest edits and a legacy handler edit are being
-  kept out of the modern product scope.
-- The root README and VS Code README describe the CLI, extension, and
-  incremental Java 17 support. EPL-1.0 text is in the root `LICENSE` and
-  copied into the VSIX. `THIRD-PARTY-NOTICES.txt` inventories the CLI's 16
-  runtime dependencies and is copied into the VSIX; legal notice completeness
-  still needs review.
-- A Node CLI integration suite checks CLI help, sealed advisory/reject/invalid
-  policies, record translation, and output paths containing spaces.
-  `vscode:prepublish` builds the CLI and runs this suite.
-- A fresh VSIX was packaged and installed in an isolated VS Code profile. It
-  includes the extension, bundled CLI JAR, project license, and dependency
-  notices. Its installed CLI JAR hash matched the packaged copy and translated
-  the Java 17 records fixture successfully. `npm audit` reports no
-  vulnerabilities for the current dependency tree.
-- Extension-level integration checks cover configured source/class paths,
-  custom CLI and Java executable settings, invalid/missing inputs, missing
-  CLI JAR, nonzero CLI exits, and process-start failures. They run during
-  `vscode:prepublish` and pass locally.
-- The first GitHub Actions run failed in the Java 11 matrix leg because CLI
-  integration tests attempted to translate Java 17 sealed/record fixtures.
-  Those feature checks are now gated on the executing Java version; local
-  packaging passes, and follow-up CI run `38058979996` passed both Java 11 and
-  Java 17 jobs, including generated-C++ compilation and VSIX upload.
-- Maven has no JVM test sources; integration tests are Node-based. Generated
-  Java 17 control-flow and record fixtures both compile as C++20 with Ubuntu
-  WSL's GCC 13.3.0; the same checks are now included in CI.
-- Maven and VS Code extension versions are both `0.6.0`.
-- The extension publisher is set to `juangp3` at the user's direction.
-  The Marketplace item URL for `juangp3.j2c` returns 404; publisher ownership
-  and publication authorization remain unverified. Interactive extension
-  translation has not been performed.
+Last rechecked on 2026-10-10 against local `modern-release`.
 
-These observations are a starting inventory, not an assertion that no other
-release blockers exist. Recheck them on the release branch.
+- **Repositories.** `juangp3/j2cpp` is public and has a single branch,
+  `modern-release`, which is therefore its default branch. Locally, `origin`
+  still points to `arnetheduck/j2c` (left intact) and `modern` points to
+  `juangp3/j2cpp`. No release tags exist.
+- **Pushed state.** `modern/modern-release` is at `409a0be`. The release
+  infrastructure and licensing changes described below are local and not yet
+  pushed.
+- **Worktree.** Clean on `modern-release`. The legacy Eclipse IDE metadata
+  (`plugin/.project`, `test/.project`, `plugin/META-INF/MANIFEST.MF`) and the
+  `HandlerHelper.java` handler edit are parked on the local, unpushed branch
+  `legacy/eclipse-ide-edits` (`e4261f0`). Generated `plugin/bin`, `test/bin`,
+  `target`, the staged CLI JAR, copied license files, and VSIX packages are
+  ignored.
+- **Documentation.** The root README and VS Code README describe the CLI,
+  extension, and incremental Java 17 support. `CHANGELOG.md` has a `0.6.0 —
+  Preview` section that the release workflow uses as release notes.
+- **Versions.** Maven and the VS Code extension are both `0.6.0`. The extension
+  is marked `"preview": true`, so the Marketplace shows a Preview badge. The
+  CLI is compiled with `--release 11`, matching the documented Java 11
+  minimum.
+- **Licensing.** The project's EPL-1.0 text is in `LICENSE`.
+  `THIRD-PARTY-NOTICES.txt` inventories the 16 runtime dependencies (14 under
+  EPL-2.0, 2 under Apache-2.0) and says where to get their sources (Maven
+  Central sources JARs, each verified to exist). `licenses/` holds the full
+  EPL-2.0 and Apache-2.0 texts plus every dependency's unmodified notice
+  files. Those include the Apache-2.0 OSGi materials and Jakarta Commons code
+  that some Eclipse bundles embed, along with the NOTICE that clause 4(d) of
+  the Apache license requires us to keep. Shading previously kept only one of
+  the 16 `about.html` files and dropped the rest. Shading now excludes those
+  files, and the originals ship under `META-INF/j2c-licenses/` in the JAR and
+  at the VSIX root.
+- **Checks.** `vscode:prepublish` runs, in order:
+  1. The Maven build.
+  2. `check-licenses.js`: the inventory, `licenses/dependencies/` and the
+     shaded JAR must all match `mvn dependency:list`, and no unattributed
+     notice may remain at the JAR root.
+  3. The CLI integration suite.
+  4. The extension-logic suite.
+
+  The extension-logic suite runs `extension.js` against a mocked `vscode`
+  module. It covers settings pass-through, failure surfacing, and
+  process-start failures, but not real editor integration.
+- **CI.** `ci.yml` builds and tests on Java 11 and 17 and compiles the
+  generated C++20 fixtures on Java 17. Runs `38058979996` and `38059779192`
+  passed. The latter ran on `789d478`. HEAD `409a0be` changes only
+  documentation and has no CI run of its own on record. `ci.yml` is now also
+  reusable, and pushing a tag no longer triggers a separate CI run.
+- **Release automation.** `release.yml` runs on `v*` tags:
+  1. It runs the full CI matrix.
+  2. It checks that the tag, Maven version, extension version, and changelog
+     heading agree.
+  3. It rebuilds from the tag and checks that the VSIX's bundled JAR matches
+     the standalone JAR byte for byte.
+  4. It writes `SHA256SUMS` and creates a **draft pre-release** with the JAR,
+     VSIX, checksums, and notes.
+
+  The version check, artifact staging, checksums, and notes steps were
+  dry-run locally. The `gh release` step has not run yet.
+- **Marketplace.** Publisher is `juangp3` at the user's direction. The item URL
+  for `juangp3.j2c` returns 404; publisher ownership and a publishing token
+  remain unverified.
+- **Not yet done.** Interactive translation from a real VS Code window. The
+  local `gh` CLI token is invalid (HTTP 401), so CI runs and releases can't be
+  queried or created from this machine until `gh auth login` is run.
 
 ## Phase 1 — Decide repository identity and create the destination
 
-1. **Done:** The destination is `juangp3/j2cpp`, public, and was created
-   without an auto-generated README or license.
+1. **Done:** The destination is `juangp3/j2cpp`, public, created without an
+   auto-generated README or license.
 2. **Done:** A distinct repository was chosen instead of a GitHub fork.
-3. **Done locally:** Preserve `arnetheduck/j2c`; local `origin` is unchanged
-   and the new repository has an additional `modern` remote.
-4. **Done:** Pushed the reviewed `modern-release` branch with the existing
-   project history. No release tag or artifact has been published.
+3. **Done:** `arnetheduck/j2c` is preserved; local `origin` is unchanged and
+   the new repository is the `modern` remote.
+4. **Done:** Pushed the reviewed branch with existing project history.
+5. **Pending:** Rename the published branch to `main` and make it the default
+   before tagging, so that the release, the README links, and anyone's first
+   clone all use the stable name:
+
+   ```sh
+   git branch -m modern-release main
+   git push -u modern main
+   gh repo edit juangp3/j2cpp --default-branch main
+   git push modern --delete modern-release
+   ```
 
 **Gate:** Destination identity and visibility are intentional; the original
-repository remains intact; the new repository's history and remotes are
-verified before publishing. Repository creation, local remote setup, and
-branch migration are complete; release tags and artifacts remain pending.
+repository is intact; the default branch is `main`.
 
 ## Phase 2 — Isolate and review the modernization changes
 
-1. **Done:** Recorded the current branch, remotes, tracked diff, untracked
-   files, and recent commits before changing repository configuration.
-2. **Done:** Classified the staged changes as CLI/extension behavior,
-   tests/fixtures, documentation, or release infrastructure; legacy IDE and
-   handler edits remain outside the staged set.
-3. **Done:** Reviewed generated Eclipse output and package paths. Added ignore
-   rules for `plugin/bin`, `test/bin`, Maven output, the staged CLI JAR, and
-   VSIX packages. Generated bin contents remain on disk and are not deleted.
-4. **Done:** Preserved unrelated work. Eclipse IDE metadata and a legacy
-   handler integration change remain unstaged and untouched.
-5. **Done locally:** Committed the reviewed modernization snapshot as
-   `94ceede` (`feat: add modern J2C CLI and VS Code extension`) and the
-   clean-checkout verification update as `db5cc3c`, preserving existing
-   history.
-6. **Done:** Added and checked ignore rules for generated Maven output,
-   Eclipse bin folders, extension dependencies, copied CLI JAR, generated
-   license copy, and VSIX packages.
+1. **Done:** Recorded branch, remotes, tracked diff, untracked files, and
+   recent commits before changing repository configuration.
+2. **Done:** Classified changes as CLI/extension behavior, tests/fixtures,
+   documentation, or release infrastructure.
+3. **Done:** Added ignore rules for generated Eclipse, Maven, extension, and
+   packaging output. Generated `bin` contents remain on disk.
+4. **Done:** Moved the unrelated legacy IDE and handler edits off the release
+   branch onto local branch `legacy/eclipse-ide-edits`. Nothing was discarded.
+5. **Done:** Committed the modernization snapshot (`94ceede`) and follow-ups.
+6. **Done:** Moved this plan from the repository root to `docs/`.
 
-**Gate:** Every committed file is explained by the release and unrelated work
-is preserved. A detached clean worktree reproduced the Maven build, CLI
-integration tests, extension package, and C++ checks. The reviewed branch is
-pushed; its GitHub CI run remains pending.
+**Gate (passed):** Every committed file is explained by the release; unrelated
+work is preserved off-branch; a detached clean worktree reproduced the build,
+tests, package, and C++ checks; CI passed on `789d478`.
 
 ## Phase 3 — Define product scope and project documentation
 
-Document a narrow and honest first-release support contract:
+Support contract for the first release:
 
 - The CLI parses Java 17 source and generates C++20-targeted output.
-- Java 17 feature support is incremental. Document the verified support for
+- Java 17 feature support is incremental. Verified slices:
   pattern-matching `instanceof`, switch expressions, records, and sealed-type
-  advisory metadata separately; do not imply complete Java 17 support.
+  advisory metadata. Complete Java 17 support is not claimed.
 - Sealed types default to ordinary C++ inheritance with comments listing
-  permitted direct subtypes. The generated C++ does not enforce Java's
-  `permits` restriction. `--sealed-types reject` opts into rejecting sealed
-  and non-sealed declarations.
-- Generated output may require manual correction and a compatible Java runtime
-  implementation. State known semantic gaps for records and any other
-  verified limitations.
-- State the Java runtime required to run the CLI and the C++20 toolchain
-  requirement for generated Makefiles.
+  permitted direct subtypes; C++ does not enforce `permits`.
+  `--sealed-types reject` rejects sealed and non-sealed declarations.
+- Generated output may need manual correction and a compatible Java runtime
+  implementation. Known record semantic gaps are documented.
+- Java 11+ runs the CLI; generated Makefiles need a C++20 toolchain.
 
-Then:
+1. **Done:** Root README rewritten as the entry point for the CLI and extension.
+2. **Done:** Legacy Eclipse install/release steps removed from the root README.
+3. **Done:** VS Code README covers invocation, settings, paths, prerequisites,
+   packaging, and limitations.
+4. **Done:** `CHANGELOG.md` has a `0.6.0 — Preview` section with scope and
+   limitations.
+5. **Done:** Relationship to `arnetheduck/j2c` documented.
 
-1. **Done locally:** Rewrote the root README as the entry point for the modern
-   CLI and VS Code extension.
-2. **Done locally:** Legacy Eclipse install/release steps are no longer in the
-   modern root README; the original project history remains upstream.
-3. **Done locally:** Updated the VS Code README to explain invocation, settings,
-   source/class paths, CLI prerequisites, packaging, and limitations.
-4. **Done locally:** Added `CHANGELOG.md` with preview scope and limitations.
-5. **Done locally:** Documented the relationship to `arnetheduck/j2c`.
-
-**Gate:** A new user can identify the supported entry points, run a documented
-example, and understand what the translator does not guarantee. Documentation
-was revised locally and should receive a final review before the repository is
-made public through a push.
+**Gate (passed; the repository is already public):** A new user can identify
+the entry points, run the documented example, and see what the translator does
+not guarantee. Re-read both READMEs once more on the frozen release commit.
 
 ## Phase 4 — Verify identity, version, and licensing
 
-1. **Partially done:** GitHub repo is `juangp3/j2cpp`; extension publisher is
-   `juangp3` by user choice. Publisher registration/ownership still needs user
-   verification before Marketplace publishing.
-2. **Done for the candidate:** Maven and VS Code versions are both `0.6.0`;
-   confirm this version before creating a release tag.
-3. **Confirmed by user:** Public redistribution of the source under EPL-1.0
-   with upstream attribution is authorized. Retain the license text and
-   attribution in the repository and published artifacts.
-4. **Done locally:** Generated a 16-artifact runtime dependency inventory and
-   added it to the repository and VSIX. Legal review of the dependency notices
-   remains outstanding.
-5. Verify the VS Code engine range, Java runtime requirement, command name,
-   settings schema, and publisher ownership.
+1. **Partially done:** GitHub repository `juangp3/j2cpp`; extension publisher
+   `juangp3`. **Pending (user):** create or confirm the `juangp3` publisher
+   at <https://marketplace.visualstudio.com/manage> and an Azure DevOps personal
+   access token with Marketplace *Manage* scope.
+2. **Done:** Maven and extension versions are `0.6.0`; `release.yml`
+   enforces agreement with the tag and changelog.
+3. **Confirmed by user:** Public redistribution under EPL-1.0 with upstream
+   attribution is authorized.
+4. **Done:** Dependency notices are complete and shipped:
+   - The inventory.
+   - The full license texts.
+   - Each dependency's original notice files.
+   - Where to obtain each dependency's source.
+
+   `check-licenses.js` keeps the notices in sync with the resolved
+   dependencies. A human legal review is still recommended but no longer
+   blocks a preview.
+5. **Done:** VS Code engine `^1.85.0`, Java 11+ requirement, `j2c.translate`
+   command, and the five `j2c.*` settings are consistent between
+   `package.json` and both READMEs.
 
 **Gate:** The source, CLI artifact, VSIX, Marketplace metadata, and release
 page have consistent names, versions, requirements, and license information.
-Publisher verification and legal review of dependency notices remain pending.
+Only publisher verification remains.
 
-## Phase 5 — Build automated behavior regression checks
+## Phase 5 — Automated behavior regression checks
 
-Add repeatable tests and wire them into a documented command and CI. Initial
-CLI integration coverage is in `vscode/scripts/test-cli.js` and runs during
-extension prepublish:
+All checks run via `npm run vscode:prepublish` (and so in CI and the release
+workflow):
 
-### CLI behavior
+- **License consistency** (`check-licenses.js`): inventory, notice directories,
+  and JAR contents match the resolved runtime dependencies.
+- **CLI behavior** (`test-cli.js`):
+  - `--help`, missing input, missing option values, and invalid
+    `--sealed-types` values.
+  - Translation and output paths containing spaces.
+  - Java 17 fixtures, gated on the Java version running the tests:
+    - Pattern `instanceof` and switch expressions.
+    - Records.
+    - Sealed advisory, reject, and invalid policies.
+- **Extension logic** (`test-extension.js`, mocked `vscode`):
+  - Configured source and class paths.
+  - Custom CLI and Java executables.
+  - `j2c.sealedTypes` pass-through.
+  - Invalid or missing inputs and a missing CLI JAR.
+  - Nonzero exits and process-start failures.
 
-- `--help`, missing required input, missing option values, and invalid
-  `--sealed-types` values.
-- Successful translation of a small Java input and source-dependency
-  resolution.
-- Paths containing spaces and platform-specific path-list behavior where
-  supported.
-- Expected non-zero exit status and useful diagnostics on translation errors.
+Not yet covered: record component combinations beyond the fixture, and real
+VS Code host integration (see Phase 7 step 5). Consider `@vscode/test-electron`
+after the preview.
 
-### Java 17 fixtures
-
-- **Covered by the CLI integration script:** pattern-matching `instanceof` and
-  switch expressions translate successfully; expected switch-case return
-  expressions are checked in the generated C++.
-- Records with primitive, object, array, float, and double components.
-- Canonical, compact, auxiliary, and explicit method cases where applicable.
-- Generated record members do not collide with explicitly implemented
-  `equals`, `hashCode`, or `toString`.
-- Sealed advisory output contains the permitted direct subtypes and says that
-  C++ does not enforce the restriction.
-- Non-sealed output is identified as an open inheritance branch.
-- Reject mode rejects both sealed and non-sealed declarations.
-
-### Extension behavior
-
-- The `j2c.sealedTypes` setting is passed to the bundled CLI.
-- The packaged extension includes and invokes the bundled CLI.
-- CLI failures surface to the user rather than looking like successful
-  translation.
-
-**Gate:** CLI integration checks and package generation pass locally.
-Extension setting pass-through and UI-level failure behavior coverage remain
-pending; CI has been configured but not yet run in GitHub.
+**Gate (passed):** All automated checks pass locally and passed in CI on
+`789d478`.
 
 ## Phase 6 — Validate generated C++ and practical end-to-end use
 
-1. **Done locally:** Translated `Java17ControlFlow.java` and
-   `Java17Records.java` into separate generated projects using the CLI.
-2. **Done locally:** Both projects compiled with `make`/GCC 13.3.0 in Ubuntu
-   24.04 WSL using `-std=c++20`.
-3. **Done locally:** Ran a C++ harness against generated `switchValue` output;
-   cases `0`, `1`, `2`, and the default case returned their expected values.
-4. **Done:** Added translation, compilation, and switch behavior checks to the
-   Java 17 CI job.
-5. One generated Java runtime stub emitted a pre-existing missing-return
-   warning; compilation succeeded. This proof covers these fixtures only,
-   not arbitrary generated Java.
+1. **Done:** Translated `Java17ControlFlow.java` and `Java17Records.java` with
+   the CLI.
+2. **Done:** Both compile with `make` and GCC 13 using `-std=c++20`, locally
+   (WSL) and in CI.
+3. **Done:** A C++ harness checks generated `switchValue` results in CI.
+4. A pre-existing missing-return warning in one generated Java runtime stub
+   remains; it does not fail compilation. This proof covers these fixtures
+   only.
 
-**Gate:** Local compile proof passes. GitHub CI still must pass on the reviewed
-release commit; keep preview limitations explicit.
+**Gate (passed):** Compile proof passes in CI; preview limitations stay
+explicit.
 
-## Phase 7 — Add clean-checkout CI and package verification
+## Phase 7 — Clean-checkout CI and package verification
 
-1. **Done locally:** Added a GitHub Actions workflow for build, CLI integration
-   checks, and VSIX packaging.
-2. **Configured:** CI matrix covers Java 11 and Java 17 runtimes; the CLI
-   integration checks parse Java 17 source on both.
-3. **Done locally:** Pinned `@vscode/vsce` 4.0.0 and produced a fresh VSIX.
-   `npm audit` reports zero vulnerabilities.
-4. **Done locally:** VSIX includes extension code, CLI JAR, README, project
-   license, and a third-party runtime dependency inventory.
-5. **Partially done:** Installed the fresh VSIX into an isolated profile and
-   confirmed the `juangp3.j2c` extension ID and version. The installed bundled
-   CLI translated a Java 17 records fixture. Interactive editor-command
-   translation remains unverified.
-6. **Done locally:** Rebuilt from a detached clean worktree with `npm ci`,
-   Maven, extension packaging, CLI integration tests, and generated-C++
-   compilation rather than relying on existing build output.
+1. **Done:** GitHub Actions workflow for build, tests, and VSIX packaging on
+   Java 11 and 17.
+2. **Done:** `@vscode/vsce` pinned to 4.0.0; `npm audit` reports zero
+   vulnerabilities.
+3. **Done:** The VSIX contains:
+   - The extension code and the CLI JAR.
+   - The README and CHANGELOG.
+   - The project license.
+   - `THIRD-PARTY-NOTICES.txt` and the `licenses/` tree.
+4. **Done:** Rebuilt from a detached clean worktree using `npm ci`.
+5. **Pending (manual, about 5 minutes):** Interactive check in a clean profile:
 
-**Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
-clean-profile installation pass locally. Follow-up GitHub Actions run
-`38059779192` passed both Java matrix jobs, extension configuration/failure
-checks, generated-C++ compilation, and VSIX upload on candidate commit
-`789d478`. A bundled-CLI smoke test also passes locally. Interactive
-editor-command translation remains pending; rerun CI against the finalized
-release commit.
+   ```sh
+   code --user-data-dir "$TMP/j2c-ud" --extensions-dir "$TMP/j2c-ext" \
+     --install-extension vscode/j2c-0.6.0.vsix
+   code --user-data-dir "$TMP/j2c-ud" --extensions-dir "$TMP/j2c-ext" test
+   ```
+
+   Then:
+   1. Open `src/se/arnetheduck/j2c/test/Java17Records.java` and run
+      **J2C: Translate to C++** from the editor context menu into a new
+      empty folder.
+   2. Check that the progress notification appears, the J2C output channel
+      shows the CLI log, and C++ files are written.
+   3. Run it once from the Explorer context menu on the `src` folder.
+   4. Set `j2c.sealedTypes` to `reject`, translate `Java17Unsupported.java`,
+      and confirm an error is shown.
+
+   Record the outcome here.
+
+**Gate:** Steps 1–4 passed; step 5 must pass before tagging.
 
 ## Phase 8 — Release and post-release verification
 
-1. Freeze the reviewed release commit; ensure the worktree is clean.
-2. Run the full release-check command and retain its output.
-3. Tag the agreed version only after all go/no-go gates pass.
-4. Build the CLI JAR and VSIX from that tag in a clean environment.
-5. Create a draft GitHub release with both artifacts, release notes,
-   prerequisites, support limits, and checksums.
-6. Verify the artifacts by downloading them and checking their checksums.
-7. Publish the Marketplace extension only after verifying the publisher,
-   extension ID, package contents, and authorization to publish.
-8. Install the published Marketplace version in a clean profile and perform a
-   final translation smoke test.
-9. Keep a rollback/superseding-release procedure ready and monitor initial
-   issues.
+1. **Freeze.** Commit the release changes on `main` (Phase 1 step 5), push,
+   and confirm `git status` is clean.
+2. **CI on the exact commit.** Wait for `ci.yml` to pass on the pushed commit
+   and record the run ID here.
+3. **Tag.** Only after every go/no-go item below is checked:
 
-**Gate:** GitHub artifacts and the Marketplace package correspond to the same
-tag and commit, can be downloaded/installed, and match the documented
-requirements.
+   ```sh
+   git tag -a v0.6.0 -m "J2C Modern Edition 0.6.0 (preview)"
+   git push modern v0.6.0
+   ```
+
+4. **Draft release.** `release.yml` reruns CI on the tag, rebuilds both
+   artifacts from the tag, checks versions, and creates a draft pre-release
+   containing `j2c-cli-0.6.0.jar`, `j2c-0.6.0.vsix`, `SHA256SUMS`, and notes.
+5. **Verify.** Download the draft's assets into an empty directory, run
+   `sha256sum -c SHA256SUMS`, and check that `java -jar j2c-cli-0.6.0.jar
+   --help` works and the VSIX installs. Review the notes, then publish the
+   draft (it stays marked pre-release).
+6. **Marketplace.** After publisher verification, publish the *same* VSIX that
+   was attached to the release (do not rebuild):
+
+   ```sh
+   npx @vscode/vsce publish --packagePath j2c-0.6.0.vsix
+   ```
+
+7. **Post-publish smoke test.** Install `juangp3.j2c` from the Marketplace into
+   a clean profile and repeat the Phase 7 step 5 translation.
+8. **Rollback and superseding releases:**
+   - A bad GitHub release can be returned to draft, edited, or deleted. Never
+     move or reuse a published tag; fix forward with `v0.6.1`.
+   - The Marketplace cannot republish a version number, and unpublishing
+     removes the whole extension. Fix forward by bumping both versions to
+     `0.6.1`, adding a changelog entry, and repeating steps 1–7.
+   - Watch GitHub issues for the first week; label translator gaps separately
+     from packaging bugs.
+
+**Gate:** GitHub artifacts and the Marketplace package come from the same tag
+and commit, verify against `SHA256SUMS`, install cleanly, and match the
+documented requirements.
 
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.
-- [x] Existing project history preserved locally; upstream repository left
-      intact.
+- [x] Existing project history preserved; upstream repository left intact.
 - [x] Release changes isolated, reviewed, and reproducible from a clean
-      checkout.
+      checkout; legacy edits parked off-branch.
 - [x] Generated output excluded or explicitly justified.
 - [x] Product scope and limitations are accurate in both READMEs.
-- [ ] Project identity, version, publisher, license, and notices verified.
+- [x] Version and license information are consistent; third-party notices,
+      license texts, and source locations ship in the JAR and VSIX.
+- [ ] Marketplace publisher `juangp3` verified and publishing token available
+      (needed only for Phase 8 step 6; the GitHub release can proceed
+      without it).
+- [ ] Default branch renamed to `main`.
 - [x] CLI and Java 17 behavior tests pass.
-- [x] Extension configuration and failure handling are tested.
-- [x] Generated-C++ compile proof passes in CI for representative fixtures on
-      candidate commit `789d478`.
-- [ ] CI builds and tests the exact release commit after it is frozen.
-- [x] Fresh VSIX is packaged, inspected, installed, and exercised through its
-      bundled CLI; interactive editor-command translation remains unverified.
-- [ ] Release artifacts, checksums, notes, and rollback path are ready.
+- [x] Extension configuration and failure handling are tested (mocked host).
+- [ ] Interactive VS Code translation verified in a clean profile.
+- [x] Generated-C++ compile proof passes in CI for representative fixtures.
+- [ ] CI passes on the exact frozen release commit (run ID recorded).
+- [x] Release workflow builds artifacts from the tag, writes checksums and
+      notes, and drafts a pre-release; rollback path documented.
+- [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
 
 ## Recommended release posture
 
-Treat the first independent release as a preview/beta unless all relevant
-behavior, packaging, and generated-C++ gates pass with sufficient coverage.
-Do not market it as a production-grade, semantics-preserving Java 17 compiler
-solely because the CLI and VS Code extension build successfully.
+Ship 0.6.0 as a preview: a GitHub pre-release, and a Marketplace listing with
+the Preview badge. Do not market it as a production-grade,
+semantics-preserving Java 17 compiler solely because the CLI and VS Code
+extension build successfully.

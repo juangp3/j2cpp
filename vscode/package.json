@@ -5,6 +5,7 @@
   "version": "0.6.0",
   "publisher": "juangp3",
   "license": "EPL-1.0",
+  "preview": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/juangp3/j2cpp.git"
