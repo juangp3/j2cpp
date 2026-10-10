@@ -93,22 +93,22 @@ try {
 	fs.writeFileSync(unsupportedSource, [
 		"package scratch;",
 		"public class Unsupported {",
+		"\tstatic final boolean EMPTY = ((Object) \"\") instanceof String s && s.isEmpty();",
 		"\tstatic int run() {",
-		"\t\tInteger k = 1;",
-		"\t\tRunnable r = (Runnable & java.io.Serializable) () -> {};",
-		"\t\treturn switch (k) { case 1 -> 2; default -> 3; };",
+		"\t\tint x = \"text\";",
+		"\t\treturn x;",
 		"\t}",
 		"}",
 		""
 	].join("\n"));
-	const intersectionProblem = "Unsupported.java:5: Java 8 lambda expression cannot be translated: its target is an intersection type";
-	const boxedSwitchProblem = "Unsupported.java:6: switch expressions on Integer are not supported";
+	const patternProblem = "Unsupported.java:3: instanceof patterns outside method bodies, such as in field initializers, are not supported";
+	const compileProblem = "Unsupported.java:5: Type mismatch: cannot convert from String to int";
 	const unsupportedOutput = path.join(tempDirectory, "unsupported output");
 	fs.mkdirSync(unsupportedOutput);
 	const unsupported = runCli(["--output", unsupportedOutput, unsupportedSource]);
 	assert.strictEqual(unsupported.status, 1, unsupported.stdout);
-	assert(unsupported.stderr.includes(intersectionProblem), unsupported.stderr);
-	assert(unsupported.stderr.includes(boxedSwitchProblem), unsupported.stderr);
+	assert(unsupported.stderr.includes(patternProblem), unsupported.stderr);
+	assert(unsupported.stderr.includes(compileProblem), unsupported.stderr);
 	assert(!unsupported.stderr.includes("\tat "), "User errors must not print a stack trace");
 
 	// --check reports every problem and writes nothing, not even into cwd
@@ -116,11 +116,11 @@ try {
 	fs.mkdirSync(checkDirectory);
 	const checked = runCli(["--check", unsupportedSource], { cwd: checkDirectory });
 	assert.strictEqual(checked.status, 1, checked.stderr);
-	assert(checked.stdout.includes(intersectionProblem));
-	assert(checked.stdout.includes(boxedSwitchProblem));
+	assert(checked.stdout.includes(patternProblem));
+	assert(checked.stdout.includes(compileProblem));
 	assert(checked.stdout.includes("J2C check: 2 problem(s) in 1 of 1 file(s)"));
-	assert(checked.stdout.includes("1 x lambda expression"));
-	assert(checked.stdout.includes("1 x switch expression selector"));
+	assert(checked.stdout.includes("1 x instanceof pattern"));
+	assert(checked.stdout.includes("1 x compile error"));
 	assert.deepStrictEqual(fs.readdirSync(checkDirectory), []);
 
 	// Lambdas and method references are rewritten into anonymous classes
