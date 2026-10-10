@@ -731,8 +731,8 @@ public final class TransformUtil {
 		out.println();
 	}
 
-	public static void printParams(PrintWriter out, ITypeBinding tb,
-			IMethodBinding mb, boolean parens, DepInfo deps) {
+	public static void printParams(Transformer ctx, PrintWriter out,
+			ITypeBinding tb, IMethodBinding mb, boolean parens, DepInfo deps) {
 		if (parens) {
 			out.print("(");
 		}
@@ -747,7 +747,7 @@ public final class TransformUtil {
 			out.print(TransformUtil.relativeRef(pb, tb, true));
 			out.print(" ");
 
-			out.print(paramName(mb, i));
+			out.print(ctx.paramName(mb, i));
 		}
 
 		if (parens) {
@@ -889,10 +889,10 @@ public final class TransformUtil {
 						pw.print("dynamic_cast< ");
 						pw.print(TransformUtil.relativeRef(pb, tb, true));
 						pw.print(" >(");
-						pw.print(paramName(mb2, i));
+						pw.print(ctx.paramName(mb2, i));
 						pw.print(")");
 					} else {
-						pw.print(paramName(mb2, i));
+						pw.print(ctx.paramName(mb2, i));
 					}
 				}
 
@@ -1005,7 +1005,7 @@ public final class TransformUtil {
 			pw.print(CName.of(mb) + "(");
 		}
 
-		printParams(pw, type, mb, false, deps);
+		printParams(ctx, pw, type, mb, false, deps);
 		pw.print(")");
 	}
 
@@ -1023,7 +1023,7 @@ public final class TransformUtil {
 				pw.print(sep
 						+ varTypeCName(closure.getModifiers(),
 								closure.getType(), type, deps) + " "
-						+ ctorClosureName(closure, type, ctor));
+						+ ctorClosureName(ctx, closure, type, ctor));
 				sep = ", ";
 			}
 		}
@@ -1040,11 +1040,11 @@ public final class TransformUtil {
 
 	// There may be a conflict between the name of a closure an a constructor
 	// parameter - avoid this conflict by renaming the closure
-	public static String ctorClosureName(IVariableBinding closure,
-			ITypeBinding type, IMethodBinding ctor) {
+	public static String ctorClosureName(Transformer ctx,
+			IVariableBinding closure, ITypeBinding type, IMethodBinding ctor) {
 		String ret = CName.of(closure, type);
 		for (int i = 0; ctor != null && i < ctor.getParameterTypes().length; ++i) {
-			if (ret.equals(paramName(ctor, i))) {
+			if (ret.equals(ctx.paramName(ctor, i))) {
 				ret = ret + "_";
 				i = 0; // Start over
 			}

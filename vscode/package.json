@@ -1,0 +1,90 @@
+{
+  "name": "j2c",
+  "displayName": "J2C Java to C++",
+  "description": "Translate Java source code to C++ using the J2C converter.",
+  "version": "0.6.0",
+  "publisher": "juangp3",
+  "license": "EPL-1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juangp3/j2cpp.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "vscode:prepublish": "node scripts/prepare.js",
+    "test:cli": "node scripts/test-cli.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0"
+  },
+  "activationEvents": [
+    "onCommand:j2c.translate"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "j2c.translate",
+        "title": "J2C: Translate to C++"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "j2c.translate",
+          "when": "editorLangId == java"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "j2c.translate",
+          "when": "resourceLangId == java || resourceIsFolder",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "J2C",
+      "properties": {
+        "j2c.sourcePaths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Java source roots relative to the workspace folder. Defaults to java.project.sourcePaths, then conventional src folders."
+        },
+        "j2c.classPath": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Dependency jars or class directories, absolute or relative to the workspace folder."
+        },
+        "j2c.cliJar": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a J2C CLI jar. The packaged extension includes one by default."
+        },
+        "j2c.javaExecutable": {
+          "type": "string",
+          "default": "java",
+          "description": "Java 11 or newer executable used to run the bundled CLI."
+        },
+        "j2c.sealedTypes": {
+          "type": "string",
+          "enum": ["advisory", "reject"],
+          "default": "advisory",
+          "description": "How to handle Java sealed and non-sealed types. Advisory emits C++ inheritance and informational permits comments; reject stops translation."
+        }
+      }
+    }
+  }
+}

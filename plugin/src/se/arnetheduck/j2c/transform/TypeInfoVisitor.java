@@ -14,6 +14,7 @@ import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.Initializer;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.Modifier;
+import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
@@ -93,6 +94,18 @@ public class TypeInfoVisitor extends ASTVisitor {
 	}
 
 	@Override
+	public boolean visit(RecordDeclaration node) {
+		typeInfo = new TypeInfo(typeInfo, node.resolveBinding());
+		unitInfo.types.put(typeInfo.type(), typeInfo);
+		return true;
+	}
+
+	@Override
+	public void endVisit(RecordDeclaration node) {
+		typeInfo = typeInfo.parent();
+	}
+
+	@Override
 	public void endVisit(TypeDeclaration node) {
 		typeInfo = typeInfo.parent();
 	}
@@ -133,8 +146,12 @@ public class TypeInfoVisitor extends ASTVisitor {
 		}
 
 		if (vb.getDeclaringMethod() == null) {
-			IJavaElement je = vb.getJavaElement().getAncestor(
-					IJavaElement.INITIALIZER);
+			IJavaElement variableElement = vb.getJavaElement();
+			if (variableElement == null) {
+				return false;
+			}
+			IJavaElement je = variableElement
+					.getAncestor(IJavaElement.INITIALIZER);
 
 			// Could be a variable in an initializer block
 			if (je == null

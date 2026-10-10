@@ -16,22 +16,21 @@ import java.util.WeakHashMap;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.jdt.core.BindingKey;
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IType;
-import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTRequestor;
+import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
+import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.Modifier;
+import org.eclipse.jdt.core.dom.RecordDeclaration;
+import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 import se.arnetheduck.j2c.snippets.GetSetSnippet;
@@ -42,38 +41,50 @@ public class Transformer {
 	private static final String OBJECT_ARRAY_HPP = "/se/arnetheduck/j2c/resources/ObjectArray.hpp";
 	private static final String SUB_ARRAY_HPP = "/se/arnetheduck/j2c/resources/SubArray.hpp";
 
-	private final IJavaProject project;
+	private final SourceProject project;
 
 	private final String name;
 
 	private final IPath root;
 
+	private final SealedTypes sealedTypes;
+
 	private final Stats direct = new Stats();
 	private final Stats deps = new Stats();
 
+	public enum SealedTypes {
+		ADVISORY, REJECT
+	}
+
 	public final static class ICUComparator implements
-			Comparator<ICompilationUnit> {
+			Comparator<SourceUnit> {
 		@Override
-		public int compare(ICompilationUnit o1, ICompilationUnit o2) {
-			return o1.getPath().toString().compareTo(o2.getPath().toString());
+		public int compare(SourceUnit o1, SourceUnit o2) {
+			return o1.compareTo(o2);
 		}
 	}
 
-	public Transformer(IJavaProject project, String name, IPath root)
+	public Transformer(SourceProject project, String name, IPath root)
 			throws Exception {
+		this(project, name, root, SealedTypes.ADVISORY);
+	}
+
+	public Transformer(SourceProject project, String name, IPath root,
+			SealedTypes sealedTypes) throws Exception {
 		this.project = project;
 		this.name = name;
 		this.root = root;
+		this.sealedTypes = sealedTypes;
 
 		snippets.add(new GetSetSnippet());
 		snippets.add(new ReplaceInvocation());
 	}
 
-	public final Set<ICompilationUnit> selection = new TreeSet<ICompilationUnit>(
+	public final Set<SourceUnit> selection = new TreeSet<SourceUnit>(
 			new ICUComparator());
 
 	/** Compilation units that are scheduled for processing */
-	public final Set<ICompilationUnit> todo = new TreeSet<ICompilationUnit>(
+	public final Set<SourceUnit> todo = new TreeSet<SourceUnit>(
 			new ICUComparator());
 
 	/** Type bindings that didn't have a corresponding compilation unit */
@@ -81,6 +92,8 @@ public class Transformer {
 			new BindingComparator());
 
 	private final Map<String, ForwardWriter.Info> forwards = new HashMap<String, ForwardWriter.Info>();
+
+	private final Map<String, String[]> parameterNames = new HashMap<String, String[]>();
 
 	private final MakefileWriter.Info sel = new MakefileWriter.Info();
 	private final MakefileWriter.Info ext = new MakefileWriter.Info();
@@ -93,7 +106,7 @@ public class Transformer {
 
 	protected AST currentAST;
 
-	public void process(IProgressMonitor monitor, ICompilationUnit... units)
+	public void process(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
 		monitor.subTask("Moving old files");
 		renameOld();
@@ -194,10 +207,10 @@ public class Transformer {
 		}
 	}
 
-	private void processSome(IProgressMonitor monitor) {
-		ICompilationUnit[] units = new ICompilationUnit[Math.min(256,
+	private void processSome(IProgressMonitor monitor) throws Exception {
+		SourceUnit[] units = new SourceUnit[Math.min(256,
 				todo.size())];
-		Iterator<ICompilationUnit> it = todo.iterator();
+		Iterator<SourceUnit> it = todo.iterator();
 		for (int n = 0; it.hasNext() && n < units.length; n++) {
 			units[n] = it.next();
 			it.remove();
@@ -207,60 +220,130 @@ public class Transformer {
 		writeDeps(monitor);
 	}
 
-	private void write(final IProgressMonitor monitor,
-			ICompilationUnit... units) {
-		parse(units, new ASTRequestor() {
+	private void write(IProgressMonitor monitor, SourceUnit... units)
+			throws Exception {
+		for (SourceUnit source : units) {
+			CompilationUnit ast = project.parse(source, monitor);
+			recordParameterNames(ast);
+			currentAST = ast.getAST();
+			if (selection.contains(source)) {
+				cur = sel;
+			} else {
+				cur = ext;
+			}
+			try {
+				throwIfErrors(source, ast);
+				throwIfUnsupported(source, ast);
+				writeImpl(monitor, source, ast);
+			} finally {
+				currentAST = null;
+			}
+		}
+	}
+
+	private void recordParameterNames(CompilationUnit ast) {
+		ast.accept(new ASTVisitor() {
 			@Override
-			public void acceptAST(ICompilationUnit source, CompilationUnit ast) {
-				currentAST = ast.getAST();
-				if (selection.contains(source)) {
-					cur = sel;
-				} else {
-					cur = ext;
+			public boolean visit(MethodDeclaration node) {
+				IMethodBinding method = node.resolveBinding();
+				String key = methodKey(method);
+				if (key == null) {
+					return true;
 				}
 
-				try {
-					if (hasError(ast)) {
-						for (AbstractTypeDeclaration type : (List<AbstractTypeDeclaration>) ast
-								.types()) {
-							ITypeBinding tb = type.resolveBinding();
-							writeHeader(source, tb);
-						}
-					} else {
-						writeImpl(monitor, source, ast);
-					}
-				} catch (Throwable e) {
-					e.printStackTrace();
+				String[] names = new String[node.parameters().size()];
+				for (int i = 0; i < names.length; ++i) {
+					SingleVariableDeclaration parameter = (SingleVariableDeclaration) node
+							.parameters().get(i);
+					names[i] = parameter.getName().getIdentifier();
 				}
-				currentAST = null;
+				parameterNames.put(key, names);
+				return true;
 			}
 		});
 	}
 
-	private static boolean hasError(CompilationUnit ast) {
+	private static String methodKey(IMethodBinding method) {
+		if (method == null) {
+			return null;
+		}
+
+		IMethodBinding declaration = method.getMethodDeclaration();
+		return declaration == null ? null : declaration.getKey();
+	}
+
+	public String paramName(IMethodBinding method, int index) {
+		String[] names = parameterNames.get(methodKey(method));
+		if (names != null && index >= 0 && index < names.length) {
+			return CName.keywords(names[index]);
+		}
+		return TransformUtil.paramName(method, index);
+	}
+
+	private static void throwIfErrors(SourceUnit source, CompilationUnit ast) {
+		StringBuilder errors = new StringBuilder();
 		for (IProblem p : ast.getProblems()) {
 			if (p.isError()) {
-				return true;
+				if (errors.length() > 0) {
+					errors.append(System.lineSeparator());
+				}
+				errors.append(source.file().getPath()).append(':')
+						.append(p.getSourceLineNumber()).append(": ")
+						.append(p.getMessage());
 			}
 		}
 
-		return false;
+		if (errors.length() > 0) {
+			throw new IllegalStateException(errors.toString());
+		}
 	}
 
-	private void parse(ICompilationUnit[] units, ASTRequestor requestor) {
-		System.out.println("Processing " + units.length + " units");
-		ASTParser parser = ASTParser.newParser(AST.JLS4);
-		parser.setProject(project);
-		parser.setKind(ASTParser.K_COMPILATION_UNIT);
-		parser.setResolveBindings(true);
+	private void throwIfUnsupported(SourceUnit source,
+			CompilationUnit ast) {
+		if (sealedTypes == SealedTypes.ADVISORY) {
+			return;
+		}
+		final StringBuilder unsupported = new StringBuilder();
+		ast.accept(new ASTVisitor() {
+			@Override
+			public void preVisit(ASTNode node) {
+				String feature = null;
+				if (node instanceof AbstractTypeDeclaration) {
+					ITypeBinding binding = ((AbstractTypeDeclaration) node)
+							.resolveBinding();
+					if (binding != null
+							&& (Modifier.isSealed(binding.getModifiers())
+									|| Modifier.isNonSealed(
+											binding.getModifiers()))) {
+						feature = Modifier.isSealed(binding.getModifiers())
+								? "sealed type" : "non-sealed type";
+					} else if (Modifier.isSealed(
+							((AbstractTypeDeclaration) node).getModifiers())) {
+						feature = "sealed type";
+					} else if (Modifier.isNonSealed(
+							((AbstractTypeDeclaration) node).getModifiers())) {
+						feature = "non-sealed type";
+					}
+				}
 
-		String bogusKey = BindingKey.createTypeBindingKey("java.lang.Object"); //$NON-NLS-1$
-		String[] keys = new String[] { bogusKey }; // We need at least one here
+				if (feature != null) {
+					if (unsupported.length() > 0) {
+						unsupported.append(System.lineSeparator());
+					}
+					unsupported.append(source.file().getPath()).append(':')
+							.append(ast.getLineNumber(node.getStartPosition()))
+							.append(": Java 17 ").append(feature)
+							.append(" rejected by --sealed-types reject");
+				}
+			}
+		});
 
-		parser.createASTs(units, keys, requestor, null);
+		if (unsupported.length() > 0) {
+			throw new IllegalStateException(unsupported.toString());
+		}
 	}
 
-	private void writeHeader(ICompilationUnit unit, ITypeBinding tb)
+	private void writeHeader(SourceUnit unit, ITypeBinding tb)
 			throws Exception {
 		addDone(tb, sel == cur);
 		TypeBindingHeaderWriter hw = new TypeBindingHeaderWriter(getRoot(unit),
@@ -268,11 +351,10 @@ public class Transformer {
 		hw.write();
 	}
 
-	private void writeImpl(IProgressMonitor monitor, ICompilationUnit unit,
+	private void writeImpl(IProgressMonitor monitor, SourceUnit unit,
 			CompilationUnit cu) throws Exception {
-		monitor.subTask("Processing "
-				+ cu.getJavaElement().getResource().getProjectRelativePath()
-						.toString() + " (" + done.size() + " types done, "
+		monitor.subTask("Processing " + unit.file().getPath() + " ("
+				+ done.size() + " types done, "
 				+ todo.size() + " units and " + hardDeps.size()
 				+ " dependencies pending)");
 		UnitInfo ui = new UnitInfo();
@@ -293,6 +375,8 @@ public class Transformer {
 				EnumDeclaration td = (EnumDeclaration) type;
 
 				write(ui, unitRoot, td);
+			} else if (type instanceof RecordDeclaration) {
+				write(ui, unitRoot, (RecordDeclaration) type);
 			}
 		}
 
@@ -303,102 +387,96 @@ public class Transformer {
 
 	public void write(UnitInfo ui, IPath unitRoot, EnumDeclaration node) {
 		TypeInfo typeInfo = ui.types.get(node.resolveBinding());
-		ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 		try {
+			ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 			iw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
-		try {
+			HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
 			hw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		writeExtras(unitRoot, typeInfo);
+			writeExtras(unitRoot, typeInfo);
+		} catch (Exception e) {
+			throw generationFailure(typeInfo, e);
+		}
 	}
 
 	public void write(UnitInfo ui, IPath unitRoot,
 			AnnotationTypeDeclaration node) {
 		TypeInfo typeInfo = ui.types.get(node.resolveBinding());
-		ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 		try {
+			ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 			iw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
-		try {
+			HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
 			hw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		writeExtras(unitRoot, typeInfo);
+			writeExtras(unitRoot, typeInfo);
+		} catch (Exception e) {
+			throw generationFailure(typeInfo, e);
+		}
 	}
 
 	public void write(UnitInfo ui, IPath unitRoot, TypeDeclaration node) {
 		TypeInfo typeInfo = ui.types.get(node.resolveBinding());
-
-		ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 		try {
+			ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 			iw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
-		try {
+			HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
 			hw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		writeExtras(unitRoot, typeInfo);
+			writeExtras(unitRoot, typeInfo);
+		} catch (Exception e) {
+			throw generationFailure(typeInfo, e);
+		}
+	}
+
+	public void write(UnitInfo ui, IPath unitRoot, RecordDeclaration node) {
+		TypeInfo typeInfo = ui.types.get(node.resolveBinding());
+		try {
+			ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
+			iw.write(node);
+
+			HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
+			hw.write(node);
+
+			writeExtras(unitRoot, typeInfo);
+		} catch (Exception e) {
+			throw generationFailure(typeInfo, e);
+		}
 	}
 
 	public void write(UnitInfo ui, IPath unitRoot,
 			AnonymousClassDeclaration node) {
 		TypeInfo typeInfo = ui.types.get(node.resolveBinding());
-
-		ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 		try {
+			ImplWriter iw = new ImplWriter(unitRoot, this, ui, typeInfo);
 			iw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
-		try {
+			HeaderWriter hw = new HeaderWriter(unitRoot, this, ui, typeInfo);
 			hw.write(node);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
-		writeExtras(unitRoot, typeInfo);
+			writeExtras(unitRoot, typeInfo);
+		} catch (Exception e) {
+			throw generationFailure(typeInfo, e);
+		}
 	}
 
-	private void writeExtras(IPath unitRoot, TypeInfo ti) {
+	private RuntimeException generationFailure(TypeInfo typeInfo,
+			Exception cause) {
+		return new IllegalStateException("Failed to translate "
+				+ typeInfo.type().getQualifiedName(), cause);
+	}
+
+	private void writeExtras(IPath unitRoot, TypeInfo ti) throws Exception {
 		if (ti.hasNatives()) {
 			StubWriter sw = new StubWriter(unitRoot, this, ti.type());
-			try {
-				sw.write(true, true);
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			sw.write(true, true);
 		}
 
 		if (ti.hasMain()) {
-			String filename;
-			try {
-				filename = MainWriter.write(unitRoot, ti.type());
-				sel.mains.add("src/" + filename);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+			String filename = MainWriter.write(unitRoot, ti.type());
+			sel.mains.add("src/" + filename);
 		}
 	}
 
@@ -413,7 +491,7 @@ public class Transformer {
 		}
 	}
 
-	private void writeDeps(IProgressMonitor monitor) {
+	private void writeDeps(IProgressMonitor monitor) throws Exception {
 		final Set<ITypeBinding> arrays = new TreeSet<ITypeBinding>(
 				new BindingComparator());
 		while (!hardDeps.isEmpty()) {
@@ -429,20 +507,16 @@ public class Transformer {
 				}
 
 				boolean isSel = false;
-				try {
-					if (tb.isArray()) {
-						arrays.add(tb);
+				if (tb.isArray()) {
+					arrays.add(tb);
+				} else {
+					SourceUnit unit = getSourceUnit(tb);
+					if (unit == null) {
+						bindings.add(tb);
 					} else {
-						ICompilationUnit unit = getICompilationUnit(tb);
-						if (unit == null) {
-							bindings.add(tb);
-						} else {
-							todo.add(unit);
-							isSel = selection.contains(unit);
-						}
+						todo.add(unit);
+						isSel = selection.contains(unit);
 					}
-				} catch (Exception e) {
-					e.printStackTrace();
 				}
 
 				addDone(tb, isSel);
@@ -452,34 +526,18 @@ public class Transformer {
 
 			cur = ext;
 			for (ITypeBinding tb : bindings) {
-				try {
-					writeHeader(null, tb);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+				writeHeader(null, tb);
 			}
 
 			cur = sel;
 		}
 	}
 
-	public ICompilationUnit getICompilationUnit(ITypeBinding tb) {
-		IJavaElement elem;
-		try {
-			elem = project.findElement(tb.getKey(), null);
-		} catch (JavaModelException e) {
-			e.printStackTrace();
-			return null;
-		}
-
-		IType type = elem instanceof IType ? (IType) elem : null;
-		if (type == null || type.getCompilationUnit() == null) {
-			return null;
-		}
-		return type.getCompilationUnit();
+	public SourceUnit getSourceUnit(ITypeBinding tb) {
+		return project.sourceUnit(tb);
 	}
 
-	private IPath getRoot(ICompilationUnit unit) {
+	private IPath getRoot(SourceUnit unit) {
 		if (unit != null && selection.contains(unit)) {
 			return root;
 		}
@@ -533,18 +591,13 @@ public class Transformer {
 			return ret;
 		}
 
-		try {
-			ASTParser parser = ASTParser.newParser(AST.JLS4);
-			parser.setProject(project);
-			parser.setKind(ASTParser.K_COMPILATION_UNIT);
-			parser.setResolveBindings(true);
-			ret = (ITypeBinding) parser.createBindings(
-					new IJavaElement[] { project.findType(name) }, null)[0];
-			bindings.put(name, ret);
-			return ret;
-		} catch (JavaModelException e) {
-			throw new Error(e);
+		ret = project.resolve(name);
+		if (ret == null) {
+			throw new IllegalStateException("Could not resolve Java type "
+					+ name);
 		}
+		bindings.put(name, ret);
+		return ret;
 	}
 
 	public void addImpl(ITypeBinding tb) {

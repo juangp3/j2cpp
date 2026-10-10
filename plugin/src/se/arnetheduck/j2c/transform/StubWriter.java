@@ -141,7 +141,7 @@ public class StubWriter {
 
 			if (mb.getParameterTypes().length > 0) {
 				print(sep);
-				TransformUtil.printParams(out, type, mb, false, deps);
+				TransformUtil.printParams(ctx, out, type, mb, false, deps);
 			} else {
 				hasEmpty = true;
 			}
@@ -162,7 +162,7 @@ public class StubWriter {
 
 			sep = TransformUtil.printEnumCtorCallParams(out, type, "");
 			for (int i = 0; i < mb.getParameterTypes().length; ++i) {
-				print(sep + TransformUtil.paramName(mb, i));
+				print(sep + ctx.paramName(mb, i));
 				sep = ", ";
 			}
 

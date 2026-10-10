@@ -1,0 +1,9 @@
+target/
+dependency-reduced-pom.xml
+vscode/lib/j2c-cli.jar
+vscode/LICENSE
+vscode/THIRD-PARTY-NOTICES.txt
+vscode/node_modules/
+vscode/*.vsix
+plugin/bin/
+test/bin/

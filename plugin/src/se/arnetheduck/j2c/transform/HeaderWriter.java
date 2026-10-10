@@ -27,18 +27,23 @@ import org.eclipse.jdt.core.dom.Javadoc;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.QualifiedName;
 import org.eclipse.jdt.core.dom.QualifiedType;
+import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SimpleType;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.Statement;
+import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 
 public class HeaderWriter extends TransformWriter {
+	private static final String i1 = TransformUtil.indent(1);
+
 	private final IPath root;
 
 	private final Header header;
 	private String access;
+	private RecordDeclaration record;
 
 	public HeaderWriter(IPath root, Transformer ctx, UnitInfo unitInfo,
 			TypeInfo typeInfo) {
@@ -63,6 +68,25 @@ public class HeaderWriter extends TransformWriter {
 	}
 
 	public void write(TypeDeclaration node) throws Exception {
+		List<ITypeBinding> permittedTypes = new ArrayList<ITypeBinding>();
+		for (Object permitted : node.permittedTypes()) {
+			ITypeBinding binding = ((Type) permitted).resolveBinding();
+			if (binding != null) {
+				permittedTypes.add(binding);
+			}
+		}
+		header.sealedTypes(
+				org.eclipse.jdt.core.dom.Modifier.isSealed(
+						node.getModifiers()),
+				org.eclipse.jdt.core.dom.Modifier.isNonSealed(
+						node.getModifiers()),
+				permittedTypes);
+		writeType(node.bodyDeclarations());
+	}
+
+	public void write(RecordDeclaration node) throws Exception {
+		record = node;
+		header.recordComponents(node.recordComponents());
 		writeType(node.bodyDeclarations());
 	}
 
@@ -91,6 +115,8 @@ public class HeaderWriter extends TransformWriter {
 
 		visitAll(enums);
 
+		printRecordMembers();
+
 		visitAll(declarations); // This will gather constructors
 
 		indent--;
@@ -98,6 +124,77 @@ public class HeaderWriter extends TransformWriter {
 		out.close();
 		out = null;
 		return sw.toString();
+	}
+
+	private void printRecordMembers() {
+		if (record == null) {
+			return;
+		}
+
+		printlni("// Review generated value methods against component runtime behavior.");
+		printlni("// Array identity hashes and reference toString() can differ from the JVM.");
+		printlni("// C++ assignment can replace component values after construction.");
+		access = Header.printAccess(out, Modifier.PRIVATE, access);
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			IVariableBinding binding = component.resolveBinding();
+			softDep(binding.getType());
+			printi(TransformUtil.varTypeCName(binding.getModifiers(),
+					binding.getType(), type, deps) + " "
+					+ CName.of(binding) + ";");
+			println();
+		}
+
+		access = Header.printAccess(out, Modifier.PUBLIC, access);
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			if (RecordSupport.hasAccessor(record, component)) {
+				continue;
+			}
+			IVariableBinding binding = component.resolveBinding();
+			softDep(binding.getType());
+			printi(TransformUtil.varTypeCName(binding.getModifiers(),
+					binding.getType(), type, deps) + " "
+					+ CName.keywords(component.getName().getIdentifier())
+					+ "() const;");
+			println();
+		}
+
+		if (!RecordSupport.hasCanonicalConstructor(record)) {
+			printi("void " + CName.CTOR + "(");
+			printRecordParameters();
+			println(");");
+		}
+
+		if (!RecordSupport.hasEquals(record)) {
+			println(i1 + "virtual bool equals("
+					+ TransformUtil.relativeRef(ctx.resolve(Object.class),
+							type, true)
+					+ " other) override;");
+		}
+		if (!RecordSupport.hasMethod(record, "hashCode", 0)) {
+			println(i1 + "virtual int hashCode() override;");
+		}
+		if (!RecordSupport.hasMethod(record, "toString", 0)) {
+			println(i1 + "virtual "
+					+ TransformUtil.relativeRef(ctx.resolve(String.class),
+							type, true)
+					+ " toString() override;");
+		}
+		println();
+	}
+
+	private void printRecordParameters() {
+		String sep = "";
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			IVariableBinding binding = component.resolveBinding();
+			print(sep);
+			sep = ", ";
+			print(TransformUtil.varTypeCName(binding.getModifiers(),
+					binding.getType(), type, deps));
+			print(" " + CName.keywords(component.getName().getIdentifier()));
+		}
 	}
 
 	@Override
@@ -273,11 +370,15 @@ public class HeaderWriter extends TransformWriter {
 			}
 		}
 
-		visitAllCSV(node.parameters(), false);
+		if (node.isCompactConstructor() && record != null) {
+			printRecordParameters();
+		} else {
+			visitAllCSV(node.parameters(), false);
+		}
 
 		print(")");
 
-		print(TransformUtil.throwsDecl(node.thrownExceptions()));
+		print(TransformUtil.throwsDecl(node.thrownExceptionTypes()));
 
 		print(TransformUtil.methodSpecifiers(mb));
 
@@ -351,6 +452,11 @@ public class HeaderWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(TypeDeclaration node) {
+		return false;
+	}
+
+	@Override
+	public boolean visit(RecordDeclaration node) {
 		return false;
 	}
 

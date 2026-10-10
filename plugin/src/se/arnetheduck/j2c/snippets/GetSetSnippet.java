@@ -53,7 +53,7 @@ public class GetSetSnippet extends EmptySnippet {
 					}
 
 					w.println(CName.of(vb) + (asMethod ? "()" : "") + " = "
-							+ TransformUtil.paramName(mb, 0) + "; /* setter */");
+							+ ctx.paramName(mb, 0) + "; /* setter */");
 				}
 
 				return false;

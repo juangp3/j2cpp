@@ -51,10 +51,12 @@ import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.ParenthesizedExpression;
+import org.eclipse.jdt.core.dom.PatternInstanceofExpression;
 import org.eclipse.jdt.core.dom.PostfixExpression;
 import org.eclipse.jdt.core.dom.PrefixExpression;
 import org.eclipse.jdt.core.dom.PrimitiveType;
 import org.eclipse.jdt.core.dom.PrimitiveType.Code;
+import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
@@ -63,6 +65,7 @@ import org.eclipse.jdt.core.dom.SuperConstructorInvocation;
 import org.eclipse.jdt.core.dom.SuperFieldAccess;
 import org.eclipse.jdt.core.dom.SuperMethodInvocation;
 import org.eclipse.jdt.core.dom.SwitchCase;
+import org.eclipse.jdt.core.dom.SwitchExpression;
 import org.eclipse.jdt.core.dom.SwitchStatement;
 import org.eclipse.jdt.core.dom.SynchronizedStatement;
 import org.eclipse.jdt.core.dom.ThisExpression;
@@ -77,6 +80,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationExpression;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.WhileStatement;
+import org.eclipse.jdt.core.dom.YieldStatement;
 
 public class ImplWriter extends TransformWriter {
 	private static final String i1 = TransformUtil.indent(1);
@@ -90,6 +94,7 @@ public class ImplWriter extends TransformWriter {
 	private final String name;
 
 	private final List<List<String>> locals = new ArrayList<List<String>>();
+	private RecordDeclaration record;
 
 	public ImplWriter(IPath root, Transformer ctx, UnitInfo unitInfo,
 			TypeInfo typeInfo) {
@@ -117,6 +122,12 @@ public class ImplWriter extends TransformWriter {
 	}
 
 	public void write(TypeDeclaration node) throws Exception {
+		String body = getBody(node.bodyDeclarations());
+		writeType(body);
+	}
+
+	public void write(RecordDeclaration node) throws Exception {
+		record = node;
 		String body = getBody(node.bodyDeclarations());
 		writeType(body);
 	}
@@ -156,6 +167,7 @@ public class ImplWriter extends TransformWriter {
 		printCtors();
 		printAnonCtors();
 		printInit();
+		printRecordMethods();
 
 		out.close();
 		out = null;
@@ -267,14 +279,19 @@ public class ImplWriter extends TransformWriter {
 			String sep = TransformUtil.printExtraCtorParams(ctx, out, type,
 					typeInfo.closures(), deps, false, md.resolveBinding());
 
-			if (!md.parameters().isEmpty()) {
+			if (md.isCompactConstructor()) {
+				print(sep);
+				printRecordParameters();
+				hasEmpty = record.recordComponents().isEmpty();
+			} else if (!md.parameters().isEmpty()) {
 				print(sep);
 				visitAllCSV(md.parameters(), false);
 			} else {
 				hasEmpty = true;
 			}
 
-			println(") " + TransformUtil.throwsDecl(md.thrownExceptions()));
+			println(") "
+					+ TransformUtil.throwsDecl(md.thrownExceptionTypes()));
 
 			indent++;
 			printDefaultInitCall(md.resolveBinding());
@@ -285,7 +302,10 @@ public class ImplWriter extends TransformWriter {
 
 			printi(CName.CTOR + "(");
 			sep = TransformUtil.printEnumCtorCallParams(out, type, "");
-			if (!md.parameters().isEmpty()) {
+			if (md.isCompactConstructor()) {
+				print(sep);
+				printRecordParameterNames();
+			} else if (!md.parameters().isEmpty()) {
 				print(sep);
 				printNames(md.parameters());
 			}
@@ -298,7 +318,254 @@ public class ImplWriter extends TransformWriter {
 			locals.remove(locals.size() - 1);
 		}
 
+		if (record != null) {
+			if (!RecordSupport.hasCanonicalConstructor(record)) {
+				printRecordCanonicalConstructor();
+			}
+			return;
+		}
+
 		printEmptyCtor(hasEmpty);
+	}
+
+	private void printRecordCanonicalConstructor() {
+		print(qcname + "::" + name + "(");
+		printRecordParameters();
+		println(")");
+		indent++;
+		printi(": " + name + "(" + TransformUtil.makeDefaultInitTag() + ")");
+		indent--;
+		println();
+		println("{");
+		indent++;
+		printi(CName.CTOR + "(");
+		printRecordParameterNames();
+		println(");");
+		indent--;
+		println("}");
+		println();
+
+		print("void " + qcname + "::" + CName.CTOR + "(");
+		printRecordParameters();
+		println(")");
+		println("{");
+		indent++;
+		if (type.getSuperclass() != null) {
+			printlni("super::" + CName.CTOR + "();");
+		}
+		if (typeInfo.hasInit()) {
+			printlni(CName.INSTANCE_INIT + "();");
+		}
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			IVariableBinding binding = component.resolveBinding();
+			printi(CName.of(binding, type) + " = "
+					+ CName.keywords(component.getName().getIdentifier())
+					+ ";");
+			println();
+		}
+		indent--;
+		println("}");
+		println();
+	}
+
+	private void printRecordParameters() {
+		String sep = "";
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			IVariableBinding binding = component.resolveBinding();
+			print(sep);
+			sep = ", ";
+			print(TransformUtil.varTypeCName(binding.getModifiers(),
+					binding.getType(), type, deps));
+			print(" " + CName.keywords(component.getName().getIdentifier()));
+		}
+	}
+
+	private void printRecordParameterNames() {
+		String sep = "";
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			print(sep + CName.keywords(component.getName().getIdentifier()));
+			sep = ", ";
+		}
+	}
+
+	private void printRecordMethods() {
+		if (record == null) {
+			return;
+		}
+
+		for (Object object : record.recordComponents()) {
+			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+			if (RecordSupport.hasAccessor(record, component)) {
+				continue;
+			}
+			IVariableBinding binding = component.resolveBinding();
+			print(TransformUtil.varTypeCName(binding.getModifiers(),
+					binding.getType(), type, deps));
+			print(" " + qcname + "::"
+					+ CName.keywords(component.getName().getIdentifier())
+					+ "() const");
+			println();
+			println("{");
+			indent++;
+			printlni("return " + CName.of(binding, type) + ";");
+			indent--;
+			println("}");
+			println();
+		}
+
+		if (!RecordSupport.hasEquals(record)) {
+			print("bool " + qcname + "::equals("
+					+ TransformUtil.relativeRef(ctx.resolve(Object.class),
+							type, true)
+					+ " other)");
+			println();
+			println("{");
+			indent++;
+			printlni("if (this == other) return true;");
+			printlni("auto* that = dynamic_cast<" + qcname
+					+ "*>(other);");
+			printlni("if (that == nullptr) return false;");
+			for (Object object : record.recordComponents()) {
+				SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+				IVariableBinding binding = component.resolveBinding();
+				String field = CName.of(binding, type);
+				String otherField = "that->" + field;
+				String comparison = recordComparison(binding.getType(), field,
+						otherField);
+				printlni("if (!(" + comparison + ")) return false;");
+			}
+			printlni("return true;");
+			indent--;
+			println("}");
+			println();
+		}
+
+		if (!RecordSupport.hasMethod(record, "hashCode", 0)) {
+			print("int " + qcname + "::hashCode()");
+			println();
+			println("{");
+			indent++;
+			printlni("std::uint32_t hash = 0u;");
+			int componentIndex = 0;
+			for (Object object : record.recordComponents()) {
+				SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+				IVariableBinding binding = component.resolveBinding();
+				String value = recordComponentHash(binding.getType(),
+						CName.of(binding, type));
+				if (componentIndex == 0) {
+					printlni("hash = " + value + ";");
+				} else {
+					printlni("hash = hash * 31u + " + value + ";");
+				}
+				componentIndex++;
+			}
+			printlni("return std::bit_cast<std::int32_t>(hash);");
+			indent--;
+			println("}");
+			println();
+		}
+
+		if (!RecordSupport.hasMethod(record, "toString", 0)) {
+			hardDep(ctx.resolve(StringBuilder.class));
+			hardDep(ctx.resolve(String.class));
+			print(TransformUtil.relativeRef(ctx.resolve(String.class), type,
+					false)
+					+ " " + qcname + "::toString()");
+			println();
+			println("{");
+			indent++;
+			print("return ::java::lang::StringBuilder(u\""
+					+ type.getName() + "[\"_j)");
+			if (record.recordComponents().isEmpty()) {
+				print(".append(u\"]\"_j)->toString();");
+			}
+			int componentIndex = 0;
+			for (Object object : record.recordComponents()) {
+				SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+				String componentName = component.getName().getIdentifier();
+				print((componentIndex == 0 ? "." : "->") + "append(u\""
+						+ componentName + "=\"_j)->append("
+						+ CName.of(component.resolveBinding(), type) + ")");
+				if (component != record.recordComponents()
+						.get(record.recordComponents().size() - 1)) {
+					print("->append(u\", \"_j)");
+				}
+				componentIndex++;
+			}
+			if (!record.recordComponents().isEmpty()) {
+				println("->append(u\"]\"_j)->toString();");
+			} else {
+				println();
+			}
+			indent--;
+			println("}");
+			println();
+		}
+	}
+
+	private static String recordComparison(ITypeBinding componentType,
+			String field, String otherField) {
+		if (componentType.isPrimitive()) {
+			if (componentType.getName().equals("float")) {
+				return floatBits(field) + " == " + floatBits(otherField);
+			}
+			if (componentType.getName().equals("double")) {
+				return doubleBits(field) + " == " + doubleBits(otherField);
+			}
+			return field + " == " + otherField;
+		}
+		if (componentType.isArray()) {
+			return field + " == " + otherField;
+		}
+		return "(" + field + " == " + otherField + " || (" + field
+				+ " != nullptr && " + field + "->equals(" + otherField
+				+ ")))";
+	}
+
+	private static String recordComponentHash(ITypeBinding componentType,
+			String field) {
+		StringBuilder code = new StringBuilder();
+		if (componentType.isPrimitive()) {
+			switch (componentType.getName()) {
+			case "boolean":
+				return "(" + field + " ? 1231u : 1237u)";
+			case "long":
+				return "static_cast<std::uint32_t>(static_cast<std::uint64_t>("
+						+ field + ") ^ (static_cast<std::uint64_t>(" + field
+						+ ") >> 32))";
+			case "float":
+				return floatBits(field);
+			case "double":
+				return "static_cast<std::uint32_t>(static_cast<std::uint64_t>("
+						+ doubleBits(field) + ") ^ (static_cast<std::uint64_t>("
+						+ doubleBits(field) + ") >> 32))";
+			default:
+				return "static_cast<std::uint32_t>(" + field + ")";
+			}
+		}
+		if (componentType.isArray()) {
+			return "static_cast<std::uint32_t>(std::hash<const void*>{}(static_cast<const void*>("
+					+ field + ")))";
+		}
+		code.append("(").append(field).append(" == nullptr ? 0u : ")
+				.append("static_cast<std::uint32_t>(").append(field)
+				.append("->hashCode()))");
+		return code.toString();
+	}
+
+	private static String floatBits(String value) {
+		return "(std::isnan(" + value
+				+ ") ? 0x7fc00000u : std::bit_cast<std::uint32_t>(" + value
+				+ "))";
+	}
+
+	private static String doubleBits(String value) {
+		return "(std::isnan(" + value
+				+ ") ? UINT64_C(0x7ff8000000000000) : "
+				+ "std::bit_cast<std::uint64_t>(" + value + "))";
 	}
 
 	private void printClInitCall() {
@@ -316,7 +583,8 @@ public class ImplWriter extends TransformWriter {
 
 		if (typeInfo.closures() != null) {
 			for (IVariableBinding closure : typeInfo.closures()) {
-				print(sep + TransformUtil.ctorClosureName(closure, type, ctor));
+				print(sep + TransformUtil.ctorClosureName(ctx, closure, type,
+						ctor));
 				sep = ", ";
 			}
 		}
@@ -343,7 +611,7 @@ public class ImplWriter extends TransformWriter {
 
 			if (mb.getParameterTypes().length > 0) {
 				out.print(sep);
-				TransformUtil.printParams(out, type, mb, false, deps);
+				TransformUtil.printParams(ctx, out, type, mb, false, deps);
 			}
 
 			println(")");
@@ -386,7 +654,7 @@ public class ImplWriter extends TransformWriter {
 
 		if (mb != null && mb.getParameterTypes().length > 0) {
 			for (int i = 0; i < mb.getParameterTypes().length; ++i) {
-				print(sep + TransformUtil.paramName(mb, i));
+				print(sep + ctx.paramName(mb, i));
 				sep = ", ";
 			}
 		}
@@ -520,7 +788,8 @@ public class ImplWriter extends TransformWriter {
 			for (IVariableBinding closure : typeInfo.closures()) {
 				printi(sep);
 				println(CName.of(closure, type) + "("
-						+ TransformUtil.ctorClosureName(closure, type, ctor)
+						+ TransformUtil.ctorClosureName(ctx, closure, type,
+								ctor)
 						+ ")");
 				sep = ", ";
 			}
@@ -1399,7 +1668,7 @@ public class ImplWriter extends TransformWriter {
 		print("if(");
 		skipIndent = false;
 
-		node.getExpression().accept(this);
+		printCondition(node.getExpression(), true);
 
 		print(")");
 
@@ -1448,6 +1717,30 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		return false;
+	}
+
+	private void printCondition(Expression expression, boolean bindPattern) {
+		if (!(expression instanceof PatternInstanceofExpression)) {
+			expression.accept(this);
+			return;
+		}
+
+		PatternInstanceofExpression pattern = (PatternInstanceofExpression) expression;
+		SingleVariableDeclaration variable = pattern.getRightOperand();
+		ITypeBinding target = variable.getType().resolveBinding();
+		hardDep(target);
+
+		if (bindPattern) {
+			print("auto* " + CName.of(variable.resolveBinding()) + " = ");
+		}
+		print("dynamic_cast< " + CName.relative(target, type, true) + "* >(");
+		pattern.getLeftOperand().accept(this);
+		print(")");
+		if (bindPattern) {
+			print("; " + CName.of(variable.resolveBinding()) + " != nullptr");
+		} else {
+			print(" != nullptr");
+		}
 	}
 
 	@Override
@@ -1598,6 +1891,12 @@ public class ImplWriter extends TransformWriter {
 		return false;
 	}
 
+	@Override
+	public boolean visit(PatternInstanceofExpression node) {
+		printCondition(node, false);
+		return false;
+	}
+
 	private List<LabeledStatement> labels = new ArrayList<LabeledStatement>();
 	private Map<String, Integer> labelNames = new TreeMap<String, Integer>();
 
@@ -1720,11 +2019,15 @@ public class ImplWriter extends TransformWriter {
 			print("(");
 		}
 
-		visitAllCSV(node.parameters(), false);
+		if (node.isCompactConstructor() && record != null) {
+			printRecordParameters();
+		} else {
+			visitAllCSV(node.parameters(), false);
+		}
 
 		print(")");
 
-		println(TransformUtil.throwsDecl(node.thrownExceptions()));
+		println(TransformUtil.throwsDecl(node.thrownExceptionTypes()));
 
 		if (node.isConstructor()) {
 			println("{");
@@ -1753,6 +2056,16 @@ public class ImplWriter extends TransformWriter {
 
 			visitAll(first instanceof SuperConstructorInvocation ? statements
 					.subList(1, statements.size()) : statements);
+			if (node.isCompactConstructor() && record != null) {
+				for (Object object : record.recordComponents()) {
+					SingleVariableDeclaration component = (SingleVariableDeclaration) object;
+					printi(CName.of(component.resolveBinding(), type) + " = "
+							+ CName.keywords(
+									component.getName().getIdentifier())
+							+ ";");
+					println();
+				}
+			}
 			indent--;
 			print("}");
 		} else {
@@ -2155,11 +2468,45 @@ public class ImplWriter extends TransformWriter {
 		if (node.isDefault()) {
 			print("default:");
 		} else {
-			print("case ");
-			node.getExpression().accept(this);
-			print(":");
+			for (Expression expression : (Iterable<Expression>) node
+					.expressions()) {
+				print("case ");
+				expression.accept(this);
+				print(": ");
+			}
 		}
 
+		return false;
+	}
+
+	@Override
+	public boolean visit(SwitchExpression node) {
+		ITypeBinding result = node.resolveTypeBinding();
+		hardDep(result);
+		print("([&]() -> " + TransformUtil.relativeRef(result, type, true)
+				+ " {");
+		println();
+		indent++;
+		printi("switch (");
+		node.getExpression().accept(this);
+		println(") {");
+		indent++;
+		for (Statement statement : (Iterable<Statement>) node.statements()) {
+			statement.accept(this);
+		}
+		printlni("throw \"Non-exhaustive Java switch expression\";");
+		indent--;
+		printlni("}");
+		indent--;
+		printi("}())");
+		return false;
+	}
+
+	@Override
+	public boolean visit(YieldStatement node) {
+		printi("return ");
+		node.getExpression().accept(this);
+		println(";");
 		return false;
 	}
 
@@ -2510,6 +2857,13 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(TypeDeclaration node) {
+		ctx.write(unitInfo, root, node);
+
+		return false;
+	}
+
+	@Override
+	public boolean visit(RecordDeclaration node) {
 		ctx.write(unitInfo, root, node);
 
 		return false;

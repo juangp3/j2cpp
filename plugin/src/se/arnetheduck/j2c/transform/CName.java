@@ -310,6 +310,9 @@ public class CName {
 		}
 
 		name = keywords(vb.getName());
+		if (RecordSupport.isComponent(vb)) {
+			name += "_";
+		}
 
 		if (relativeTo != null) {
 			// Find all methods up the inheritance hierarchy.

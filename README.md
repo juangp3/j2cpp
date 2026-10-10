@@ -1,117 +1,140 @@
-Introduction
---
-J2C will convert Java code into hopefully compilable C++(11) code. It works on
-source level, translating Java source code constructs into their rough
-equivalents in C++ . The output will be reasonably valid C++ code that looks a
-lot like its Java counterpart and hopefully works mostly the same.
+# J2C Modern Edition
 
-The translation is based on The Java Language Specification, Third Edition, by
-Gosling, James and Joy, Bill and Steele, Guy and Bracha, Gilad (that's
-Java 1.6). The translated code should be valid as specified by the ISO/IEC
-14882:2011 C++ standard (or C++11 as the rest of the world knows it).
+J2C translates Java source code to C++. This repository packages the
+standalone command-line translator and the **J2C Java to C++** VS Code
+extension. It is a modernized continuation of
+[arnetheduck/j2c](https://github.com/arnetheduck/j2c), whose original Eclipse
+plugin remains in that repository.
 
-*The generated code won't work out of the box - you need to remove or implement
- dependencies such as the JRE.*
+> **Preview:** J2C is a source translator, not a complete Java compiler or
+> runtime. Java feature support is incremental. Generated C++ may need manual
+> changes and a compatible implementation of Java runtime behavior. Do not
+> assume that arbitrary Java programs compile or preserve all JVM semantics.
 
-Status
---
-This project is an idea I've been wanting to try out written down in code.
-Think of it as a paper napkin with some notes on, but in this case, the notes
-compile and sometimes spit out working stuff. In other words, no guarantees
-and no quality control label.
+## Requirements
 
-That said, j2c successfully converts most of OpenJDK 6 and SWT 3.7 to C++
-that compiles and passes a quick ocular inspection. Most *language* features
-of Java 1.6 are covered (i e you'll still need a JDK and runtime).
+- Java 11 or newer to run the CLI and VS Code extension.
+- Maven to build the CLI from source.
+- A C++20 compiler for generated Makefiles and C++ output.
+- Node.js 22 or newer and npm to package the VS Code extension.
 
-With a few patches and implementations of native methods in the converted
-OpenJDK code, the included Hello test prints it's message. A more complete
-example would need a more complete runtime, either by implementing the native
-and JVM parts of a class library or by implementing the stubs that are
-generated for missing dependencies.
+## CLI
 
-This is the first time I write an Eclipse plugin, so be nice.
+Build the executable JAR from the repository root:
 
-Install / Run
---
-J2C comes in the form of an Eclipse plugin. You need at least Eclipse 3.8+ and
-Java 1.6+ to run this plugin!
+```sh
+mvn package
+```
 
-The most recent version of the project is available as source code. You can get
-it either from Bitbucket (https://bitbucket.org/arnetheduck/j2c/)
-or github (https://github.com/arnetheduck/j2c).
+Create an output directory and translate a Java file or source directory:
 
-From time to time, a release may appear at the Bitbucket site - see
-https://bitbucket.org/arnetheduck/j2c/downloads . About that same
-time, the update site (https://bitbucket.org/arnetheduck/j2c.site/raw/default/)
-should be updated.
+```sh
+mkdir generated
+java -jar target/j2c-cli.jar \
+  --output generated \
+  --sourcepath test/src \
+  test/src/se/arnetheduck/j2c/test/Hello.java
+```
 
-If you installed via site, it should just work.
+Use the platform path separator between multiple source roots or classpath
+entries (`;` on Windows, `:` on macOS/Linux). Source paths help resolve Java
+source dependencies; classpath entries should identify dependency JARs or
+class directories. If `--sourcepath` is omitted, J2C infers roots from the
+selected inputs.
 
-If you downloaded the jar, copy it to `$ECLIPSE_HOME/dropins`.
+The `--sealed-types` policy defaults to `advisory`. Sealed declarations are
+translated using ordinary C++ inheritance and generated comments list
+permitted direct subtypes; **C++ does not enforce Java's `permits` restriction**.
+Choose `--sealed-types reject` to stop translation when sealed or non-sealed
+declarations are encountered.
 
-If you downloaded the source code you'll have run the plugin by opening the
-project in Eclipse and starting a new Eclipse test instance by using the run
-button in the plugin.xml overview.
+Additional optional arguments are `--classpath <paths>`, `--name <name>`, and
+`--sealed-types advisory|reject`.
 
-Once you have the plugin running, set up your Java code as a Java
-Project. Eclipse must be able to compile your code for J2C do to its work!
+## VS Code extension
 
-Once the Java Project is set up (with all dependencies etc), you can run J2C by
-right-clicking the project (or a class/package) in the 'Project Explorer' or
-'Package Explorer' view and choosing the 'Translate to C++' option. You will
-need to create a folder for the conversion output - the plugin will tell you
-where.
+The extension provides **J2C: Translate to C++** from Java editor and Explorer
+context menus. Select a Java file or source folder, then choose an existing
+output directory.
 
-The generated code will contain references to your JRE (stuff from the `java.*`
-packages), as well as some generic helpers. The JRE dependencies will likely be
-stubbed out in the ext folder in the generated code, and trivial, non-working
-implementations of the rest can be found in j2c.cpp. You'll need to supplant
-the converted code with implementations of all JRE features you're using,
-or replace them manually to use equivalents from C++ libraries such as STL.
+The Marketplace release is not published yet. To install a locally packaged
+VSIX after building it:
 
-Testing
---
-The test project contains a few cases which should be handled correctly by the
-translator (by correctly, I mean that they compile with g++ 4.7). You'll find
-a CDT project in ctest that builds using the generated Makefile after running
-the plugin on the test project.
+```sh
+code --install-extension <packaged-extension.vsix>
+```
 
-Output
---
-For each Java class, j2c will output a header file and its implementation.
-Inner classes end up in separate .h/.cpp pairs. Native method stubs will be
-put in a separate file for your editing pleasure.
+The extension invokes the bundled CLI and therefore requires Java 11 or newer.
+To prepare the extension and its bundled CLI locally:
 
-Classes for which there is no source will have a header written as well as
-a stub file with empty implementations. Throughout, the heap will be used
-to allocate class instances but no attempt is made to collect garbage -
-I recommend Boehm's garbage collector for that.
+```sh
+cd vscode
+npm run vscode:prepublish
+```
 
-What's missing (that I can think of right now)
---
- * Reflection
- * Anything involving byte code (class loading, dynamic code generation, etc)
- * Command line support / build integration
+This builds and stages the CLI JAR in the extension directory. Package the
+extension with the VS Code Marketplace packaging tool (`vsce`) before
+installing the VSIX.
 
-Helping out
---
-Patches and forks are most welcome, as is testing, but please don't report
-issues unless you also attach a simple test case.
+Configuration:
 
-Final words
---
-Send me a note if you manage (or not) to do something useful with this
-converter!
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `j2c.sourcePaths` | `[]` | Java source roots; defaults to `java.project.sourcePaths`, then conventional `src` folders. |
+| `j2c.classPath` | `[]` | Dependency JARs or class directories. |
+| `j2c.cliJar` | `""` | Optional path to a custom CLI JAR; otherwise the packaged CLI is used. |
+| `j2c.javaExecutable` | `"java"` | Java executable used to run the CLI. |
+| `j2c.sealedTypes` | `"advisory"` | `advisory` emits ordinary inheritance and permits comments; `reject` rejects sealed and non-sealed declarations. |
 
-Licensing
---
-The project is licensed under the Eclipse Public License 1.0.
+## Java feature support
 
-Thanks
---
-No animals were hurt while writing this code, but the Nightwatchman
-might have sore fingers and throat from all that playing...
+Java 17 parsing is enabled, but feature translation is incomplete. The current
+documented modern-language slice includes:
 
-Have fun,
-Jacek Sieka (arnetheduck using google mail point com)
+- Pattern-matching `instanceof` in supported `if` conditions.
+- Switch expressions.
+- Records, including generated component storage/accessors, construction,
+  `equals`, `hashCode`, and `toString`.
+- Sealed and non-sealed declarations under the advisory/reject policy above.
+
+Review the generated C++ for each project. In particular, record component
+assignment, array identity hashing, and reference stringification can differ
+from JVM behavior. The generated program may depend on Java runtime classes
+and helpers that need to be implemented or replaced for the target project.
+Unsupported Java syntax or runtime behavior may require manual translation.
+
+## Build and validation
+
+Build the CLI:
+
+```sh
+mvn package
+```
+
+Prepare the extension:
+
+```sh
+cd vscode
+npm run vscode:prepublish
+```
+
+The `test/src` directory contains translator fixtures. Generated output has not
+been validated for every Java feature or compiler/toolchain combination. CI
+translates the Java 17 control-flow and records fixtures, then compiles both
+generated C++20 projects with their generated Makefiles. This smoke check is
+not a guarantee of semantic parity or general Java compatibility.
+Running `npm run vscode:prepublish` from `vscode` also runs focused CLI
+integration checks for records and sealed-type policies before bundling the
+CLI.
+
+See [CHANGELOG.md](CHANGELOG.md) for the preview candidate's scope and changes.
+
+## Project relationship and licensing
+
+J2C Modern Edition is a separate project derived from
+[arnetheduck/j2c](https://github.com/arnetheduck/j2c). The original project
+history and Eclipse plugin remain upstream. The project is licensed under the
+Eclipse Public License 1.0; see [LICENSE](LICENSE). The extension packaging
+step copies that license into the VSIX. Third-party dependencies have their
+own licenses; see [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt), which is
+also included in the VSIX.

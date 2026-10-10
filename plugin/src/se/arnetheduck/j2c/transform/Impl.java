@@ -263,7 +263,7 @@ public class Impl {
 				TransformUtil.printSignature(ctx, out, type, mb, deps, true);
 				println();
 				println("{");
-				String arg = TransformUtil.paramName(mb, 0);
+				String arg = ctx.paramName(mb, 0);
 				for (IVariableBinding vb : type.getDeclaredFields()) {
 					if (!vb.isEnumConstant())
 						continue;
@@ -339,7 +339,7 @@ public class Impl {
 			if (cast) {
 				javaCast(md.getParameterTypes()[i], impl.getParameterTypes()[i]);
 			}
-			print(TransformUtil.paramName(md, i));
+			print(ctx.paramName(md, i));
 			if (cast) {
 				print(")");
 			}
@@ -384,7 +384,7 @@ public class Impl {
 
 			print(CName.of(mb));
 
-			TransformUtil.printParams(out, type, mb, true, deps);
+			TransformUtil.printParams(ctx, out, type, mb, true, deps);
 
 			println();
 			println("{");
@@ -404,7 +404,7 @@ public class Impl {
 
 			String sep = "";
 			for (int i = 0; i < mb.getParameterTypes().length; ++i) {
-				print(sep + TransformUtil.paramName(mb, i));
+				print(sep + ctx.paramName(mb, i));
 				sep = ", ";
 			}
 			println(");");

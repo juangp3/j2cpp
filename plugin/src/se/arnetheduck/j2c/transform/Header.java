@@ -18,6 +18,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
+import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 
 public class Header {
 	public static final String PUBLIC = "public:";
@@ -35,6 +36,10 @@ public class Header {
 	private final List<IMethodBinding> constructors = new ArrayList<IMethodBinding>();
 	private final Map<String, List<IMethodBinding>> methods = new TreeMap<String, List<IMethodBinding>>();
 	private final List<IVariableBinding> fields = new ArrayList<IVariableBinding>();
+	private List<IVariableBinding> recordComponents;
+	private boolean sealed;
+	private boolean nonSealed;
+	private List<ITypeBinding> permittedTypes = new ArrayList<ITypeBinding>();
 
 	private String access;
 
@@ -64,6 +69,21 @@ public class Header {
 		fields.add(vb);
 	}
 
+	public void recordComponents(
+			Collection<SingleVariableDeclaration> components) {
+		recordComponents = new ArrayList<IVariableBinding>();
+		for (SingleVariableDeclaration component : components) {
+			recordComponents.add(component.resolveBinding());
+		}
+	}
+
+	public void sealedTypes(boolean sealed, boolean nonSealed,
+			Collection<ITypeBinding> permittedTypes) {
+		this.sealed = sealed;
+		this.nonSealed = nonSealed;
+		this.permittedTypes = new ArrayList<ITypeBinding>(permittedTypes);
+	}
+
 	public void write(IPath root, String body,
 			Collection<IVariableBinding> closures, boolean hasClinit,
 			boolean hasInit, Collection<ITypeBinding> nested, String access)
@@ -75,13 +95,29 @@ public class Header {
 		try {
 			out = FileUtil.open(TransformUtil.headerPath(root, type).toFile());
 
-			println("// Generated from " + type.getJavaElement().getPath());
+			println("// Generated from "
+					+ (type.getJavaElement() == null ? type.getQualifiedName()
+							: type.getJavaElement().getPath()));
 			println();
 
 			println("#pragma once");
 			println();
 
 			Set<String> includes = new HashSet<String>();
+
+			if (type.isRecord()) {
+				printlnd("#include <bit>", includes);
+				printlnd("#include <cmath>", includes);
+				printlnd("#include <cstdint>", includes);
+				if (recordComponents != null) {
+					for (IVariableBinding component : recordComponents) {
+						if (component.getType().isArray()) {
+							printlnd("#include <functional>", includes);
+							break;
+						}
+					}
+				}
+			}
 
 			if (type.getQualifiedName().equals(String.class.getName())) {
 				printlnd("#include <stddef.h>", includes);
@@ -123,6 +159,8 @@ public class Header {
 			if (!includes.isEmpty()) {
 				println();
 			}
+
+			printSealedMetadata();
 
 			deps.printArrays(out);
 
@@ -167,6 +205,28 @@ public class Header {
 				out.close();
 				out = null;
 			}
+		}
+
+	}
+
+	private void printSealedMetadata() {
+		if (sealed) {
+			println("// Java sealed hierarchy; this permits list is informational");
+			println("// and is not enforced by C++.");
+			print("// Java permitted direct subtypes: ");
+			String separator = "";
+			for (ITypeBinding permittedType : permittedTypes) {
+				print(separator + CName.qualified(permittedType, false));
+				separator = ", ";
+			}
+			if (permittedTypes.isEmpty()) {
+				print("(none resolved)");
+			}
+			println();
+			println();
+		} else if (nonSealed) {
+			println("// Java non-sealed type: this inheritance branch remains open in C++.");
+			println();
 		}
 	}
 
@@ -422,12 +482,22 @@ public class Header {
 
 			if (mb.getParameterTypes().length > 0) {
 				print(sep);
-				TransformUtil.printParams(out, type, mb, false, deps);
+				TransformUtil.printParams(ctx, out, type, mb, false, deps);
 			} else {
 				hasEmpty = true;
 			}
 
 			println(");");
+		}
+
+		if (recordComponents != null) {
+			if (!hasRecordCanonicalConstructor()) {
+				access = printAccess(out, Modifier.PUBLIC, access);
+				print(i1 + name + "(");
+				printRecordParameters();
+				println(");");
+			}
+			return;
 		}
 
 		if (constructors.isEmpty()) {
@@ -449,6 +519,42 @@ public class Header {
 				TransformUtil.printEnumCtorParams(ctx, out, type, "", deps);
 				println(");");
 			}
+		}
+	}
+
+	private boolean hasRecordCanonicalConstructor() {
+			if (recordComponents == null) {
+				return false;
+			}
+			for (IMethodBinding constructor : constructors) {
+				if (constructor.getParameterTypes().length == recordComponents
+						.size()) {
+					boolean matches = true;
+					ITypeBinding[] parameterTypes = constructor
+							.getParameterTypes();
+					for (int i = 0; i < parameterTypes.length; i++) {
+						if (!parameterTypes[i].isEqualTo(
+								recordComponents.get(i).getType())) {
+							matches = false;
+							break;
+						}
+					}
+					if (matches) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
+	private void printRecordParameters() {
+		String sep = "";
+		for (IVariableBinding component : recordComponents) {
+			print(sep);
+			sep = ", ";
+			print(TransformUtil.varTypeCName(component.getModifiers(),
+					component.getType(), type, deps));
+			print(" " + CName.keywords(component.getName()));
 		}
 	}
 

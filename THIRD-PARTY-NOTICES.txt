@@ -1,0 +1,29 @@
+J2C Modern Edition bundles the following third-party runtime dependencies in
+the CLI JAR (`lib/j2c-cli.jar`). Each dependency remains under its own license.
+
+Eclipse Public License 2.0
+https://www.eclipse.org/legal/epl-2.0/
+
+- org.eclipse.jdt:org.eclipse.jdt.core:3.32.0
+- org.eclipse.platform:org.eclipse.core.commands:3.10.300
+- org.eclipse.platform:org.eclipse.core.contenttype:3.8.200
+- org.eclipse.platform:org.eclipse.core.expressions:3.8.200
+- org.eclipse.platform:org.eclipse.core.filesystem:1.9.500
+- org.eclipse.platform:org.eclipse.core.jobs:3.13.200
+- org.eclipse.platform:org.eclipse.core.resources:3.18.100
+- org.eclipse.platform:org.eclipse.core.runtime:3.26.100
+- org.eclipse.platform:org.eclipse.equinox.app:1.6.200
+- org.eclipse.platform:org.eclipse.equinox.common:3.17.0
+- org.eclipse.platform:org.eclipse.equinox.preferences:3.10.100
+- org.eclipse.platform:org.eclipse.equinox.registry:3.11.200
+- org.eclipse.platform:org.eclipse.osgi:3.18.200
+- org.eclipse.platform:org.eclipse.text:3.12.300
+
+Apache License 2.0
+https://www.apache.org/licenses/LICENSE-2.0
+
+- org.osgi:org.osgi.service.prefs:1.1.2
+- org.osgi:osgi.annotation:8.0.1
+
+The VS Code packaging tool is a development dependency and is not bundled as a
+runtime dependency in the extension.
