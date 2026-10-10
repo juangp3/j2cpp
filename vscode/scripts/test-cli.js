@@ -64,7 +64,77 @@ try {
 	assert.strictEqual(invalidPolicy.status, 2);
 	assert(invalidPolicy.stderr.includes("Invalid --sealed-types value"));
 
+	const invalidEncoding = runCli([
+		"--output", outputDirectory,
+		"--encoding", "no-such-charset",
+		sealedFixture
+	]);
+	assert.strictEqual(invalidEncoding.status, 2);
+	assert(invalidEncoding.stderr.includes("Unsupported --encoding value"));
+
+	// Syntax the writers cannot translate must fail loudly instead of
+	// producing plausible-looking but invalid C++
+	const scratchRoot = path.join(tempDirectory, "scratch src");
+	const scratchPackage = path.join(scratchRoot, "scratch");
+	fs.mkdirSync(scratchPackage, { recursive: true });
+	const unsupportedSource = path.join(scratchPackage, "Unsupported.java");
+	fs.writeFileSync(unsupportedSource, [
+		"package scratch;",
+		"public class Unsupported {",
+		"\tinterface F { int apply(int x); }",
+		"\tstatic int run() {",
+		"\t\tF twice = x -> x * 2;",
+		"\t\tF boxed = Integer::valueOf;",
+		"\t\treturn twice.apply(1) + boxed.apply(2);",
+		"\t}",
+		"}",
+		""
+	].join("\n"));
+	const unsupportedOutput = path.join(tempDirectory, "unsupported output");
+	fs.mkdirSync(unsupportedOutput);
+	const unsupported = runCli(["--output", unsupportedOutput, unsupportedSource]);
+	assert.strictEqual(unsupported.status, 1, unsupported.stdout);
+	assert(unsupported.stderr.includes("Unsupported.java:5: Java 8 lambda expressions are not supported"));
+	assert(unsupported.stderr.includes("Unsupported.java:6: Java 8 method references are not supported"));
+	assert(!unsupported.stderr.includes("\tat "), "User errors must not print a stack trace");
+
+	// Sources are read as UTF-8 by default and C++ is written as UTF-8,
+	// independent of the platform charset
+	const utf8Source = path.join(scratchPackage, "Utf8.java");
+	fs.writeFileSync(utf8Source, [
+		"package scratch;",
+		"public class Utf8 {",
+		"\tpublic static String text() { return \"ação\"; }",
+		"}",
+		""
+	].join("\n"), "utf8");
+	const utf8Output = path.join(tempDirectory, "utf8 output");
+	fs.mkdirSync(utf8Output);
+	const utf8 = runCli(["--output", utf8Output, utf8Source]);
+	assert.strictEqual(utf8.status, 0, utf8.stderr);
+	assert(
+		fs.readFileSync(path.join(utf8Output, "src", "scratch", "Utf8.cpp"), "utf8")
+			.includes("u\"ação\""),
+		"Non-ASCII string literal was not preserved as UTF-8"
+	);
+
 	if (javaMajorVersion() >= 17) {
+		// Every legacy fixture exercises translator paths that the Java 17
+		// AST level can break; the whole tree must keep translating.
+		const corpusOutput = path.join(tempDirectory, "corpus output");
+		fs.mkdirSync(corpusOutput);
+		const corpus = runCli(["--output", corpusOutput, "--sourcepath", sourceRoot, sourceRoot]);
+		assert.strictEqual(corpus.status, 0, corpus.stderr);
+		const corpusSources = filesUnder(path.join(corpusOutput, "src"))
+			.filter((file) => file.endsWith(".cpp"));
+		assert(corpusSources.length > 100, `Only ${corpusSources.length} sources generated`);
+		for (const file of corpusSources) {
+			assert(
+				!fs.readFileSync(file, "utf8").includes("MISSING"),
+				`Unresolved AST placeholder in ${file}`
+			);
+		}
+
 		const advisory = runCli([
 			"--output", outputDirectory,
 			"--sourcepath", sourceRoot,
@@ -122,6 +192,15 @@ try {
 		assert.match(
 			generatedSources,
 			/case int32_t\(0\):\s*return int32_t\(1\);/
+		);
+		assert.match(
+			generatedSources,
+			/case int32_t\(0\):\s*result = 10;\s*break;/,
+			"Arrow rules in switch statements must not return or fall through"
+		);
+		assert.match(
+			generatedSources,
+			/\(v == Java17ControlFlow_Light::AMBER\) \|\| \(v == Java17ControlFlow_Light::GREEN\)/
 		);
 	} else {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");

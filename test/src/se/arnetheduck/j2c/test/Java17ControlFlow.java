@@ -15,4 +15,29 @@ public class Java17ControlFlow {
 		default -> 4;
 		};
 	}
+
+	public static int switchRule(int value) {
+		int result = 0;
+		switch (value) {
+		case 0 -> result = 10;
+		case 1, 2 -> {
+			result = 20;
+		}
+		default -> result = 30;
+		}
+		return result + 1;
+	}
+
+	public enum Light {
+		RED, AMBER, GREEN
+	}
+
+	public static int enumSwitchRule(Light light) {
+		int result = 0;
+		switch (light) {
+		case RED -> result = 1;
+		case AMBER, GREEN -> result = 2;
+		}
+		return result + 10;
+	}
 }

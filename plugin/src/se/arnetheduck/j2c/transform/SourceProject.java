@@ -1,11 +1,9 @@
 package se.arnetheduck.j2c.transform;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -16,19 +14,26 @@ import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.FileASTRequestor;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 public class SourceProject {
 	private final List<File> sourcePaths;
 	private final List<File> classPaths;
+	private final Charset encoding;
 	private final Map<String, SourceUnit> units = new HashMap<String, SourceUnit>();
 
+	/** Receives each parsed unit of a batch */
+	public interface UnitHandler {
+		void accept(SourceUnit unit, CompilationUnit ast) throws Exception;
+	}
+
 	public SourceProject(Collection<File> sourcePaths,
-			Collection<File> classPaths) throws IOException {
+			Collection<File> classPaths, Charset encoding) {
 		this.sourcePaths = absolutePaths(sourcePaths);
 		this.classPaths = absolutePaths(classPaths);
-		indexSources();
+		this.encoding = encoding;
 	}
 
 	private static List<File> absolutePaths(Collection<File> paths) {
@@ -37,30 +42,6 @@ public class SourceProject {
 			result.add(path.getAbsoluteFile());
 		}
 		return result;
-	}
-
-	private void indexSources() throws IOException {
-		for (File sourcePath : sourcePaths) {
-			if (!sourcePath.isDirectory()) {
-				continue;
-			}
-			indexSources(sourcePath);
-		}
-	}
-
-	private void indexSources(File directory) throws IOException {
-		File[] entries = directory.listFiles();
-		if (entries == null) {
-			throw new IOException("Could not read source directory "
-					+ directory);
-		}
-		for (File entry : entries) {
-			if (entry.isDirectory()) {
-				indexSources(entry);
-			} else if (entry.getName().endsWith(".java")) {
-				addUnit(entry);
-			}
-		}
 	}
 
 	private SourceUnit addUnit(File file) {
@@ -77,16 +58,41 @@ public class SourceProject {
 		return addUnit(file);
 	}
 
-	public Collection<SourceUnit> getUnits() {
-		return units.values();
-	}
+	/**
+	 * Parses the units with one shared compiler environment, which is much
+	 * cheaper than resolving bindings for each file separately. Handler
+	 * failures stop the remaining units from being handled and are rethrown.
+	 */
+	public void parse(Collection<SourceUnit> batch, IProgressMonitor monitor,
+			final UnitHandler handler) throws Exception {
+		final Map<String, SourceUnit> byPath = new HashMap<String, SourceUnit>();
+		for (SourceUnit unit : batch) {
+			byPath.put(unit.file().getPath(), unit);
+		}
+		String[] paths = byPath.keySet().toArray(new String[byPath.size()]);
+		Arrays.sort(paths);
+		String[] encodings = new String[paths.length];
+		Arrays.fill(encodings, encoding.name());
 
-	public CompilationUnit parse(SourceUnit unit, IProgressMonitor monitor)
-			throws IOException {
-		ASTParser parser = newParser();
-		parser.setSource(read(unit.file()).toCharArray());
-		parser.setUnitName(unitName(unit.file()));
-		return (CompilationUnit) parser.createAST(monitor);
+		final Exception[] failure = new Exception[1];
+		newParser().createASTs(paths, encodings, new String[0],
+				new FileASTRequestor() {
+					@Override
+					public void acceptAST(String sourceFilePath,
+							CompilationUnit ast) {
+						if (failure[0] != null) {
+							return;
+						}
+						try {
+							handler.accept(byPath.get(sourceFilePath), ast);
+						} catch (Exception e) {
+							failure[0] = e;
+						}
+					}
+				}, monitor);
+		if (failure[0] != null) {
+			throw failure[0];
+		}
 	}
 
 	public ITypeBinding resolve(String typeName) {
@@ -117,44 +123,9 @@ public class SourceProject {
 		return parser;
 	}
 
-	private String unitName(File file) {
-		for (File sourcePath : sourcePaths) {
-			String root = sourcePath.getAbsolutePath();
-			String path = file.getAbsolutePath();
-			if (!root.endsWith(File.separator)) {
-				root += File.separator;
-			}
-			if (path.startsWith(root)) {
-				return path.substring(root.length()).replace(
-						File.separatorChar, '/');
-			}
-		}
-		return file.getName();
-	}
-
-	private static String read(File file) throws IOException {
-		InputStream input = new FileInputStream(file);
-		try {
-			byte[] buffer = new byte[(int) file.length()];
-			int offset = 0;
-			while (offset < buffer.length) {
-				int count = input.read(buffer, offset, buffer.length - offset);
-				if (count < 0) {
-					break;
-				}
-				offset += count;
-			}
-			return new String(buffer, 0, offset, Charset.defaultCharset());
-		} finally {
-			input.close();
-		}
-	}
-
 	private String[] sourceEncodings() {
 		String[] encodings = new String[sourcePaths.size()];
-		for (int i = 0; i < encodings.length; i++) {
-			encodings[i] = Charset.defaultCharset().name();
-		}
+		Arrays.fill(encodings, encoding.name());
 		return encodings;
 	}
 

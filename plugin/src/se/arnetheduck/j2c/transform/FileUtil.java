@@ -7,7 +7,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 public class FileUtil {
@@ -51,7 +53,8 @@ public class FileUtil {
 	}
 
 	private static String read(InputStream resource) {
-		return new Scanner(resource).useDelimiter("\\A").next();
+		return new Scanner(resource, StandardCharsets.UTF_8.name())
+				.useDelimiter("\\A").next();
 	}
 
 	public static PrintWriter open(File target) throws FileNotFoundException {
@@ -59,8 +62,11 @@ public class FileUtil {
 			target.getParentFile().mkdirs();
 		}
 
+		// C++ compilers read UTF-8 source by default; the platform charset
+		// would mangle non-ASCII string literals
 		FileOutputStream fos = new FileOutputStream(target);
-		return new PrintWriter(fos);
+		return new PrintWriter(new OutputStreamWriter(fos,
+				StandardCharsets.UTF_8));
 	}
 
 	public static void writeResource(String name, File target)

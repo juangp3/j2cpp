@@ -1,10 +1,12 @@
 package se.arnetheduck.j2c.cli;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -14,12 +16,13 @@ import org.eclipse.core.runtime.Path;
 
 import se.arnetheduck.j2c.transform.SourceProject;
 import se.arnetheduck.j2c.transform.SourceUnit;
+import se.arnetheduck.j2c.transform.TranslationException;
 import se.arnetheduck.j2c.transform.Transformer;
 
 public class Main {
 	private static final String USAGE = "Usage: j2c --output <directory> "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
-			+ "[--sealed-types <advisory|reject>] "
+			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
 			+ "<java-file-or-source-directory>...";
 
 	public static void main(String[] args) {
@@ -29,6 +32,10 @@ public class Main {
 			System.err.println(e.getMessage());
 			System.err.println(USAGE);
 			System.exit(2);
+		} catch (TranslationException e) {
+			System.err.println("J2C translation failed:");
+			System.err.println(e.getMessage());
+			System.exit(1);
 		} catch (Exception e) {
 			System.err.println("J2C translation failed: " + e.getMessage());
 			e.printStackTrace(System.err);
@@ -40,6 +47,7 @@ public class Main {
 		File output = null;
 		String name = null;
 		Transformer.SealedTypes sealedTypes = Transformer.SealedTypes.ADVISORY;
+		Charset encoding = StandardCharsets.UTF_8;
 		List<File> sourcePaths = new ArrayList<File>();
 		List<File> classPaths = new ArrayList<File>();
 		List<File> inputs = new ArrayList<File>();
@@ -68,6 +76,8 @@ public class Main {
 							"Invalid --sealed-types value: " + policy
 									+ " (expected advisory or reject)");
 				}
+			} else if ("--encoding".equals(arg)) {
+				encoding = charset(value(args, ++i, arg));
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {
@@ -101,7 +111,7 @@ public class Main {
 		if (sourcePaths.isEmpty()) {
 			for (File input : inputs) {
 				File sourcePath = input.isDirectory() ? input
-						: inferSourcePath(input.getAbsoluteFile());
+						: inferSourcePath(input.getAbsoluteFile(), encoding);
 				if (!containsPath(sourcePaths, sourcePath)) {
 					sourcePaths.add(sourcePath);
 				}
@@ -134,7 +144,8 @@ public class Main {
 					"No Java source files found in the selected inputs");
 		}
 
-		SourceProject project = new SourceProject(sourcePaths, classPaths);
+		SourceProject project = new SourceProject(sourcePaths, classPaths,
+				encoding);
 		Collection<SourceUnit> units = new ArrayList<SourceUnit>();
 		for (File file : selectedFiles) {
 			units.add(project.getUnit(file));
@@ -154,6 +165,15 @@ public class Main {
 			throw new IllegalArgumentException("Missing value for " + option);
 		}
 		return args[index];
+	}
+
+	private static Charset charset(String name) {
+		try {
+			return Charset.forName(name);
+		} catch (IllegalCharsetNameException | UnsupportedCharsetException e) {
+			throw new IllegalArgumentException("Unsupported --encoding value: "
+					+ name);
+		}
 	}
 
 	private static List<File> pathList(String value) {
@@ -193,10 +213,12 @@ public class Main {
 		}
 	}
 
-	private static File inferSourcePath(File sourceFile) throws IOException {
+	private static File inferSourcePath(File sourceFile, Charset encoding)
+			throws IOException {
 		java.util.regex.Matcher packageName = java.util.regex.Pattern.compile(
 				"(?m)^\\s*package\\s+([\\w.$]+)\\s*;")
-				.matcher(readText(sourceFile));
+				.matcher(new String(Files.readAllBytes(sourceFile.toPath()),
+						encoding));
 		if (!packageName.find()) {
 			return sourceFile.getParentFile();
 		}
@@ -210,23 +232,5 @@ public class Main {
 			root = root.getParentFile();
 		}
 		return root == null ? sourceFile.getParentFile() : root;
-	}
-
-	private static String readText(File file) throws IOException {
-		InputStream input = new FileInputStream(file);
-		try {
-			byte[] buffer = new byte[(int) file.length()];
-			int offset = 0;
-			while (offset < buffer.length) {
-				int count = input.read(buffer, offset, buffer.length - offset);
-				if (count < 0) {
-					break;
-				}
-				offset += count;
-			}
-			return new String(buffer, 0, offset, Charset.defaultCharset());
-		} finally {
-			input.close();
-		}
 	}
 }

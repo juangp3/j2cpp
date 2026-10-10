@@ -27,11 +27,17 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.LambdaExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.MethodReference;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.SwitchExpression;
+import org.eclipse.jdt.core.dom.TextBlock;
+import org.eclipse.jdt.core.dom.TryStatement;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.VariableDeclarationExpression;
 
 import se.arnetheduck.j2c.snippets.GetSetSnippet;
 import se.arnetheduck.j2c.snippets.ReplaceInvocation;
@@ -114,6 +120,9 @@ public class Transformer {
 		long start = System.currentTimeMillis();
 
 		hardDep(resolve(ClassLoader.class));
+		// The ObjectArray.hpp resource includes these unconditionally
+		hardDep(resolve(Cloneable.class));
+		hardDep(resolve(java.io.Serializable.class));
 		selection.addAll(Arrays.asList(units));
 		todo.addAll(selection);
 
@@ -220,25 +229,29 @@ public class Transformer {
 		writeDeps(monitor);
 	}
 
-	private void write(IProgressMonitor monitor, SourceUnit... units)
+	private void write(final IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
-		for (SourceUnit source : units) {
-			CompilationUnit ast = project.parse(source, monitor);
-			recordParameterNames(ast);
-			currentAST = ast.getAST();
-			if (selection.contains(source)) {
-				cur = sel;
-			} else {
-				cur = ext;
-			}
-			try {
-				throwIfErrors(source, ast);
-				throwIfUnsupported(source, ast);
-				writeImpl(monitor, source, ast);
-			} finally {
-				currentAST = null;
-			}
-		}
+		project.parse(Arrays.asList(units), monitor,
+				new SourceProject.UnitHandler() {
+					@Override
+					public void accept(SourceUnit source, CompilationUnit ast)
+							throws Exception {
+						recordParameterNames(ast);
+						currentAST = ast.getAST();
+						if (selection.contains(source)) {
+							cur = sel;
+						} else {
+							cur = ext;
+						}
+						try {
+							throwIfErrors(source, ast);
+							throwIfUnsupported(source, ast);
+							writeImpl(monitor, source, ast);
+						} finally {
+							currentAST = null;
+						}
+					}
+				});
 	}
 
 	private void recordParameterNames(CompilationUnit ast) {
@@ -294,53 +307,91 @@ public class Transformer {
 		}
 
 		if (errors.length() > 0) {
-			throw new IllegalStateException(errors.toString());
+			throw new TranslationException(errors.toString());
 		}
 	}
 
+	/**
+	 * Fails before any output is written when the unit uses syntax that the
+	 * writers would otherwise silently mistranslate.
+	 */
 	private void throwIfUnsupported(SourceUnit source,
-			CompilationUnit ast) {
-		if (sealedTypes == SealedTypes.ADVISORY) {
-			return;
-		}
+			final CompilationUnit ast) {
 		final StringBuilder unsupported = new StringBuilder();
 		ast.accept(new ASTVisitor() {
 			@Override
 			public void preVisit(ASTNode node) {
-				String feature = null;
-				if (node instanceof AbstractTypeDeclaration) {
-					ITypeBinding binding = ((AbstractTypeDeclaration) node)
-							.resolveBinding();
-					if (binding != null
-							&& (Modifier.isSealed(binding.getModifiers())
-									|| Modifier.isNonSealed(
-											binding.getModifiers()))) {
-						feature = Modifier.isSealed(binding.getModifiers())
-								? "sealed type" : "non-sealed type";
-					} else if (Modifier.isSealed(
-							((AbstractTypeDeclaration) node).getModifiers())) {
-						feature = "sealed type";
-					} else if (Modifier.isNonSealed(
-							((AbstractTypeDeclaration) node).getModifiers())) {
-						feature = "non-sealed type";
-					}
-				}
-
-				if (feature != null) {
+				String problem = unsupportedFeature(node);
+				if (problem != null) {
 					if (unsupported.length() > 0) {
 						unsupported.append(System.lineSeparator());
 					}
 					unsupported.append(source.file().getPath()).append(':')
 							.append(ast.getLineNumber(node.getStartPosition()))
-							.append(": Java 17 ").append(feature)
-							.append(" rejected by --sealed-types reject");
+							.append(": ").append(problem);
 				}
 			}
 		});
 
 		if (unsupported.length() > 0) {
-			throw new IllegalStateException(unsupported.toString());
+			throw new TranslationException(unsupported.toString());
 		}
+	}
+
+	private String unsupportedFeature(ASTNode node) {
+		if (node instanceof LambdaExpression) {
+			return "Java 8 lambda expressions are not supported";
+		}
+		if (node instanceof MethodReference) {
+			return "Java 8 method references are not supported";
+		}
+		if (node instanceof TextBlock) {
+			return "Java 15 text blocks are not supported";
+		}
+		if (node instanceof TryStatement) {
+			for (Object resource : ((TryStatement) node).resources()) {
+				if (!(resource instanceof VariableDeclarationExpression)) {
+					return "Java 9 try-with-resources on an existing variable "
+							+ "is not supported";
+				}
+			}
+		}
+		if (node instanceof SwitchExpression) {
+			ITypeBinding selector = ((SwitchExpression) node).getExpression()
+					.resolveTypeBinding();
+			if (selector != null && !selector.isPrimitive()) {
+				return "switch expressions on " + selector.getName()
+						+ " are not supported (primitive selectors only)";
+			}
+		}
+		if (sealedTypes == SealedTypes.REJECT) {
+			return sealedFeature(node);
+		}
+		return null;
+	}
+
+	private static String sealedFeature(ASTNode node) {
+		String feature = null;
+		if (node instanceof AbstractTypeDeclaration) {
+			ITypeBinding binding = ((AbstractTypeDeclaration) node)
+					.resolveBinding();
+			if (binding != null
+					&& (Modifier.isSealed(binding.getModifiers())
+							|| Modifier.isNonSealed(
+									binding.getModifiers()))) {
+				feature = Modifier.isSealed(binding.getModifiers())
+						? "sealed type" : "non-sealed type";
+			} else if (Modifier.isSealed(
+					((AbstractTypeDeclaration) node).getModifiers())) {
+				feature = "sealed type";
+			} else if (Modifier.isNonSealed(
+					((AbstractTypeDeclaration) node).getModifiers())) {
+				feature = "non-sealed type";
+			}
+		}
+
+		return feature == null ? null : "Java 17 " + feature
+				+ " rejected by --sealed-types reject";
 	}
 
 	private void writeHeader(SourceUnit unit, ITypeBinding tb)

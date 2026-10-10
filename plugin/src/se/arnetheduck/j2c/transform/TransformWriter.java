@@ -206,16 +206,21 @@ public abstract class TransformWriter extends ASTVisitor {
 
 	@Override
 	public boolean visit(ArrayType node) {
-		if (node.getComponentType().isArrayType()
-				|| node.getComponentType() instanceof QualifiedType) {
-			node.getComponentType().accept(this);
+		// JLS8+ represents int[][] as one ArrayType with an element type and
+		// a dimension count instead of nested component types
+		Type elementType = node.getElementType();
+		if (elementType instanceof QualifiedType) {
+			elementType.accept(this);
 		} else {
-			print(CName.relative(node.getComponentType().resolveBinding(),
-					type, true));
+			print(CName.relative(elementType.resolveBinding(), type, true));
 		}
 
-		softDep(node.resolveBinding());
-		print("Array");
+		ITypeBinding tb = node.resolveBinding();
+		for (int i = 0; i < node.getDimensions(); ++i) {
+			softDep(tb);
+			print("Array");
+			tb = tb.getComponentType();
+		}
 
 		return false;
 	}

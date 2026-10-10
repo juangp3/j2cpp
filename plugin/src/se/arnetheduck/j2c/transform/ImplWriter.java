@@ -2504,6 +2504,14 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(YieldStatement node) {
+		if (node.isImplicit() && node.getParent() instanceof SwitchStatement) {
+			// Expression body of a "case X -> expr;" rule in a switch statement
+			printi();
+			node.getExpression().accept(this);
+			println(";");
+			return false;
+		}
+
 		printi("return ");
 		node.getExpression().accept(this);
 		println(";");
@@ -2576,6 +2584,7 @@ public class ImplWriter extends TransformWriter {
 		enumSwitchLabels.add("end_switch" + enumSwitchCount);
 		enumSwitchCount++;
 
+		boolean arrows = hasSwitchRules(statements);
 		boolean wasCase = false;
 		boolean indented = false;
 		for (Statement s : statements) {
@@ -2603,12 +2612,17 @@ public class ImplWriter extends TransformWriter {
 					if (hasDefault) {
 						print("(");
 					}
+					// JLS14+ cases hold every label in expressions();
+					// getExpression() only yields a MISSING placeholder
 					for (SwitchCase x : cases) {
-						print(sep);
-						sep = " || ";
-						print("(" + name + " == ");
-						x.getExpression().accept(this);
-						print(")");
+						for (Expression label : (Iterable<Expression>) x
+								.expressions()) {
+							print(sep);
+							sep = " || ";
+							print("(" + name + " == ");
+							label.accept(this);
+							print(")");
+						}
 					}
 
 					if (hasDefault) {
@@ -2616,11 +2630,12 @@ public class ImplWriter extends TransformWriter {
 						sep = "";
 						print("(");
 						for (SwitchCase x : allCases) {
-							if (!x.isDefault()) {
+							for (Expression label : (Iterable<Expression>) x
+									.expressions()) {
 								print(sep);
 								sep = " && ";
 								print("(" + name + " != ");
-								x.getExpression().accept(this);
+								label.accept(this);
 								print(")");
 							}
 						}
@@ -2637,6 +2652,10 @@ public class ImplWriter extends TransformWriter {
 					cases.clear();
 				}
 				s.accept(this);
+				if (arrows) {
+					printlni("goto " + enumSwitchLabel() + ";");
+					cases.clear();
+				}
 			}
 
 		}
@@ -2665,6 +2684,7 @@ public class ImplWriter extends TransformWriter {
 		node.getExpression().accept(this);
 		println(") {");
 
+		boolean arrows = hasSwitchRules(statements);
 		boolean indented = false;
 		boolean wasCase = false;
 		for (int i = 0; i < statements.size(); ++i) {
@@ -2708,12 +2728,18 @@ public class ImplWriter extends TransformWriter {
 				}
 				s.accept(this);
 				println();
+				if (arrows) {
+					printlni("break;");
+				}
 			} else {
 				if (wasCase) {
 					println();
 				}
 
 				s.accept(this);
+				if (arrows) {
+					printlni("break;");
+				}
 			}
 
 			wasCase = s instanceof SwitchCase;
@@ -2725,6 +2751,16 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		printlni("}");
+	}
+
+	/** "case X ->" rules never fall through, unlike "case X:" groups */
+	private static boolean hasSwitchRules(List<Statement> statements) {
+		for (Statement s : statements) {
+			if (s instanceof SwitchCase && ((SwitchCase) s).isSwitchLabeledRule()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static List<VariableDeclarationStatement> declarations(
