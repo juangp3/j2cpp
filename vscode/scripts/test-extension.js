@@ -18,6 +18,9 @@ function createHarness(options = {}) {
 	const spawned = [];
 	const errors = [];
 	const information = [];
+	const warnings = [];
+	const killed = [];
+	const cancellationListeners = [];
 	const outputs = [];
 	const commands = new Map();
 	const workspaceFolders = options.workspaceFolders || [];
@@ -50,10 +53,19 @@ function createHarness(options = {}) {
 			},
 			showErrorMessage: (message) => errors.push(message),
 			showInformationMessage: (message) => information.push(message),
+			showWarningMessage: (message) => warnings.push(message),
 			showOpenDialog: async () => options.outputDirectory
 				? [{ fsPath: options.outputDirectory }]
 				: undefined,
-			withProgress: (_progress, callback) => callback()
+			withProgress: (progressOptions, callback) => {
+				assert.strictEqual(progressOptions.cancellable, true);
+				return callback({ report() {} }, {
+					onCancellationRequested: (listener) => {
+						cancellationListeners.push(listener);
+						return { dispose() {} };
+					}
+				});
+			}
 		},
 		workspace: {
 			getConfiguration: (section) => ({
@@ -82,19 +94,35 @@ function createHarness(options = {}) {
 		spawn: (...args) => {
 			spawned.push(args);
 			const child = new events.EventEmitter();
-			child.stdout = new events.EventEmitter();
-			child.stderr = new events.EventEmitter();
+			const stream = () => {
+				const emitter = new events.EventEmitter();
+				emitter.setEncoding = (encoding) => {
+					emitter.encoding = encoding;
+				};
+				return emitter;
+			};
+			child.stdout = stream();
+			child.stderr = stream();
+			child.kill = () => {
+				killed.push(child);
+				process.nextTick(() => child.emit("close", null));
+			};
 			const outcome = options.spawnOutcome || { code: 0 };
 			process.nextTick(() => {
+				assert.strictEqual(child.stdout.encoding, "utf8");
+				assert.strictEqual(child.stderr.encoding, "utf8");
+				if (outcome.hang) {
+					return;
+				}
 				if (outcome.error) {
 					child.emit("error", outcome.error);
 					return;
 				}
 				if (outcome.stdout) {
-					child.stdout.emit("data", Buffer.from(outcome.stdout));
+					child.stdout.emit("data", outcome.stdout);
 				}
 				if (outcome.stderr) {
-					child.stderr.emit("data", Buffer.from(outcome.stderr));
+					child.stderr.emit("data", outcome.stderr);
 				}
 				child.emit("close", outcome.code);
 			});
@@ -127,12 +155,15 @@ function createHarness(options = {}) {
 	extension.activate(context);
 
 	return {
+		cancel: () => cancellationListeners.forEach((listener) => listener()),
 		commands,
 		context,
 		errors,
 		information,
+		killed,
 		outputs,
-		spawned
+		spawned,
+		warnings
 	};
 }
 
@@ -249,6 +280,38 @@ async function testMissingCliJarDoesNotSpawn() {
 	assert(harness.errors[0].includes("J2C CLI jar not found"));
 }
 
+async function testCancellationStopsTranslator() {
+	const root = path.join(tempDirectory, "cancelled workspace");
+	const input = makeFile(path.join(root, "Slow.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "cancel extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		outputDirectory: path.join(tempDirectory, "cancelled output"),
+		spawnOutcome: { hang: true },
+		workspaceFolders: [createWorkspace(root)]
+	});
+	const translate = harness.commands.get("j2c.translate");
+	const running = translate({ fsPath: input });
+	await new Promise((resolve) => setImmediate(resolve));
+
+	await translate({ fsPath: input });
+	assert.strictEqual(harness.spawned.length, 1, "A second run must not start");
+	assert(harness.warnings[0].includes("already running"));
+
+	harness.cancel();
+	await running;
+	assert.strictEqual(harness.killed.length, 1);
+	assert(harness.warnings[1].includes("Translation cancelled"));
+	assert.deepStrictEqual(harness.errors, []);
+	assert.deepStrictEqual(harness.information, []);
+
+	const rerun = translate({ fsPath: input });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.strictEqual(harness.spawned.length, 2, "A run must be possible after cancelling");
+	harness.cancel();
+	await rerun;
+}
+
 async function testNoTargetIsReported() {
 	const harness = createHarness();
 	await harness.commands.get("j2c.translate")();
@@ -258,13 +321,18 @@ async function testNoTargetIsReported() {
 }
 
 async function main() {
+	// A test whose promise never settles lets Node exit with an empty event
+	// loop; fail unless every test actually completed.
+	process.exitCode = 1;
 	try {
 		await testConfiguredTranslationArguments();
 		await testCliFailureIsReported();
 		await testSpawnFailureIsReported();
 		await testMissingCliJarDoesNotSpawn();
+		await testCancellationStopsTranslator();
 		await testNoTargetIsReported();
 		console.log("Extension configuration and failure checks passed");
+		process.exitCode = 0;
 	} finally {
 		fs.rmSync(tempDirectory, { recursive: true, force: true });
 	}

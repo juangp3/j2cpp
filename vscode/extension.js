@@ -3,6 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
 
+let translating = false;
+
 function activate(context) {
 	const output = vscode.window.createOutputChannel("J2C");
 	context.subscriptions.push(output);
@@ -13,6 +15,13 @@ function activate(context) {
 }
 
 async function translate(context, output, target) {
+	if (translating) {
+		vscode.window.showWarningMessage(
+			"J2C: A translation is already running."
+		);
+		return;
+	}
+
 	const targets = getTargets(target);
 	if (targets.length === 0) {
 		vscode.window.showErrorMessage(
@@ -89,34 +98,49 @@ async function translate(context, output, target) {
 
 	output.appendLine(`Translating ${targets.join(", ")}`);
 	output.appendLine(`Output: ${outputDirectory}`);
-	await vscode.window.withProgress({
-		location: vscode.ProgressLocation.Notification,
-		title: "J2C: Translating Java to C++"
-	}, async () => {
-		try {
-			const result = await runCli(
-				configuration.get("javaExecutable", "java"),
-				args,
-				workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(targets[0]),
-				output
+	translating = true;
+	try {
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "J2C: Translating Java to C++",
+			cancellable: true
+		}, (_progress, token) => runAndReport(
+			configuration.get("javaExecutable", "java"),
+			args,
+			workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(targets[0]),
+			output,
+			outputDirectory,
+			token
+		));
+	} finally {
+		translating = false;
+	}
+	output.show(true);
+}
+
+async function runAndReport(executable, args, cwd, output, outputDirectory, token) {
+	try {
+		const result = await runCli(executable, args, cwd, output, token);
+		if (result.cancelled) {
+			output.appendLine("Translation cancelled; the output directory may be incomplete.");
+			vscode.window.showWarningMessage(
+				"J2C: Translation cancelled. The output directory may be incomplete."
 			);
-			if (result.code === 0) {
-				vscode.window.showInformationMessage(
-					`J2C: Translation complete. Output: ${outputDirectory}`
-				);
-			} else {
-				vscode.window.showErrorMessage(
-					`J2C: Translation failed (exit code ${result.code}). See the J2C output channel.`
-				);
-			}
-		} catch (error) {
-			output.appendLine(String(error));
+		} else if (result.code === 0) {
+			vscode.window.showInformationMessage(
+				`J2C: Translation complete. Output: ${outputDirectory}`
+			);
+		} else {
 			vscode.window.showErrorMessage(
-				`J2C: Could not start the translator. See the J2C output channel.`
+				`J2C: Translation failed (exit code ${result.code}). See the J2C output channel.`
 			);
 		}
-	});
-	output.show(true);
+	} catch (error) {
+		output.appendLine(String(error));
+		vscode.window.showErrorMessage(
+			`J2C: Could not start the translator. See the J2C output channel.`
+		);
+	}
 }
 
 function getTargets(target) {
@@ -173,16 +197,31 @@ function getClassPath(configuration, workspaceFolder) {
 	);
 }
 
-function runCli(executable, args, cwd, output) {
+function runCli(executable, args, cwd, output, token) {
 	return new Promise((resolve, reject) => {
-		const process = childProcess.spawn(executable, args, {
+		const child = childProcess.spawn(executable, args, {
 			cwd,
 			windowsHide: true
 		});
-		process.stdout.on("data", (data) => output.append(data.toString()));
-		process.stderr.on("data", (data) => output.append(data.toString()));
-		process.on("error", reject);
-		process.on("close", (code) => resolve({ code }));
+		let cancelled = false;
+		const cancellation = token && token.onCancellationRequested(() => {
+			cancelled = true;
+			child.kill();
+		});
+		const settle = (callback) => (value) => {
+			if (cancellation) {
+				cancellation.dispose();
+			}
+			callback(value);
+		};
+		// Decode as streams so multi-byte characters split across chunks
+		// are not corrupted
+		child.stdout.setEncoding("utf8");
+		child.stderr.setEncoding("utf8");
+		child.stdout.on("data", (data) => output.append(data));
+		child.stderr.on("data", (data) => output.append(data));
+		child.on("error", settle(reject));
+		child.on("close", settle((code) => resolve({ code, cancelled })));
 	});
 }
 
