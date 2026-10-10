@@ -13,11 +13,11 @@ Java-to-C++ semantic equivalence.
 
 ## Current known state
 
-- The public destination `juangp3/j2cpp` exists and is empty. The original
-  `arnetheduck/j2c` repository remains intact.
+- The public destination `juangp3/j2cpp` now contains the `modern-release`
+  branch. The original `arnetheduck/j2c` repository remains intact.
 - The local branch `modern-release` has an additional `modern` remote pointing
-  to the new repository; `origin` still points to the original. No history or
-  worktree changes have been pushed.
+  to the new repository; `origin` still points to the original. The reviewed
+  release commits were pushed; unrelated worktree changes were not.
 - The current worktree is based on `arnetheduck/j2c` and contains modernization
   source changes, documentation, generated files, and IDE metadata. Generated
   `plugin/bin` and `test/bin` are ignored, not deleted. IDE-generated
@@ -34,6 +34,10 @@ Java-to-C++ semantic equivalence.
 - A fresh VSIX was packaged and installed in an isolated VS Code profile. It
   includes the extension, bundled CLI JAR, and project license. `npm audit`
   reports no vulnerabilities for the current dependency tree.
+- The first GitHub Actions run failed in the Java 11 matrix leg because CLI
+  integration tests attempted to translate Java 17 sealed/record fixtures.
+  Those feature checks are now gated on the executing Java version; local
+  packaging passes, and a pushed CI rerun is still required.
 - Maven has no JVM test sources; integration tests are Node-based. Generated
   Java 17 control-flow and record fixtures both compile as C++20 with Ubuntu
   WSL's GCC 13.3.0; the same checks are now included in CI.
@@ -52,14 +56,13 @@ release blockers exist. Recheck them on the release branch.
 2. **Done:** A distinct repository was chosen instead of a GitHub fork.
 3. **Done locally:** Preserve `arnetheduck/j2c`; local `origin` is unchanged
    and the new repository has an additional `modern` remote.
-4. **Pending:** Carry the existing Git history into the new repository, then
-   push only the reviewed modernization/release branch and necessary tags.
-   Do not push unreviewed worktree output.
+4. **Done:** Pushed the reviewed `modern-release` branch with the existing
+   project history. No release tag or artifact has been published.
 
 **Gate:** Destination identity and visibility are intentional; the original
 repository remains intact; the new repository's history and remotes are
-verified before publishing. Repository creation and local remote setup are
-complete; migration/push remains pending.
+verified before publishing. Repository creation, local remote setup, and
+branch migration are complete; release tags and artifacts remain pending.
 
 ## Phase 2 — Isolate and review the modernization changes
 
@@ -74,16 +77,17 @@ complete; migration/push remains pending.
 4. **Done:** Preserved unrelated work. Eclipse IDE metadata and a legacy
    handler integration change remain unstaged and untouched.
 5. **Done locally:** Committed the reviewed modernization snapshot as
-   `94ceede` (`feat: add modern J2C CLI and VS Code extension`), preserving
-   the existing history.
+   `94ceede` (`feat: add modern J2C CLI and VS Code extension`) and the
+   clean-checkout verification update as `db5cc3c`, preserving existing
+   history.
 6. **Done:** Added and checked ignore rules for generated Maven output,
    Eclipse bin folders, extension dependencies, copied CLI JAR, generated
    license copy, and VSIX packages.
 
 **Gate:** Every committed file is explained by the release and unrelated work
 is preserved. A detached clean worktree reproduced the Maven build, CLI
-integration tests, extension package, and C++ checks. GitHub CI and push remain
-pending.
+integration tests, extension package, and C++ checks. The reviewed branch is
+pushed; its GitHub CI run remains pending.
 
 ## Phase 3 — Define product scope and project documentation
 
@@ -126,19 +130,18 @@ made public through a push.
    verification before Marketplace publishing.
 2. **Done for the candidate:** Maven and VS Code versions are both `0.6.0`;
    confirm this version before creating a release tag.
-3. **Partially done:** Added EPL-1.0 text, consistent with the upstream
-   README's license declaration. Confirm contributor authority and source
-   licensing before publication.
+3. **Confirmed by user:** Public redistribution of the source under EPL-1.0
+   with upstream attribution is authorized. Retain the license text and
+   attribution in the repository and published artifacts.
 4. **Done locally:** Generated a 16-artifact runtime dependency inventory and
-   added it to the repository and VSIX. Confirm legal notice requirements and
-   the authority to publish before release.
+   added it to the repository and VSIX. Legal review of the dependency notices
+   remains outstanding.
 5. Verify the VS Code engine range, Java runtime requirement, command name,
    settings schema, and publisher ownership.
 
 **Gate:** The source, CLI artifact, VSIX, Marketplace metadata, and release
 page have consistent names, versions, requirements, and license information.
-Still pending publisher verification, source-license authority, and legal
-review of dependency notices.
+Publisher verification and legal review of dependency notices remain pending.
 
 ## Phase 5 — Build automated behavior regression checks
 
@@ -216,8 +219,9 @@ release commit; keep preview limitations explicit.
    compilation rather than relying on existing build output.
 
 **Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
-clean-profile installation pass locally. GitHub CI and interactive extension
-translation remain pending.
+clean-profile installation pass locally. The initial pushed run failed in the
+Java 11 test path; a local fix is ready for CI re-verification. Interactive
+extension translation also remains pending.
 
 ## Phase 8 — Release and post-release verification
 

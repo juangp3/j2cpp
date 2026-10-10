@@ -21,6 +21,16 @@ function runCli(args) {
 	});
 }
 
+function javaMajorVersion() {
+	const version = childProcess.spawnSync("java", ["-version"], {
+		encoding: "utf8"
+	});
+	assert.strictEqual(version.status, 0, version.stderr);
+	const match = `${version.stdout}\n${version.stderr}`.match(/version "(?:1\.)?(\d+)/);
+	assert(match, `Unable to determine Java version: ${version.stderr}`);
+	return Number(match[1]);
+}
+
 function filesUnder(directory) {
 	return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
 		const entryPath = path.join(directory, entry.name);
@@ -47,34 +57,6 @@ try {
 	assert.strictEqual(missingOptionValue.status, 2);
 	assert(missingOptionValue.stderr.includes("Missing value for --sealed-types"));
 
-	const advisory = runCli([
-		"--output", outputDirectory,
-		"--sourcepath", sourceRoot,
-		sealedFixture
-	]);
-	assert.strictEqual(advisory.status, 0, advisory.stderr);
-
-	let generatedHeaders = filesUnder(outputDirectory)
-		.filter((file) => file.endsWith(".hpp"))
-		.map((file) => fs.readFileSync(file, "utf8"))
-		.join("\n");
-	assert(generatedHeaders.includes("Java permitted direct subtypes:"));
-	assert(generatedHeaders.includes("Java17SealedImpl"));
-	assert(generatedHeaders.includes("not enforced by C++"));
-	assert(generatedHeaders.includes(
-		"Java non-sealed type: this inheritance branch remains open"
-	));
-
-	const rejected = runCli([
-		"--output", outputDirectory,
-		"--sourcepath", sourceRoot,
-		"--sealed-types", "reject",
-		sealedFixture
-	]);
-	assert.notStrictEqual(rejected.status, 0);
-	assert(rejected.stderr.includes("sealed type rejected by --sealed-types reject"));
-	assert(rejected.stderr.includes("non-sealed type rejected by --sealed-types reject"));
-
 	const invalidPolicy = runCli([
 		"--sealed-types", "invalid",
 		sealedFixture
@@ -82,36 +64,68 @@ try {
 	assert.strictEqual(invalidPolicy.status, 2);
 	assert(invalidPolicy.stderr.includes("Invalid --sealed-types value"));
 
-	const records = runCli([
-		"--output", outputDirectory,
-		"--sourcepath", sourceRoot,
-		recordsFixture
-	]);
-	assert.strictEqual(records.status, 0, records.stderr);
+	if (javaMajorVersion() >= 17) {
+		const advisory = runCli([
+			"--output", outputDirectory,
+			"--sourcepath", sourceRoot,
+			sealedFixture
+		]);
+		assert.strictEqual(advisory.status, 0, advisory.stderr);
 
-	generatedHeaders = filesUnder(outputDirectory)
-		.filter((file) => file.endsWith(".hpp"))
-		.map((file) => fs.readFileSync(file, "utf8"))
-		.join("\n");
-	assert(generatedHeaders.includes("Java17User"));
-	assert(generatedHeaders.includes("operator=="));
+		let generatedHeaders = filesUnder(outputDirectory)
+			.filter((file) => file.endsWith(".hpp"))
+			.map((file) => fs.readFileSync(file, "utf8"))
+			.join("\n");
+		assert(generatedHeaders.includes("Java permitted direct subtypes:"));
+		assert(generatedHeaders.includes("Java17SealedImpl"));
+		assert(generatedHeaders.includes("not enforced by C++"));
+		assert(generatedHeaders.includes(
+			"Java non-sealed type: this inheritance branch remains open"
+		));
 
-	const controlFlow = runCli([
-		"--output", outputDirectory,
-		"--sourcepath", sourceRoot,
-		controlFlowFixture
-	]);
-	assert.strictEqual(controlFlow.status, 0, controlFlow.stderr);
-	const generatedSources = filesUnder(outputDirectory)
-		.filter((file) => file.endsWith(".cpp"))
-		.map((file) => fs.readFileSync(file, "utf8"))
-		.join("\n");
-	assert(generatedSources.includes("patternLength"));
-	assert(generatedSources.includes("switchValue"));
-	assert.match(
-		generatedSources,
-		/case int32_t\(0\):\s*return int32_t\(1\);/
-	);
+		const rejected = runCli([
+			"--output", outputDirectory,
+			"--sourcepath", sourceRoot,
+			"--sealed-types", "reject",
+			sealedFixture
+		]);
+		assert.notStrictEqual(rejected.status, 0);
+		assert(rejected.stderr.includes("sealed type rejected by --sealed-types reject"));
+		assert(rejected.stderr.includes("non-sealed type rejected by --sealed-types reject"));
+
+		const records = runCli([
+			"--output", outputDirectory,
+			"--sourcepath", sourceRoot,
+			recordsFixture
+		]);
+		assert.strictEqual(records.status, 0, records.stderr);
+
+		generatedHeaders = filesUnder(outputDirectory)
+			.filter((file) => file.endsWith(".hpp"))
+			.map((file) => fs.readFileSync(file, "utf8"))
+			.join("\n");
+		assert(generatedHeaders.includes("Java17User"));
+		assert(generatedHeaders.includes("operator=="));
+
+		const controlFlow = runCli([
+			"--output", outputDirectory,
+			"--sourcepath", sourceRoot,
+			controlFlowFixture
+		]);
+		assert.strictEqual(controlFlow.status, 0, controlFlow.stderr);
+		const generatedSources = filesUnder(outputDirectory)
+			.filter((file) => file.endsWith(".cpp"))
+			.map((file) => fs.readFileSync(file, "utf8"))
+			.join("\n");
+		assert(generatedSources.includes("patternLength"));
+		assert(generatedSources.includes("switchValue"));
+		assert.match(
+			generatedSources,
+			/case int32_t\(0\):\s*return int32_t\(1\);/
+		);
+	} else {
+		console.log("Java 17 translation checks skipped (requires Java 17+)");
+	}
 
 	console.log("CLI integration checks passed");
 } finally {
