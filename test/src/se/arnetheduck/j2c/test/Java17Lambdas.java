@@ -100,4 +100,25 @@ public class Java17Lambdas {
 	public static <A, B> BiFunction<A, B, String> pair() {
 		return (a, b) -> a + ":" + b;
 	}
+
+	// A generic functional method can only be implemented by a reference
+	public interface Identity {
+		<T> T apply(T value);
+	}
+
+	public static <T> T same(T value) {
+		return value;
+	}
+
+	public static Identity genericReference() {
+		return Java17Lambdas::same;
+	}
+
+	public static Runnable serializableTask(int[] counter) {
+		return (Runnable & java.io.Serializable) () -> counter[0]++;
+	}
+
+	public static boolean isSerializable(Runnable task) {
+		return task instanceof java.io.Serializable;
+	}
 }

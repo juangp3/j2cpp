@@ -377,7 +377,13 @@ public class Header {
 			return;
 		}
 
-		println("struct " + CName.DEFAULT_INIT_TAG + ";");
+		// Defined, not just declared, so constructors can be passed a real
+		// tag object; binding a reference through a null pointer is
+		// undefined behavior. The guard keeps one definition per unit.
+		println("#ifndef J2C_DEFAULT_INIT_TAG");
+		println("#define J2C_DEFAULT_INIT_TAG");
+		println("struct " + CName.DEFAULT_INIT_TAG + " {};");
+		println("#endif");
 		println();
 	}
 

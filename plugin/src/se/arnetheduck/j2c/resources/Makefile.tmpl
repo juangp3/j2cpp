@@ -3,7 +3,8 @@ EXTRA_LIBS ?= -l$(NAME)-ext
 
 CPPFLAGS := $(CPPFLAGS) $(INCLUDES)
 CFLAGS := $(CFLAGS) -g -pipe -MMD -MP
-CXXFLAGS := $(CFLAGS) -std=c++20
+# Java integer arithmetic wraps on overflow
+CXXFLAGS := $(CFLAGS) -std=c++20 -fwrapv
 
 BIN := bin
 OBJ := obj

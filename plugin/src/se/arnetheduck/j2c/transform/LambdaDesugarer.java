@@ -16,8 +16,10 @@ import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.ArrayType;
 import org.eclipse.jdt.core.dom.Block;
+import org.eclipse.jdt.core.dom.CastExpression;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.CreationReference;
+import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionMethodReference;
 import org.eclipse.jdt.core.dom.IMethodBinding;
@@ -59,6 +61,10 @@ final class LambdaDesugarer {
 	private final String source;
 	private final CompilationUnit ast;
 	private final Map<ASTNode, String> replacements = new HashMap<ASTNode, String>();
+	/** Text inserted at source positions, such as intersection interfaces */
+	private final Map<Integer, String> insertions = new HashMap<Integer, String>();
+	/** Generated interface names by their extends clause */
+	private final Map<String, String> intersections = new HashMap<String, String>();
 	private final List<Problem> problems = new ArrayList<Problem>();
 
 	LambdaDesugarer(File file, String source, CompilationUnit ast) {
@@ -107,15 +113,32 @@ final class LambdaDesugarer {
 
 	private void convert(Expression node, String kind) {
 		Map<ASTNode, String> before = new HashMap<ASTNode, String>(replacements);
+		Map<Integer, String> insertionsBefore = new HashMap<Integer, String>(
+				insertions);
+		Map<String, String> intersectionsBefore = new HashMap<String, String>(
+				intersections);
 		try {
 			String replacement = node instanceof LambdaExpression ? lambda((LambdaExpression) node)
 					: methodReference((MethodReference) node);
-			replacements.put(node, replacement);
+			// The generated class implements every component of an
+			// intersection cast such as (Runnable & Serializable), which
+			// makes the cast itself redundant
+			ASTNode parent = node.getParent();
+			if (parent instanceof CastExpression
+					&& ((CastExpression) parent).getType().isIntersectionType()) {
+				replacements.put(parent, replacement);
+			} else {
+				replacements.put(node, replacement);
+			}
 		} catch (Unsupported e) {
 			// Drop scope rewrites made for this node; nested conversions
 			// that succeeded earlier are kept
 			replacements.clear();
 			replacements.putAll(before);
+			insertions.clear();
+			insertions.putAll(insertionsBefore);
+			intersections.clear();
+			intersections.putAll(intersectionsBefore);
 			problems.add(Problem.of(kind, "Java 8 " + kind
 					+ " cannot be translated: " + e.getMessage()).at(file,
 					ast.getLineNumber(node.getStartPosition())));
@@ -131,7 +154,7 @@ final class LambdaDesugarer {
 		IMethodBinding sam = functionalMethod(target);
 
 		StringBuilder header = new StringBuilder();
-		header.append("new ").append(groundType(target)).append("() { public ")
+		header.append("new ").append(implemented(node, target)).append("() { public ")
 				.append(type(method.getReturnType(), true)).append(' ')
 				.append(sam.getName()).append('(');
 		for (int i = 0; i < node.parameters().size(); ++i) {
@@ -175,9 +198,6 @@ final class LambdaDesugarer {
 			throw new Unsupported("its target type could not be resolved");
 		}
 		IMethodBinding sam = functionalMethod(target);
-		if (sam.getTypeParameters().length > 0) {
-			throw new Unsupported("its functional interface method is generic");
-		}
 
 		ITypeBinding[] parameterTypes = sam.getParameterTypes();
 		String[] names = new String[parameterTypes.length];
@@ -257,8 +277,9 @@ final class LambdaDesugarer {
 
 		String statement = isVoid(sam.getReturnType()) ? call + ";" : "return "
 				+ call + ";";
-		return "new " + groundType(target) + "() { " + field + "public "
-				+ type(sam.getReturnType(), true) + " " + sam.getName() + "("
+		return "new " + implemented(node, target) + "() { " + field + "public "
+				+ typeParameters(sam) + type(sam.getReturnType(), true) + " "
+				+ sam.getName() + "("
 				+ parameters + ") " + throwsClause(sam) + "{ " + statement
 				+ " } }"
 				+ lineBreaks(node.getStartPosition(), end(node));
@@ -266,14 +287,119 @@ final class LambdaDesugarer {
 
 	private static IMethodBinding functionalMethod(ITypeBinding target)
 			throws Unsupported {
-		if (target.isIntersectionType()) {
-			throw new Unsupported("its target is an intersection type");
-		}
 		IMethodBinding sam = target.getFunctionalInterfaceMethod();
+		if (sam == null && target.isIntersectionType()) {
+			// Java allows at most one abstract method across the components
+			for (ITypeBinding bound : target.getTypeBounds()) {
+				if (bound.getFunctionalInterfaceMethod() != null) {
+					sam = bound.getFunctionalInterfaceMethod();
+				}
+			}
+		}
 		if (sam == null) {
 			throw new Unsupported("its target is not a functional interface");
 		}
 		return sam;
+	}
+
+	/** "<T extends A & B, U> " for a generic functional method, else "" */
+	private static String typeParameters(IMethodBinding sam)
+			throws Unsupported {
+		ITypeBinding[] parameters = sam.getTypeParameters();
+		if (parameters.length == 0) {
+			return "";
+		}
+		StringBuilder text = new StringBuilder("<");
+		for (int i = 0; i < parameters.length; ++i) {
+			if (i > 0) {
+				text.append(", ");
+			}
+			text.append(parameters[i].getName());
+			ITypeBinding[] bounds = parameters[i].getTypeBounds();
+			for (int j = 0; j < bounds.length; ++j) {
+				if (bounds.length == 1
+						&& "java.lang.Object".equals(bounds[j].getQualifiedName())) {
+					break;
+				}
+				text.append(j == 0 ? " extends " : " & ").append(
+						type(bounds[j], false));
+			}
+		}
+		return text.append("> ").toString();
+	}
+
+	/**
+	 * What the anonymous class implements: the grounded functional interface,
+	 * or for an intersection target such as (Runnable & Serializable) a member
+	 * interface extending every component, declared in the top-level class
+	 * so instanceof keeps working for all of them.
+	 */
+	private String implemented(ASTNode node, ITypeBinding target)
+			throws Unsupported {
+		if (!target.isIntersectionType()) {
+			return groundType(target);
+		}
+
+		StringBuilder extendsClause = new StringBuilder();
+		for (ITypeBinding bound : target.getTypeBounds()) {
+			if (mentionsTypeVariable(bound)) {
+				throw new Unsupported("its intersection target uses a type "
+						+ "variable, which a member interface cannot see");
+			}
+			if (extendsClause.length() > 0) {
+				extendsClause.append(", ");
+			}
+			extendsClause.append(groundType(bound));
+		}
+
+		String key = extendsClause.toString();
+		String name = intersections.get(key);
+		if (name == null) {
+			name = "J2C_Intersection_" + (intersections.size() + 1);
+			intersections.put(key, name);
+			AbstractTypeDeclaration top = topLevelType(node);
+			// Before the closing brace, on the same line. A leading ";" ends
+			// an enum constant list; elsewhere it is an empty declaration
+			int position = end(top) - 1;
+			String declaration = (top instanceof EnumDeclaration ? "; " : " ")
+					+ "interface " + name + " extends " + key + " {} ";
+			String existing = insertions.get(position);
+			insertions.put(position, existing == null ? declaration : existing
+					+ declaration);
+		}
+		return name;
+	}
+
+	private static boolean mentionsTypeVariable(ITypeBinding type) {
+		if (type == null) {
+			return false;
+		}
+		if (type.isTypeVariable() || type.isCapture()) {
+			return true;
+		}
+		if (type.isArray()) {
+			return mentionsTypeVariable(type.getElementType());
+		}
+		if (type.isWildcardType()) {
+			return mentionsTypeVariable(type.getBound());
+		}
+		for (ITypeBinding argument : type.getTypeArguments()) {
+			if (mentionsTypeVariable(argument)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static AbstractTypeDeclaration topLevelType(ASTNode node)
+			throws Unsupported {
+		for (ASTNode n = node; n != null; n = n.getParent()) {
+			if (n instanceof AbstractTypeDeclaration
+					&& n.getParent() instanceof CompilationUnit) {
+				return (AbstractTypeDeclaration) n;
+			}
+		}
+		throw new Unsupported("its top-level class could not be found");
 	}
 
 	/**
@@ -587,32 +713,44 @@ final class LambdaDesugarer {
 	 * substituted, excluding self.
 	 */
 	private String text(int start, int end, ASTNode self) {
-		List<ASTNode> inside = new ArrayList<ASTNode>();
-		for (ASTNode node : replacements.keySet()) {
+		// Node replacements, plus insertions as zero-length edits; each edit
+		// is {start, end, index into texts}
+		List<int[]> edits = new ArrayList<int[]>();
+		List<String> texts = new ArrayList<String>();
+		for (Map.Entry<ASTNode, String> replacement : replacements.entrySet()) {
+			ASTNode node = replacement.getKey();
 			if (node != self && node.getStartPosition() >= start
 					&& end(node) <= end) {
-				inside.add(node);
+				edits.add(new int[] { node.getStartPosition(), end(node),
+						texts.size() });
+				texts.add(replacement.getValue());
 			}
 		}
-		Collections.sort(inside, new Comparator<ASTNode>() {
+		for (Map.Entry<Integer, String> insertion : insertions.entrySet()) {
+			int position = insertion.getKey();
+			if (position >= start && position < end) {
+				edits.add(new int[] { position, position, texts.size() });
+				texts.add(insertion.getValue());
+			}
+		}
+		Collections.sort(edits, new Comparator<int[]>() {
 			@Override
-			public int compare(ASTNode a, ASTNode b) {
-				int byStart = Integer.compare(a.getStartPosition(),
-						b.getStartPosition());
-				return byStart != 0 ? byStart : Integer.compare(b.getLength(),
-						a.getLength());
+			public int compare(int[] a, int[] b) {
+				int byStart = Integer.compare(a[0], b[0]);
+				return byStart != 0 ? byStart : Integer.compare(b[1] - b[0],
+						a[1] - a[0]);
 			}
 		});
 
 		StringBuilder text = new StringBuilder();
 		int position = start;
-		for (ASTNode node : inside) {
-			if (node.getStartPosition() < position) {
+		for (int[] edit : edits) {
+			if (edit[0] < position) {
 				continue; // inside a replacement already applied
 			}
-			text.append(source, position, node.getStartPosition());
-			text.append(replacements.get(node));
-			position = end(node);
+			text.append(source, position, edit[0]);
+			text.append(texts.get(edit[2]));
+			position = edit[1];
 		}
 		return text.append(source, position, end).toString();
 	}

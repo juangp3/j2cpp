@@ -4,15 +4,19 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnnotationTypeMemberDeclaration;
+import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.ArrayAccess;
 import org.eclipse.jdt.core.dom.ArrayCreation;
@@ -73,6 +77,7 @@ import org.eclipse.jdt.core.dom.ThrowStatement;
 import org.eclipse.jdt.core.dom.TryStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
+import org.eclipse.jdt.core.dom.TypeDeclarationStatement;
 import org.eclipse.jdt.core.dom.TypeLiteral;
 import org.eclipse.jdt.core.dom.TypeParameter;
 import org.eclipse.jdt.core.dom.UnionType;
@@ -396,14 +401,26 @@ public class ImplWriter extends TransformWriter {
 			return;
 		}
 
+		// equals, hashCode and toString call methods on component values,
+		// which needs their complete types
+		for (Object object : record.recordComponents()) {
+			ITypeBinding componentType = ((SingleVariableDeclaration) object)
+					.resolveBinding().getType();
+			if (!componentType.isPrimitive()) {
+				hardDep(componentType);
+			}
+		}
+
 		for (Object object : record.recordComponents()) {
 			SingleVariableDeclaration component = (SingleVariableDeclaration) object;
 			if (RecordSupport.hasAccessor(record, component)) {
 				continue;
 			}
 			IVariableBinding binding = component.resolveBinding();
-			print(TransformUtil.varTypeCName(binding.getModifiers(),
-					binding.getType(), type, deps));
+			// Out-of-class definition: names relative to the record's own
+			// scope (such as a sibling nested type) are not visible here
+			softDep(binding.getType());
+			print(TransformUtil.qualifiedRef(binding.getType(), true));
 			print(" " + qcname + "::"
 					+ CName.keywords(component.getName().getIdentifier())
 					+ "() const");
@@ -812,12 +829,21 @@ public class ImplWriter extends TransformWriter {
 
 	private final List<NodeInfo> visits = new ArrayList<NodeInfo>();
 
+	/** C++ names of hoisted instanceof pattern variables, by binding key */
+	private final Map<String, String> patternNames = new HashMap<String, String>();
+	/** Statements wrapped in braces to scope their pattern variables */
+	private final Set<ASTNode> patternBlocks = new HashSet<ASTNode>();
+
 	@Override
 	public boolean preVisit2(ASTNode node) {
 		for (Snippet snippet : ctx.snippets) {
 			if (!snippet.node(ctx, this, node)) {
 				return false;
 			}
+		}
+
+		if (node instanceof Statement) {
+			hoistPatterns((Statement) node);
 		}
 
 		if (node instanceof Expression) {
@@ -971,8 +997,89 @@ public class ImplWriter extends TransformWriter {
 		return true;
 	}
 
+	/**
+	 * Declares the pattern variables of a statement's own instanceof
+	 * patterns before it; the patterns assign them as they match. Declaring
+	 * in the enclosing block gives Java's flow scoping, so "if (!(o
+	 * instanceof T t)) return;" leaves t usable afterwards.
+	 */
+	private void hoistPatterns(Statement statement) {
+		List<PatternInstanceofExpression> patterns = ownPatterns(statement);
+		if (patterns.isEmpty()) {
+			return;
+		}
+
+		ASTNode parent = statement.getParent();
+		// Jumping to a case label past an initialized declaration is an error
+		boolean inSwitch = parent instanceof SwitchStatement;
+		if (!(parent instanceof Block) && !inSwitch
+				&& !(parent instanceof LabeledStatement)
+				&& !(parent instanceof SwitchExpression)) {
+			// An unbraced body, such as "if (c) return o instanceof T t;"
+			printlni("{");
+			indent++;
+			locals.add(new ArrayList<String>());
+			patternBlocks.add(statement);
+		}
+
+		for (PatternInstanceofExpression pattern : patterns) {
+			SingleVariableDeclaration variable = pattern.getRightOperand();
+			IVariableBinding binding = variable.resolveBinding();
+			ITypeBinding target = variable.getType().resolveBinding();
+			hardDep(target);
+
+			// Sibling statements may reuse a name that C++ would see twice
+			String name = CName.of(binding);
+			while (localInScope(name)) {
+				name = name + "_";
+			}
+			if (!locals.isEmpty()) {
+				locals.get(locals.size() - 1).add(name);
+			}
+			patternNames.put(binding.getKey(), name);
+			printlni(CName.relative(target, type, true) + "* " + name
+					+ (inSwitch ? ";" : " = nullptr;"));
+		}
+	}
+
+	/** Patterns whose innermost enclosing statement is statement */
+	private static List<PatternInstanceofExpression> ownPatterns(
+			final Statement statement) {
+		final List<PatternInstanceofExpression> patterns = new ArrayList<PatternInstanceofExpression>();
+		statement.accept(new ASTVisitor() {
+			@Override
+			public boolean visit(PatternInstanceofExpression node) {
+				ASTNode owner = node.getParent();
+				while (!(owner instanceof Statement)) {
+					owner = owner.getParent();
+				}
+				if (owner == statement) {
+					patterns.add(node);
+				}
+				return true;
+			}
+
+			@Override
+			public boolean visit(AnonymousClassDeclaration node) {
+				return false;
+			}
+
+			@Override
+			public boolean visit(TypeDeclarationStatement node) {
+				return false;
+			}
+		});
+		return patterns;
+	}
+
 	@Override
 	public void postVisit(ASTNode node) {
+		if (patternBlocks.remove(node)) {
+			indent--;
+			printlni("}");
+			locals.remove(locals.size() - 1);
+		}
+
 		if (visits.isEmpty()) {
 			return;
 		}
@@ -1148,6 +1255,10 @@ public class ImplWriter extends TransformWriter {
 			return false;
 		}
 
+		if (printIntegerAssignment(node)) {
+			return false;
+		}
+
 		if (node.getOperator() == Operator.RIGHT_SHIFT_UNSIGNED_ASSIGN) {
 			lhs.accept(this);
 			print(" = ");
@@ -1171,7 +1282,7 @@ public class ImplWriter extends TransformWriter {
 				print("std::fmod(");
 				lhs.accept(this);
 				print(", ");
-				lhs.accept(this);
+				rhs.accept(this);
 				print(")");
 
 				return false;
@@ -1273,6 +1384,33 @@ public class ImplWriter extends TransformWriter {
 	public boolean visit(CastExpression node) {
 		ITypeBinding target = node.getType().resolveBinding();
 		ITypeBinding source = node.getExpression().resolveTypeBinding();
+
+		if (target.isIntersectionType()) {
+			// (A & B) x checks every component; the result is the first one
+			ITypeBinding[] bounds = target.getTypeBounds();
+			for (int i = 0; i < bounds.length; ++i) {
+				javaCast(i + 1 < bounds.length ? bounds[i + 1] : source,
+						bounds[i]);
+			}
+			node.getExpression().accept(this);
+			print(")".repeat(bounds.length));
+			return false;
+		}
+
+		if (isIntegral(target) && isFloating(operandType(node.getExpression()))) {
+			// Java saturates, and maps NaN to 0; byte, short and char narrow
+			// from int afterwards
+			deps.setNeedsJavaMath();
+			boolean wide = target.getName().equals("int")
+					|| target.getName().equals("long");
+			if (!wide) {
+				print("static_cast<" + CName.of(target) + ">(");
+			}
+			print("jf2i<" + (wide ? CName.of(target) : "int32_t") + ">(");
+			node.getExpression().accept(this);
+			print(wide ? ")" : "))");
+			return false;
+		}
 
 		if (target.isPrimitive()
 				|| TransformUtil.isNullLiteral(node.getExpression())) {
@@ -1668,7 +1806,7 @@ public class ImplWriter extends TransformWriter {
 		print("if(");
 		skipIndent = false;
 
-		printCondition(node.getExpression(), true);
+		node.getExpression().accept(this);
 
 		print(")");
 
@@ -1687,7 +1825,9 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		if (node.getElseStatement() != null) {
-			boolean elseif = skipIndent = node.getElseStatement() instanceof IfStatement;
+			// An else-if declaring pattern variables needs a block for them
+			boolean elseif = skipIndent = node.getElseStatement() instanceof IfStatement
+					&& ownPatterns(node.getElseStatement()).isEmpty();
 			if (thenBlock) {
 				print(" ");
 			} else {
@@ -1719,29 +1859,6 @@ public class ImplWriter extends TransformWriter {
 		return false;
 	}
 
-	private void printCondition(Expression expression, boolean bindPattern) {
-		if (!(expression instanceof PatternInstanceofExpression)) {
-			expression.accept(this);
-			return;
-		}
-
-		PatternInstanceofExpression pattern = (PatternInstanceofExpression) expression;
-		SingleVariableDeclaration variable = pattern.getRightOperand();
-		ITypeBinding target = variable.getType().resolveBinding();
-		hardDep(target);
-
-		if (bindPattern) {
-			print("auto* " + CName.of(variable.resolveBinding()) + " = ");
-		}
-		print("dynamic_cast< " + CName.relative(target, type, true) + "* >(");
-		pattern.getLeftOperand().accept(this);
-		print(")");
-		if (bindPattern) {
-			print("; " + CName.of(variable.resolveBinding()) + " != nullptr");
-		} else {
-			print(" != nullptr");
-		}
-	}
 
 	@Override
 	public boolean visit(InfixExpression node) {
@@ -1793,8 +1910,13 @@ public class ImplWriter extends TransformWriter {
 			}
 		}
 
+		if (printIntegerOperation(node)) {
+			return false;
+		}
+
 		ITypeBinding common = null;
-		if (!lt.isEqualTo(rt)) {
+		// JDT gives instanceof pattern operands no type
+		if (lt != null && rt != null && !lt.isEqualTo(rt)) {
 			// If we have pointer compares, we need the complete type
 			hardDep(lt);
 			hardDep(rt);
@@ -1847,6 +1969,198 @@ public class ImplWriter extends TransformWriter {
 		return false;
 	}
 
+	/**
+	 * Integer division, remainder and shifts through the java_math.hpp
+	 * helpers, which give Java's results where C++ is undefined. A single
+	 * constant operand that is already safe keeps the plain operator.
+	 */
+	private boolean printIntegerOperation(InfixExpression node) {
+		String helper = integerHelper(node.getOperator().toString());
+		if (helper == null || !isIntegral(node.resolveTypeBinding())) {
+			return false;
+		}
+		boolean shift = !helper.equals("jdiv") && !helper.equals("jrem");
+
+		List<Expression> operands = new ArrayList<Expression>();
+		operands.add(node.getLeftOperand());
+		operands.add(node.getRightOperand());
+		operands.addAll(node.extendedOperands());
+
+		String type = promoted(operandType(operands.get(0)), null);
+		if (operands.size() == 2
+				&& (shift ? safeShiftCount(operands.get(1), type)
+						: safeDivisor(operands.get(1)))) {
+			return false;
+		}
+
+		// Java promotes step by step: (int / int) / long divides as int first
+		String[] stepTypes = new String[operands.size()];
+		for (int i = 1; i < operands.size(); ++i) {
+			if (!shift) {
+				type = promoted(type, operandType(operands.get(i)));
+			}
+			stepTypes[i] = type;
+		}
+
+		deps.setNeedsJavaMath();
+		for (Expression operand : operands) {
+			hardDep(operand.resolveTypeBinding());
+		}
+		for (int i = operands.size() - 1; i >= 1; --i) {
+			print(helper + "<" + stepTypes[i] + ">(");
+		}
+		operands.get(0).accept(this);
+		for (int i = 1; i < operands.size(); ++i) {
+			print(", ");
+			operands.get(i).accept(this);
+			print(")");
+		}
+		return true;
+	}
+
+	/** Compound integer division, remainder and shifts (see above) */
+	private boolean printIntegerAssignment(Assignment node) {
+		String operator = node.getOperator().toString();
+		String helper = integerHelper(operator.substring(0,
+				operator.length() - 1));
+		ITypeBinding target = node.getLeftHandSide().resolveTypeBinding();
+		if (helper == null || !target.isPrimitive() || !isIntegral(target)) {
+			return false;
+		}
+		boolean shift = !helper.equals("jdiv") && !helper.equals("jrem");
+		Expression value = node.getRightHandSide();
+		if (!shift && !isIntegral(operandType(value))) {
+			// Floating-point compound division stays a C++ operation
+			return false;
+		}
+
+		String type = promoted(target, null);
+		if (!shift) {
+			type = promoted(type, operandType(value));
+		}
+		if (!helper.equals("jushr")
+				&& (shift ? safeShiftCount(value, type) : safeDivisor(value))) {
+			return false;
+		}
+
+		deps.setNeedsJavaMath();
+		hardDep(value.resolveTypeBinding());
+		print(helper + "_set<" + type + ">(");
+		node.getLeftHandSide().accept(this);
+		print(", ");
+		value.accept(this);
+		print(")");
+		return true;
+	}
+
+	private static String integerHelper(String operator) {
+		switch (operator) {
+		case "/":
+			return "jdiv";
+		case "%":
+			return "jrem";
+		case "<<":
+			return "jshl";
+		case ">>":
+			return "jshr";
+		case ">>>":
+			return "jushr";
+		default:
+			return null;
+		}
+	}
+
+	/** The primitive type of an operand, after any unboxing */
+	private static ITypeBinding operandType(Expression operand) {
+		ITypeBinding type = operand.resolveTypeBinding();
+		if (type == null || type.isPrimitive()) {
+			return type;
+		}
+		String unboxed;
+		switch (type.getQualifiedName()) {
+		case "java.lang.Long":
+			unboxed = "long";
+			break;
+		case "java.lang.Integer":
+			unboxed = "int";
+			break;
+		case "java.lang.Short":
+			unboxed = "short";
+			break;
+		case "java.lang.Byte":
+			unboxed = "byte";
+			break;
+		case "java.lang.Character":
+			unboxed = "char";
+			break;
+		case "java.lang.Double":
+			unboxed = "double";
+			break;
+		case "java.lang.Float":
+			unboxed = "float";
+			break;
+		default:
+			return type;
+		}
+		return operand.getAST().resolveWellKnownType(unboxed);
+	}
+
+	private static boolean isIntegral(ITypeBinding type) {
+		if (type == null || !type.isPrimitive()) {
+			return false;
+		}
+		switch (type.getName()) {
+		case "int":
+		case "long":
+		case "short":
+		case "byte":
+		case "char":
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static boolean isFloating(ITypeBinding type) {
+		return type != null && type.isPrimitive()
+				&& (type.getName().equals("double") || type.getName().equals("float"));
+	}
+
+	/** Binary numeric promotion of integral types, as a C++ type name */
+	private static String promoted(ITypeBinding type, ITypeBinding other) {
+		return promoted(type != null && type.getName().equals("long") ? "int64_t"
+				: "int32_t", other);
+	}
+
+	private static String promoted(String type, ITypeBinding other) {
+		return type.equals("int64_t")
+				|| (other != null && other.getName().equals("long")) ? "int64_t"
+				: "int32_t";
+	}
+
+	private static boolean safeDivisor(Expression divisor) {
+		Long value = constantValue(divisor);
+		return value != null && value != 0 && value != -1;
+	}
+
+	private static boolean safeShiftCount(Expression count, String type) {
+		Long value = constantValue(count);
+		return value != null && value >= 0
+				&& value < (type.equals("int64_t") ? 64 : 32);
+	}
+
+	private static Long constantValue(Expression expression) {
+		Object value = expression.resolveConstantExpressionValue();
+		if (value instanceof Character) {
+			return (long) ((Character) value).charValue();
+		}
+		if (value instanceof Number && !(value instanceof Float)
+				&& !(value instanceof Double)) {
+			return ((Number) value).longValue();
+		}
+		return null;
+	}
+
 	private void staticCast(Expression left, ITypeBinding lt,
 			ITypeBinding common) {
 		if (common != null && !lt.isEqualTo(common) && !lt.isNullType()) {
@@ -1893,7 +2207,17 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(PatternInstanceofExpression node) {
-		printCondition(node, false);
+		SingleVariableDeclaration variable = node.getRightOperand();
+		ITypeBinding target = variable.getType().resolveBinding();
+		hardDep(target);
+		String cast = "dynamic_cast< " + CName.relative(target, type, true)
+				+ "* >(";
+
+		// Hoisted by the enclosing statement (see hoistPatterns)
+		String name = patternNames.get(variable.resolveBinding().getKey());
+		print(name == null ? "(" + cast : "((" + name + " = " + cast);
+		node.getLeftOperand().accept(this);
+		print(name == null ? ") != nullptr)" : ")) != nullptr)");
 		return false;
 	}
 
@@ -2342,6 +2666,13 @@ public class ImplWriter extends TransformWriter {
 	@Override
 	public boolean visit(SimpleName node) {
 		IBinding b = node.resolveBinding();
+		if (b instanceof IVariableBinding) {
+			String patternName = patternNames.get(b.getKey());
+			if (patternName != null) {
+				print(patternName);
+				return false;
+			}
+		}
 		boolean ret = super.visit(node);
 
 		if (b instanceof IVariableBinding) {
@@ -2488,8 +2819,13 @@ public class ImplWriter extends TransformWriter {
 		println();
 		indent++;
 		ITypeBinding selector = node.getExpression().resolveTypeBinding();
-		if (selector.isEnum() || isString(selector)) {
+		if ((selector.isEnum() || isString(selector))
+				&& hasSwitchRules(node.statements())) {
 			conditionalSwitch(node, isString(selector));
+		} else if (selector.isEnum() || isString(selector)) {
+			// Colon form may fall through; yield returns from the lambda
+			enumSwitch(node.getExpression(), node, node.statements(),
+					isString(selector));
 		} else {
 			printi("switch (");
 			node.getExpression().accept(this);
@@ -2608,7 +2944,8 @@ public class ImplWriter extends TransformWriter {
 
 		ITypeBinding selector = node.getExpression().resolveTypeBinding();
 		if (selector.isEnum() || isString(selector)) {
-			enumSwitch(node, statements, isString(selector));
+			enumSwitch(node.getExpression(), node, statements,
+					isString(selector));
 		} else {
 			nativeSwitch(node, statements);
 		}
@@ -2622,12 +2959,13 @@ public class ImplWriter extends TransformWriter {
 		return false;
 	}
 
-	private final List<SwitchStatement> enumSwitches = new ArrayList<SwitchStatement>();
+	/** Switch statements and expressions being written as if-chains */
+	private final List<ASTNode> enumSwitches = new ArrayList<ASTNode>();
 	private int enumSwitchCount = 0;
 	private final List<String> enumSwitchLabels = new ArrayList<String>();
 
-	private void enumSwitch(SwitchStatement node, List<Statement> statements,
-			boolean strings) {
+	private void enumSwitch(Expression selector, ASTNode node,
+			List<Statement> statements, boolean strings) {
 		// Enum constants as we translate them are not C++ constexpr:s, and
 		// strings compare with equals(), so we have to rewrite the switch to
 		// if:s
@@ -2642,7 +2980,7 @@ public class ImplWriter extends TransformWriter {
 		locals.add(new ArrayList<String>());
 		locals.get(locals.size() - 1).add(name);
 		printi("auto " + name + " = ");
-		node.getExpression().accept(this);
+		selector.accept(this);
 		println(";");
 
 		List<SwitchCase> cases = new ArrayList<SwitchCase>();
@@ -2715,10 +3053,11 @@ public class ImplWriter extends TransformWriter {
 				}
 
 				wasCase = false;
-				if (s instanceof BreakStatement || s instanceof ReturnStatement) {
+				if (s instanceof BreakStatement || s instanceof ReturnStatement
+						|| s instanceof YieldStatement) {
 					cases.clear();
 				}
-				s.accept(this);
+				ruleBody(s);
 				if (arrows) {
 					printlni("goto " + enumSwitchLabel() + ";");
 					cases.clear();

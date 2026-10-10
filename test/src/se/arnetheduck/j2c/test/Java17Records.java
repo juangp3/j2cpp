@@ -49,4 +49,32 @@ public class Java17Records {
 	public static boolean sameUser(Java17User left, Java17User right) {
 		return left.equals(right);
 	}
+
+	// Object and array components: equals and hashCode need their headers
+	public record Tagged(java.util.List<String> tags, int[] counts) {
+	}
+
+	// Accessors returning a nested type are defined outside the class
+	public sealed interface Expr permits Num, Add {
+	}
+
+	public record Num(int value) implements Expr {
+	}
+
+	public record Add(Expr left, Expr right) implements Expr {
+	}
+
+	public static int eval(Expr expr) {
+		if (expr instanceof Num n) {
+			return n.value();
+		}
+		if (expr instanceof Add a) {
+			return eval(a.left()) + eval(a.right());
+		}
+		return 0;
+	}
+
+	public static int sum() {
+		return eval(new Add(new Num(2), new Add(new Num(3), new Num(4))));
+	}
 }

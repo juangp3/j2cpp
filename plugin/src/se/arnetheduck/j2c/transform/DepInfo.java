@@ -27,6 +27,7 @@ public class DepInfo {
 
 	private boolean synchronized_;
 	private boolean fmod;
+	private boolean javaMath;
 
 	public DepInfo(Transformer ctx) {
 		this.ctx = ctx;
@@ -134,6 +135,17 @@ public class DepInfo {
 
 	public boolean needsFmod() {
 		return fmod;
+	}
+
+	public boolean needsJavaMath() {
+		return javaMath;
+	}
+
+	/** Java integer arithmetic helpers (java_math.hpp) */
+	public void setNeedsJavaMath() {
+		javaMath = true;
+		hard(ctx.resolve(ArithmeticException.class));
+		hard(ctx.resolve(String.class));
 	}
 
 	public void setNeedsFmod() {

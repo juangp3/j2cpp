@@ -33,6 +33,34 @@ public class Java17Features {
 		};
 	}
 
+	public static int boxedSwitchExpression(Integer k) {
+		return switch (k) {
+		case 1 -> 10;
+		default -> 20;
+		};
+	}
+
+	public static int colonEnumExpression(Shape shape) {
+		return switch (shape) {
+		case CIRCLE:
+		case SQUARE:
+			yield 1;
+		default: {
+			int sides = 3;
+			yield sides;
+		}
+		};
+	}
+
+	public static int colonStringExpression(String text) {
+		return switch (text) {
+		case "a":
+			yield 1;
+		default:
+			yield 2;
+		};
+	}
+
 	public static int legacyStringSwitch(String command) {
 		switch (command) {
 		case "stop":

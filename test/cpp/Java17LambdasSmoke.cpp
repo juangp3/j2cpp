@@ -1,4 +1,5 @@
 #include <Array.hpp>
+#include <java/lang/Runnable.hpp>
 #include <java/lang/String.hpp>
 #include <se/arnetheduck/j2c/test/Java17Lambdas.hpp>
 
@@ -26,5 +27,13 @@ int main() {
 	if (lambdas->blockBody(-3) != 0) return 3;
 	// int[]::new
 	if (Java17Lambdas::arrayConstructorReference()->length != 3) return 4;
+	// (Runnable & Serializable) () -> counter[0]++
+	auto counter = new ::int32_tArray(1);
+	auto task = Java17Lambdas::serializableTask(counter);
+	task->run();
+	task->run();
+	if ((*counter)[0] != 2) return 5;
+	if (!Java17Lambdas::isSerializable(task)) return 6;
+	if (Java17Lambdas::genericReference() == nullptr) return 7;
 	return 0;
 }

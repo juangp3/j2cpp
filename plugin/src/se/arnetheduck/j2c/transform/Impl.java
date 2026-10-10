@@ -19,6 +19,7 @@ import org.eclipse.jdt.core.dom.Modifier;
 public class Impl {
 	private static final String JAVA_CAST_HPP = "/se/arnetheduck/j2c/resources/java_cast.hpp";
 	private static final String NPC_HPP = "/se/arnetheduck/j2c/resources/npc.hpp";
+	private static final String JAVA_MATH_HPP = "/se/arnetheduck/j2c/resources/java_math.hpp";
 	private static final String FINALLY_HPP = "/se/arnetheduck/j2c/resources/finally.hpp";
 	private static final String SYNCHRONIZED_HPP = "/se/arnetheduck/j2c/resources/synchronized.hpp";
 
@@ -67,6 +68,7 @@ public class Impl {
 			deps.printArrays(out);
 			printJavaCast();
 			printNpc();
+			printJavaMath();
 			printFinally();
 			printSynchronized();
 
@@ -119,6 +121,11 @@ public class Impl {
 
 		if (deps.needsFmod()) {
 			printlnd("#include <cmath>", includes);
+		}
+
+		if (deps.needsJavaMath()) {
+			printlnd("#include <limits>", includes);
+			printlnd("#include <type_traits>", includes);
 		}
 
 		if (includes.size() > 1) {
@@ -428,6 +435,14 @@ public class Impl {
 		}
 
 		print(FileUtil.readResource(NPC_HPP));
+	}
+
+	private void printJavaMath() {
+		if (!deps.needsJavaMath()) {
+			return;
+		}
+
+		print(FileUtil.readResource(JAVA_MATH_HPP));
 	}
 
 	private void printFinally() {

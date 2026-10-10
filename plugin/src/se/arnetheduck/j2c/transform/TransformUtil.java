@@ -1226,7 +1226,7 @@ public final class TransformUtil {
 	}
 
 	public static String makeDefaultInitTag() {
-		return "*static_cast< ::" + CName.DEFAULT_INIT_TAG + "* >(0)";
+		return "::" + CName.DEFAULT_INIT_TAG + "()";
 	}
 
 	public static boolean isValueOf(IMethodBinding mb, ITypeBinding type) {

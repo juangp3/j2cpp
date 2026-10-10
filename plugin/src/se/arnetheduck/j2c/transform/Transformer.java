@@ -22,6 +22,9 @@ import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
+import org.eclipse.jdt.core.dom.Statement;
+import org.eclipse.jdt.core.dom.PatternInstanceofExpression;
+import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
@@ -33,8 +36,6 @@ import org.eclipse.jdt.core.dom.MethodReference;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
-import org.eclipse.jdt.core.dom.SwitchCase;
-import org.eclipse.jdt.core.dom.SwitchExpression;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 import se.arnetheduck.j2c.snippets.GetSetSnippet;
@@ -369,27 +370,18 @@ public class Transformer {
 			return Problem.of("method reference",
 					"Java 8 method reference could not be translated");
 		}
-		if (node instanceof SwitchExpression) {
-			SwitchExpression switchExpression = (SwitchExpression) node;
-			ITypeBinding selector = switchExpression.getExpression()
-					.resolveTypeBinding();
-			if (selector == null || selector.isPrimitive()) {
-				return null;
-			}
-			if (!selector.isEnum()
-					&& !"java.lang.String".equals(selector.getQualifiedName())) {
-				return Problem.of("switch expression selector",
-						"switch expressions on " + selector.getName()
-								+ " are not supported; switch on the primitive value");
-			}
-			for (Object statement : switchExpression.statements()) {
-				if (statement instanceof SwitchCase
-						&& !((SwitchCase) statement).isSwitchLabeledRule()) {
-					return Problem.of("switch expression selector",
-							"switch expressions on " + selector.getName()
-									+ " must use \"case X ->\" rules, not \"case X:\"");
+		if (node instanceof PatternInstanceofExpression) {
+			// Pattern variables are declared before their enclosing statement
+			for (ASTNode parent = node.getParent(); parent != null
+					&& !(parent instanceof BodyDeclaration); parent = parent
+					.getParent()) {
+				if (parent instanceof Statement) {
+					return null;
 				}
 			}
+			return Problem.of("instanceof pattern",
+					"instanceof patterns outside method bodies, such as in "
+							+ "field initializers, are not supported");
 		}
 		if (sealedTypes == SealedTypes.REJECT) {
 			return sealedFeature(node);
