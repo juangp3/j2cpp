@@ -3,8 +3,10 @@ const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
 
-// "path:line: message", as printed by the CLI for problems in Java sources
+// "path:line: message", as printed by CLIs without --format json
 const PROBLEM_PATTERN = /^(.+\.java):(\d+): (.+?)\r?$/;
+// Written by the CLI into every output directory it creates
+const OUTPUT_MARKER = ".j2c-output";
 
 let running = false;
 
@@ -21,6 +23,52 @@ function activate(context) {
 		"j2c.check",
 		(target) => check(session, target)
 	));
+	registerMcpServer(context);
+}
+
+/**
+ * Offers the bundled CLI to agents (Copilot agent mode) as an MCP server per
+ * workspace folder. Editors without the MCP extension API skip this.
+ */
+function registerMcpServer(context) {
+	if (!vscode.lm || typeof vscode.lm.registerMcpServerDefinitionProvider !== "function"
+		|| typeof vscode.McpStdioServerDefinition !== "function") {
+		return;
+	}
+	const changed = new vscode.EventEmitter();
+	context.subscriptions.push(changed);
+	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+		if (event.affectsConfiguration("j2c")) {
+			changed.fire();
+		}
+	}));
+	context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => changed.fire()));
+	context.subscriptions.push(vscode.lm.registerMcpServerDefinitionProvider("j2c", {
+		onDidChangeMcpServerDefinitions: changed.event,
+		provideMcpServerDefinitions: () => mcpServers(context)
+	}));
+}
+
+function mcpServers(context) {
+	const configuration = vscode.workspace.getConfiguration("j2c");
+	if (!configuration.get("mcp.enabled", true)) {
+		return [];
+	}
+	const cliJar = cliJarPath(configuration, context);
+	if (!fs.existsSync(cliJar)) {
+		return [];
+	}
+	return (vscode.workspace.workspaceFolders || []).map((folder) => {
+		const server = new vscode.McpStdioServerDefinition(
+			`J2C (${folder.name})`,
+			configuration.get("javaExecutable", "java"),
+			["-jar", cliJar, "mcp", "--root", folder.uri.fsPath],
+			{},
+			extensionVersion(context)
+		);
+		server.cwd = folder.uri;
+		return server;
+	});
 }
 
 async function translate(session, target) {
@@ -28,10 +76,13 @@ async function translate(session, target) {
 	if (!invocation) {
 		return;
 	}
-	await execute(session, invocation, "Translating Java to C++", (result, problems) => {
+	await execute(session, invocation, "Translating Java to C++", (result, problems, report) => {
 		if (result.code === 0) {
+			const files = report && report.generatedFiles
+				? ` (${report.generatedFiles.length} files)`
+				: "";
 			vscode.window.showInformationMessage(
-				`J2C: Translation complete. Output: ${invocation.outputDirectory}`
+				`J2C: Translation complete${files}. Output: ${invocation.outputDirectory}`
 			);
 		} else if (problems > 0) {
 			vscode.window.showErrorMessage(
@@ -39,7 +90,7 @@ async function translate(session, target) {
 			);
 		} else {
 			vscode.window.showErrorMessage(
-				`J2C: Translation failed (exit code ${result.code}). See the J2C output channel.`
+				`J2C: Translation failed (exit code ${result.code})${errorDetail(report)}. See the J2C output channel.`
 			);
 		}
 	});
@@ -50,7 +101,7 @@ async function check(session, target) {
 	if (!invocation) {
 		return;
 	}
-	await execute(session, invocation, "Checking translatability", (result, problems) => {
+	await execute(session, invocation, "Checking translatability", (result, problems, report) => {
 		if (result.code === 0) {
 			vscode.window.showInformationMessage(
 				"J2C: No problems found; the selection can be translated."
@@ -61,10 +112,14 @@ async function check(session, target) {
 			);
 		} else {
 			vscode.window.showErrorMessage(
-				`J2C: Check failed (exit code ${result.code}). See the J2C output channel.`
+				`J2C: Check failed (exit code ${result.code})${errorDetail(report)}. See the J2C output channel.`
 			);
 		}
 	});
+}
+
+function errorDetail(report) {
+	return report && report.message ? `: ${report.message}` : "";
 }
 
 /**
@@ -120,6 +175,7 @@ async function prepare(session, target, writesOutput) {
 	const classPath = getClassPath(configuration, workspaceFolder);
 
 	let outputDirectory;
+	let force = false;
 	if (writesOutput) {
 		const outputSelection = await vscode.window.showOpenDialog({
 			canSelectFiles: false,
@@ -131,12 +187,23 @@ async function prepare(session, target, writesOutput) {
 			return undefined;
 		}
 		outputDirectory = outputSelection[0].fsPath;
+
+		// Translation moves an output directory's contents aside first
+		if (!isReplaceable(outputDirectory)) {
+			const choice = await vscode.window.showWarningMessage(
+				`J2C: ${outputDirectory} is not empty and was not created by J2C. ` +
+				"Translating moves its contents to a backup in the temporary folder.",
+				{ modal: true },
+				"Translate Anyway"
+			);
+			if (choice !== "Translate Anyway") {
+				return undefined;
+			}
+			force = true;
+		}
 	}
 
-	const configuredJar = configuration.get("cliJar", "");
-	const cliJar = configuredJar
-		? path.resolve(configuredJar)
-		: path.join(session.context.extensionPath, "lib", "j2c-cli.jar");
+	const cliJar = cliJarPath(configuration, session.context);
 	if (!fs.existsSync(cliJar)) {
 		vscode.window.showErrorMessage(
 			`J2C CLI jar not found: ${cliJar}. Build/package the extension or set j2c.cliJar.`
@@ -146,6 +213,10 @@ async function prepare(session, target, writesOutput) {
 
 	const args = ["-jar", cliJar];
 	args.push(...(writesOutput ? ["--output", outputDirectory] : ["--check"]));
+	args.push("--format", "json");
+	if (force) {
+		args.push("--force");
+	}
 	args.push("--sealed-types", configuration.get("sealedTypes", "advisory"));
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
@@ -167,12 +238,32 @@ async function prepare(session, target, writesOutput) {
 	};
 }
 
-async function execute(session, invocation, title, onComplete) {
-	const { context, output, diagnostics } = session;
-	const version = context.extension && context.extension.packageJSON
+function isReplaceable(directory) {
+	try {
+		const entries = fs.readdirSync(directory);
+		return entries.length === 0 || entries.includes(OUTPUT_MARKER);
+	} catch (error) {
+		// A missing directory is reported by the CLI
+		return true;
+	}
+}
+
+function cliJarPath(configuration, context) {
+	const configuredJar = configuration.get("cliJar", "");
+	return configuredJar
+		? path.resolve(configuredJar)
+		: path.join(context.extensionPath, "lib", "j2c-cli.jar");
+}
+
+function extensionVersion(context) {
+	return context.extension && context.extension.packageJSON
 		? context.extension.packageJSON.version
 		: "unknown";
-	output.appendLine(`J2C ${version}: ${title} ${invocation.targets.join(", ")}`);
+}
+
+async function execute(session, invocation, title, onComplete) {
+	const { context, output, diagnostics } = session;
+	output.appendLine(`J2C ${extensionVersion(context)}: ${title} ${invocation.targets.join(", ")}`);
 	if (invocation.outputDirectory) {
 		output.appendLine(`Output: ${invocation.outputDirectory}`);
 	}
@@ -195,7 +286,17 @@ async function execute(session, invocation, title, onComplete) {
 					);
 					return;
 				}
-				onComplete(result, publishProblems(diagnostics, result.text));
+				const report = parseReport(result.stdout);
+				if (report) {
+					logReport(output, report);
+				} else {
+					// A custom j2c.cliJar without --format json support
+					output.append(result.stdout);
+				}
+				const problems = report
+					? publishReport(diagnostics, report)
+					: publishText(diagnostics, result.text);
+				onComplete(result, problems, report);
 			} catch (error) {
 				output.appendLine(String(error));
 				vscode.window.showErrorMessage(
@@ -209,8 +310,54 @@ async function execute(session, invocation, title, onComplete) {
 	output.show(true);
 }
 
-/** Replaces the J2C diagnostics with the problems in the CLI output */
-function publishProblems(diagnostics, text) {
+/** The CLI's --format json report, or undefined if stdout is not one */
+function parseReport(stdout) {
+	const lines = stdout.split(/\r?\n/).filter((line) => line.trim() !== "");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		try {
+			const report = JSON.parse(lines[i]);
+			if (report && report.tool === "j2c" && report.schemaVersion) {
+				return report;
+			}
+		} catch (error) {
+			// Not JSON
+		}
+	}
+	return undefined;
+}
+
+function logReport(output, report) {
+	for (const problem of report.problems || []) {
+		output.appendLine(`${problem.file}:${problem.line}:${problem.column}: ${problem.message} [${problem.id}]`);
+	}
+	if (report.generatedFiles) {
+		output.appendLine(`Generated ${report.generatedFiles.length} files in ${report.output}`);
+	}
+	if (report.message) {
+		output.appendLine(report.message);
+	}
+}
+
+/** Replaces the J2C diagnostics with the report's problems */
+function publishReport(diagnostics, report) {
+	const byFile = new Map();
+	for (const problem of report.problems || []) {
+		const line = Math.max(problem.line - 1, 0);
+		const column = Math.max((problem.column || 1) - 1, 0);
+		const diagnostic = new vscode.Diagnostic(
+			new vscode.Range(line, column, line, Number.MAX_SAFE_INTEGER),
+			problem.hint ? `${problem.message}\nHow to fix: ${problem.hint}` : problem.message,
+			vscode.DiagnosticSeverity.Error
+		);
+		diagnostic.source = "j2c";
+		diagnostic.code = problem.id;
+		addDiagnostic(byFile, problem.file, diagnostic);
+	}
+	return replaceDiagnostics(diagnostics, byFile);
+}
+
+/** The same for "path:line: message" text from older CLIs */
+function publishText(diagnostics, text) {
 	const byFile = new Map();
 	for (const line of text.split("\n")) {
 		const match = line.match(PROBLEM_PATTERN);
@@ -224,12 +371,19 @@ function publishProblems(diagnostics, text) {
 			vscode.DiagnosticSeverity.Error
 		);
 		diagnostic.source = "j2c";
-		if (!byFile.has(match[1])) {
-			byFile.set(match[1], []);
-		}
-		byFile.get(match[1]).push(diagnostic);
+		addDiagnostic(byFile, match[1], diagnostic);
 	}
+	return replaceDiagnostics(diagnostics, byFile);
+}
 
+function addDiagnostic(byFile, file, diagnostic) {
+	if (!byFile.has(file)) {
+		byFile.set(file, []);
+	}
+	byFile.get(file).push(diagnostic);
+}
+
+function replaceDiagnostics(diagnostics, byFile) {
 	diagnostics.clear();
 	let count = 0;
 	for (const [file, fileDiagnostics] of byFile) {
@@ -314,15 +468,23 @@ function runCli(executable, args, cwd, output, token) {
 		// are not corrupted
 		child.stdout.setEncoding("utf8");
 		child.stderr.setEncoding("utf8");
-		let text = "";
-		const capture = (data) => {
-			text += data;
+		let stdout = "";
+		let stderr = "";
+		// stdout carries the JSON report; stderr is progress, shown live
+		child.stdout.on("data", (data) => {
+			stdout += data;
+		});
+		child.stderr.on("data", (data) => {
+			stderr += data;
 			output.append(data);
-		};
-		child.stdout.on("data", capture);
-		child.stderr.on("data", capture);
+		});
 		child.on("error", settle(reject));
-		child.on("close", settle((code) => resolve({ code, cancelled, text })));
+		child.on("close", settle((code) => resolve({
+			code,
+			cancelled,
+			stdout,
+			text: stdout + stderr
+		})));
 	});
 }
 

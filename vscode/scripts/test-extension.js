@@ -22,6 +22,8 @@ function createHarness(options = {}) {
 	const killed = [];
 	const cancellationListeners = [];
 	const outputs = [];
+	const mcpProviders = new Map();
+	const configurationListeners = [];
 	const commands = new Map();
 	const workspaceFolders = options.workspaceFolders || [];
 	const config = options.config || {};
@@ -45,6 +47,19 @@ function createHarness(options = {}) {
 			}
 		},
 		DiagnosticSeverity: { Error: 0 },
+		EventEmitter: class {
+			constructor() {
+				this.listeners = [];
+				this.event = (listener) => {
+					this.listeners.push(listener);
+					return { dispose() {} };
+				};
+			}
+			fire() {
+				this.listeners.forEach((listener) => listener());
+			}
+			dispose() {}
+		},
 		ProgressLocation: { Notification: 1 },
 		Range: class {
 			constructor(startLine, startCharacter, endLine, endCharacter) {
@@ -81,7 +96,10 @@ function createHarness(options = {}) {
 			},
 			showErrorMessage: (message) => errors.push(message),
 			showInformationMessage: (message) => information.push(message),
-			showWarningMessage: (message) => warnings.push(message),
+			showWarningMessage: (message) => {
+				warnings.push(message);
+				return Promise.resolve(options.warningChoice);
+			},
 			showOpenDialog: async () => options.outputDirectory
 				? [{ fsPath: options.outputDirectory }]
 				: undefined,
@@ -96,6 +114,12 @@ function createHarness(options = {}) {
 			}
 		},
 		workspace: {
+			workspaceFolders,
+			onDidChangeConfiguration: (listener) => {
+				configurationListeners.push(listener);
+				return { dispose() {} };
+			},
+			onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
 			getConfiguration: (section) => ({
 				get: (key, defaultValue) => {
 					if (section === "j2c") {
@@ -117,6 +141,19 @@ function createHarness(options = {}) {
 			})
 		}
 	};
+	if (options.mcpApi) {
+		vscode.McpStdioServerDefinition = class {
+			constructor(label, command, args, env, version) {
+				Object.assign(this, { label, command, args, env, version });
+			}
+		};
+		vscode.lm = {
+			registerMcpServerDefinitionProvider: (id, provider) => {
+				mcpProviders.set(id, provider);
+				return { dispose() {} };
+			}
+		};
+	}
 
 	const childProcessMock = {
 		spawn: (...args) => {
@@ -179,6 +216,7 @@ function createHarness(options = {}) {
 	}
 
 	const context = {
+		extension: { packageJSON: { version: "9.9.9" } },
 		extensionPath: options.extensionPath || tempDirectory,
 		subscriptions: []
 	};
@@ -186,9 +224,14 @@ function createHarness(options = {}) {
 
 	return {
 		cancel: () => cancellationListeners.forEach((listener) => listener()),
+		changeConfiguration: (section) => configurationListeners.forEach((listener) =>
+			listener({ affectsConfiguration: (name) => name === section })
+		),
 		commands,
+		config,
 		context,
 		diagnostics,
+		mcpProviders,
 		errors,
 		information,
 		killed,
@@ -238,6 +281,7 @@ async function testConfiguredTranslationArguments() {
 		[
 			"-jar", cliJar,
 			"--output", outputDirectory,
+			"--format", "json",
 			"--sealed-types", "reject",
 			"--sourcepath", sourceRoot,
 			"--classpath", [dependency, absoluteDependency].join(path.delimiter),
@@ -409,6 +453,114 @@ async function testTranslationProblemsArePublished() {
 	assert(harness.errors[0].includes("1 problem(s) stop translation"));
 }
 
+async function testJsonReportPublishesDiagnostics() {
+	const root = path.join(tempDirectory, "json workspace");
+	const input = makeFile(path.join(root, "src", "Anonymous.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "json extension", "lib", "j2c-cli.jar"));
+	const report = {
+		schemaVersion: 1,
+		tool: "j2c",
+		command: "check",
+		status: "problems",
+		problems: [{
+			id: "J2C-LAMBDA-ANONYMOUS-THIS",
+			kind: "lambda expression",
+			severity: "error",
+			file: input,
+			line: 4,
+			column: 22,
+			message: "Java 8 lambda expression cannot be translated",
+			hint: "Assign this to a local variable before the lambda"
+		}]
+	};
+	const harness = createHarness({
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		spawnOutcome: {
+			code: 1,
+			stdout: `${JSON.stringify(report)}\n`,
+			stderr: "progress on stderr\n"
+		},
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.check")({ fsPath: input });
+
+	const args = harness.spawned[0][1];
+	assert.deepStrictEqual(args.slice(2, 5), ["--check", "--format", "json"]);
+	const [diagnostic] = harness.diagnostics.entries.get(input);
+	assert.strictEqual(diagnostic.range.startLine, 3);
+	assert.strictEqual(diagnostic.range.startCharacter, 21);
+	assert.strictEqual(diagnostic.code, "J2C-LAMBDA-ANONYMOUS-THIS");
+	assert(diagnostic.message.includes("How to fix: Assign this"));
+	const log = harness.outputs[0].lines.join("");
+	assert(log.includes(`${input}:4:22: Java 8 lambda expression cannot be translated [J2C-LAMBDA-ANONYMOUS-THIS]`));
+	assert(log.includes("progress on stderr"));
+	assert(!log.includes("schemaVersion"), "The raw JSON report is not shown to people");
+	assert(harness.warnings[0].includes("1 problem(s) would stop translation"));
+}
+
+async function testOutputDirectoryGuard() {
+	const root = path.join(tempDirectory, "guard workspace");
+	const input = makeFile(path.join(root, "Guard.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "guard extension", "lib", "j2c-cli.jar"));
+	const occupied = path.join(tempDirectory, "occupied output");
+	makeFile(path.join(occupied, "notes.txt"));
+	const base = {
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		outputDirectory: occupied,
+		workspaceFolders: [createWorkspace(root)]
+	};
+
+	const declined = createHarness(base);
+	await declined.commands.get("j2c.translate")({ fsPath: input });
+	assert(declined.warnings[0].includes("was not created by J2C"));
+	assert.strictEqual(declined.spawned.length, 0, "Declining must not translate");
+
+	const confirmed = createHarness({ ...base, warningChoice: "Translate Anyway" });
+	await confirmed.commands.get("j2c.translate")({ fsPath: input });
+	assert(confirmed.spawned[0][1].includes("--force"));
+
+	// Previous J2C output is replaced without asking
+	makeFile(path.join(occupied, ".j2c-output"));
+	const marked = createHarness(base);
+	await marked.commands.get("j2c.translate")({ fsPath: input });
+	assert.deepStrictEqual(marked.warnings, []);
+	assert(!marked.spawned[0][1].includes("--force"));
+}
+
+async function testMcpServerDefinitions() {
+	const root = path.join(tempDirectory, "mcp workspace");
+	fs.mkdirSync(root, { recursive: true });
+	const bundledJar = makeFile(path.join(tempDirectory, "mcp extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		config: { javaExecutable: "java 17" },
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		mcpApi: true,
+		workspaceFolders: [{ name: "mcp workspace", uri: { fsPath: root } }]
+	});
+
+	const provider = harness.mcpProviders.get("j2c");
+	assert(provider, "The MCP server definition provider is registered");
+	const [server] = await provider.provideMcpServerDefinitions();
+	assert.strictEqual(server.label, "J2C (mcp workspace)");
+	assert.strictEqual(server.command, "java 17");
+	assert.deepStrictEqual(server.args, ["-jar", bundledJar, "mcp", "--root", root]);
+	assert.strictEqual(server.cwd.fsPath, root);
+	assert.strictEqual(server.version, "9.9.9");
+
+	let changes = 0;
+	provider.onDidChangeMcpServerDefinitions(() => changes++);
+	harness.changeConfiguration("j2c");
+	assert.strictEqual(changes, 1, "Changing J2C settings refreshes the server list");
+
+	harness.config["mcp.enabled"] = false;
+	assert.deepStrictEqual(await provider.provideMcpServerDefinitions(), []);
+
+	// Editors without the MCP API still activate normally
+	const withoutApi = createHarness({ workspaceFolders: [] });
+	assert.strictEqual(withoutApi.mcpProviders.size, 0);
+	assert(withoutApi.commands.has("j2c.translate"));
+}
+
 async function testNoTargetIsReported() {
 	const harness = createHarness();
 	await harness.commands.get("j2c.translate")();
@@ -429,6 +581,9 @@ async function main() {
 		await testCancellationStopsTranslator();
 		await testCheckPublishesProblems();
 		await testTranslationProblemsArePublished();
+		await testJsonReportPublishesDiagnostics();
+		await testOutputDirectoryGuard();
+		await testMcpServerDefinitions();
 		await testNoTargetIsReported();
 		console.log("Extension configuration and failure checks passed");
 		process.exitCode = 0;

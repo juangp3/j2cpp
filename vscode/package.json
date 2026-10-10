@@ -22,6 +22,7 @@
     "test:cli": "node scripts/test-cli.js",
     "test:extension": "node scripts/test-extension.js",
     "test:licenses": "node scripts/check-licenses.js",
+    "test:mcp": "node scripts/test-mcp.js",
     "probe": "node scripts/probe.js",
     "package": "vsce package"
   },
@@ -30,7 +31,8 @@
   },
   "activationEvents": [
     "onCommand:j2c.translate",
-    "onCommand:j2c.check"
+    "onCommand:j2c.check",
+    "onMcpCollection:j2c"
   ],
   "contributes": {
     "commands": [
@@ -101,8 +103,19 @@
           "enum": ["advisory", "reject"],
           "default": "advisory",
           "description": "How to handle Java sealed and non-sealed types. Advisory emits C++ inheritance and informational permits comments; reject stops translation."
+        },
+        "j2c.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Offer J2C's check, translate, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
         }
       }
-    }
+    },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "j2c",
+        "label": "J2C Java to C++"
+      }
+    ]
   }
 }
