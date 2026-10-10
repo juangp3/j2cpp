@@ -229,10 +229,11 @@ release commit; keep preview limitations explicit.
 
 **Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
 clean-profile installation pass locally. Follow-up GitHub Actions run
-`38058979996` passed both Java matrix jobs and generated-C++ compilation on
-candidate commit `8621956`. Extension configuration and failure handling
-checks and a bundled-CLI smoke test pass locally. Interactive editor-command
-translation remains pending; rerun CI against the finalized release commit.
+`38059779192` passed both Java matrix jobs, extension configuration/failure
+checks, generated-C++ compilation, and VSIX upload on candidate commit
+`789d478`. A bundled-CLI smoke test also passes locally. Interactive
+editor-command translation remains pending; rerun CI against the finalized
+release commit.
 
 ## Phase 8 — Release and post-release verification
 
@@ -267,7 +268,7 @@ requirements.
 - [x] CLI and Java 17 behavior tests pass.
 - [x] Extension configuration and failure handling are tested.
 - [x] Generated-C++ compile proof passes in CI for representative fixtures on
-      candidate commit `8621956`.
+      candidate commit `789d478`.
 - [ ] CI builds and tests the exact release commit after it is frozen.
 - [x] Fresh VSIX is packaged, inspected, installed, and exercised through its
       bundled CLI; interactive editor-command translation remains unverified.
