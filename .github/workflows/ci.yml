@@ -38,13 +38,17 @@ jobs:
       - name: Compile generated C++20 fixtures
         if: matrix.java-version == '17'
         run: |
-          mkdir -p target/cpp-control-flow target/cpp-records target/cpp-features
+          mkdir -p target/cpp-control-flow target/cpp-records target/cpp-features target/cpp-lambdas
           java -jar target/j2c-cli.jar --output target/cpp-control-flow --sourcepath test/src test/src/se/arnetheduck/j2c/test/Java17ControlFlow.java
           java -jar target/j2c-cli.jar --output target/cpp-records --sourcepath test/src test/src/se/arnetheduck/j2c/test/Java17Records.java
           java -jar target/j2c-cli.jar --output target/cpp-features --sourcepath test/src test/src/se/arnetheduck/j2c/test/Java17Features.java
+          java -jar target/j2c-cli.jar --output target/cpp-lambdas --sourcepath test/src test/src/se/arnetheduck/j2c/test/Java17Lambdas.java
           make -C target/cpp-control-flow
           make -C target/cpp-records
           make -C target/cpp-features
+          make -C target/cpp-lambdas
+          g++ -std=c++20 -Itarget/cpp-lambdas/src -Itarget/cpp-lambdas/ext/src test/cpp/Java17LambdasSmoke.cpp -Ltarget/cpp-lambdas/bin -lcpp-lambdas -lcpp-lambdas-ext -o target/cpp-lambdas/bin/lambdas-smoke
+          target/cpp-lambdas/bin/lambdas-smoke
           g++ -std=c++20 -ffunction-sections -fdata-sections -Wl,--gc-sections -Itarget/cpp-control-flow/src -Itarget/cpp-control-flow/ext/src test/cpp/Java17ControlFlowSmoke.cpp target/cpp-control-flow/src/se/arnetheduck/j2c/test/Java17ControlFlow.cpp -o target/cpp-control-flow/bin/switch-value-smoke
           target/cpp-control-flow/bin/switch-value-smoke
       - name: Upload VSIX

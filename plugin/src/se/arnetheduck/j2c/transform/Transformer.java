@@ -335,13 +335,25 @@ public class Transformer {
 			}
 		}
 
+		// Lambdas and method references are rewritten into anonymous classes
+		// before parsing; any left were explained by the rewriter
+		final Set<Integer> explained = new HashSet<Integer>();
+		for (Problem problem : project.desugarProblems(source)) {
+			problems.add(problem);
+			explained.add(problem.line);
+		}
+
 		ast.accept(new ASTVisitor() {
 			@Override
 			public void preVisit(ASTNode node) {
+				int line = ast.getLineNumber(node.getStartPosition());
+				if ((node instanceof LambdaExpression || node instanceof MethodReference)
+						&& explained.contains(line)) {
+					return;
+				}
 				Problem problem = unsupportedFeature(node);
 				if (problem != null) {
-					problems.add(problem.at(source.file(),
-							ast.getLineNumber(node.getStartPosition())));
+					problems.add(problem.at(source.file(), line));
 				}
 			}
 		});
@@ -351,11 +363,11 @@ public class Transformer {
 	private Problem unsupportedFeature(ASTNode node) {
 		if (node instanceof LambdaExpression) {
 			return Problem.of("lambda expression",
-					"Java 8 lambda expressions are not supported");
+					"Java 8 lambda expression could not be translated");
 		}
 		if (node instanceof MethodReference) {
 			return Problem.of("method reference",
-					"Java 8 method references are not supported");
+					"Java 8 method reference could not be translated");
 		}
 		if (node instanceof SwitchExpression) {
 			SwitchExpression switchExpression = (SwitchExpression) node;

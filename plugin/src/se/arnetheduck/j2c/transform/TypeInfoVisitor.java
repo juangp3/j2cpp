@@ -162,7 +162,9 @@ public class TypeInfoVisitor extends ASTVisitor {
 			}
 		}
 
-		if (!Modifier.isFinal(vb.getModifiers())) {
+		// Java 8+ captures effectively final variables too, which lambdas
+		// (rewritten into anonymous classes) almost always rely on
+		if (!Modifier.isFinal(vb.getModifiers()) && !vb.isEffectivelyFinal()) {
 			return false;
 		}
 		VariableDeclarationFragment vdf = initializer(node);

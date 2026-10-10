@@ -93,21 +93,22 @@ try {
 	fs.writeFileSync(unsupportedSource, [
 		"package scratch;",
 		"public class Unsupported {",
-		"\tinterface F { int apply(int x); }",
 		"\tstatic int run() {",
-		"\t\tF twice = x -> x * 2;",
-		"\t\tF boxed = Integer::valueOf;",
-		"\t\treturn twice.apply(1) + boxed.apply(2);",
+		"\t\tInteger k = 1;",
+		"\t\tRunnable r = (Runnable & java.io.Serializable) () -> {};",
+		"\t\treturn switch (k) { case 1 -> 2; default -> 3; };",
 		"\t}",
 		"}",
 		""
 	].join("\n"));
+	const intersectionProblem = "Unsupported.java:5: Java 8 lambda expression cannot be translated: its target is an intersection type";
+	const boxedSwitchProblem = "Unsupported.java:6: switch expressions on Integer are not supported";
 	const unsupportedOutput = path.join(tempDirectory, "unsupported output");
 	fs.mkdirSync(unsupportedOutput);
 	const unsupported = runCli(["--output", unsupportedOutput, unsupportedSource]);
 	assert.strictEqual(unsupported.status, 1, unsupported.stdout);
-	assert(unsupported.stderr.includes("Unsupported.java:5: Java 8 lambda expressions are not supported"));
-	assert(unsupported.stderr.includes("Unsupported.java:6: Java 8 method references are not supported"));
+	assert(unsupported.stderr.includes(intersectionProblem), unsupported.stderr);
+	assert(unsupported.stderr.includes(boxedSwitchProblem), unsupported.stderr);
 	assert(!unsupported.stderr.includes("\tat "), "User errors must not print a stack trace");
 
 	// --check reports every problem and writes nothing, not even into cwd
@@ -115,11 +116,40 @@ try {
 	fs.mkdirSync(checkDirectory);
 	const checked = runCli(["--check", unsupportedSource], { cwd: checkDirectory });
 	assert.strictEqual(checked.status, 1, checked.stderr);
-	assert(checked.stdout.includes("Unsupported.java:5: Java 8 lambda expressions are not supported"));
-	assert(checked.stdout.includes("Unsupported.java:6: Java 8 method references are not supported"));
+	assert(checked.stdout.includes(intersectionProblem));
+	assert(checked.stdout.includes(boxedSwitchProblem));
 	assert(checked.stdout.includes("J2C check: 2 problem(s) in 1 of 1 file(s)"));
 	assert(checked.stdout.includes("1 x lambda expression"));
+	assert(checked.stdout.includes("1 x switch expression selector"));
 	assert.deepStrictEqual(fs.readdirSync(checkDirectory), []);
+
+	// Lambdas and method references are rewritten into anonymous classes
+	const lambdaSource = path.join(scratchPackage, "Lambdas.java");
+	fs.writeFileSync(lambdaSource, [
+		"package scratch;",
+		"public class Lambdas {",
+		"\tinterface F { int apply(int x); }",
+		"\tstatic int run(int offset) {",
+		"\t\tF shifted = x -> x + offset;",
+		"\t\tF boxed = Integer::valueOf;",
+		"\t\treturn shifted.apply(1) + boxed.apply(2);",
+		"\t}",
+		"}",
+		""
+	].join("\n"));
+	const lambdaOutput = path.join(tempDirectory, "lambda output");
+	fs.mkdirSync(lambdaOutput);
+	const lambdas = runCli(["--output", lambdaOutput, lambdaSource]);
+	assert.strictEqual(lambdas.status, 0, lambdas.stderr);
+	const lambdaClass = fs.readFileSync(
+		path.join(lambdaOutput, "src", "scratch", "Lambdas_run_1.cpp"), "utf8"
+	);
+	assert.match(lambdaClass, /int32_t scratch::Lambdas_run_1::apply\(int32_t x\)\s*\{\s*return x \+ offset;/);
+	assert(
+		fs.readFileSync(path.join(lambdaOutput, "src", "scratch", "Lambdas.cpp"), "utf8")
+			.includes("new Lambdas_run_1(offset)"),
+		"The captured local must be passed to the generated class"
+	);
 
 	// Sources are read as UTF-8 by default and C++ is written as UTF-8,
 	// independent of the platform charset
@@ -180,6 +210,23 @@ try {
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"go"_j)) || (npc(v)->equals(u"run"_j))`));
 		assert(featureSource.includes("finally([&] { if (reader != nullptr) { reader->close(); } })"));
 		assert(!featureSource.includes("try ("), "try-with-resources must not be emitted verbatim");
+
+		const lambdasOutput = path.join(tempDirectory, "lambdas output");
+		fs.mkdirSync(lambdasOutput);
+		const lambdaFixture = runCli([
+			"--output", lambdasOutput,
+			"--sourcepath", sourceRoot,
+			path.join(fixtureDirectory, "Java17Lambdas.java")
+		]);
+		assert.strictEqual(lambdaFixture.status, 0, lambdaFixture.stderr);
+		const lambdaSources = filesUnder(path.join(lambdasOutput, "src"))
+			.filter((file) => file.endsWith(".cpp"))
+			.map((file) => fs.readFileSync(file, "utf8"))
+			.join("\n");
+		// toString() in a lambda means the enclosing object's toString()
+		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
+		// Default and static interface methods get stub definitions
+		assert(fs.existsSync(path.join(lambdasOutput, "ext", "stub", "java", "util", "Comparator-stub.cpp")));
 
 		const advisory = runCli([
 			"--output", outputDirectory,

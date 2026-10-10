@@ -43,7 +43,21 @@ public class TypeBindingHeaderWriter {
 				sw = new StubWriter(root, ctx, type);
 				sw.write(true, false);
 			}
+		} else if (hasMethodBodies()) {
+			// Default and static interface methods are declared in the
+			// header and need definitions like class methods do
+			new StubWriter(root, ctx, type).write(false, false);
 		}
+	}
+
+	private boolean hasMethodBodies() {
+		for (IMethodBinding mb : type.getDeclaredMethods()) {
+			if (!Modifier.isAbstract(mb.getModifiers())) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private boolean hasNatives() {

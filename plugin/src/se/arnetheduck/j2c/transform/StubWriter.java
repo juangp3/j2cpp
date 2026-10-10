@@ -28,11 +28,11 @@ public class StubWriter {
 
 	private PrintWriter out;
 
+	/**
+	 * For interfaces, only default and static methods (Java 8+) get stub
+	 * bodies; interfaces have no fields, constructors or clinit to define.
+	 */
 	public StubWriter(IPath root, Transformer ctx, ITypeBinding type) {
-		if (type.isInterface()) {
-			throw new UnsupportedOperationException();
-		}
-
 		this.root = root;
 		this.ctx = ctx;
 		this.type = type;
@@ -102,7 +102,7 @@ public class StubWriter {
 		StringWriter ret = new StringWriter();
 		out = new PrintWriter(ret);
 
-		if (!natives) {
+		if (!natives && !type.isInterface()) {
 			for (IVariableBinding vb : type.getDeclaredFields()) {
 				printField(vb);
 			}
@@ -349,7 +349,7 @@ public class StubWriter {
 			println(" /* stub */");
 		}
 
-		if (TransformUtil.isStatic(mb)) {
+		if (TransformUtil.isStatic(mb) && !type.isInterface()) {
 			printClInitCall();
 		}
 
