@@ -19,6 +19,7 @@
   "scripts": {
     "vscode:prepublish": "node scripts/prepare.js",
     "test:cli": "node scripts/test-cli.js",
+    "test:extension": "node scripts/test-extension.js",
     "package": "vsce package"
   },
   "devDependencies": {

@@ -32,8 +32,14 @@ Java-to-C++ semantic equivalence.
   policies, record translation, and output paths containing spaces.
   `vscode:prepublish` builds the CLI and runs this suite.
 - A fresh VSIX was packaged and installed in an isolated VS Code profile. It
-  includes the extension, bundled CLI JAR, and project license. `npm audit`
-  reports no vulnerabilities for the current dependency tree.
+  includes the extension, bundled CLI JAR, project license, and dependency
+  notices. Its installed CLI JAR hash matched the packaged copy and translated
+  the Java 17 records fixture successfully. `npm audit` reports no
+  vulnerabilities for the current dependency tree.
+- Extension-level integration checks cover configured source/class paths,
+  custom CLI and Java executable settings, invalid/missing inputs, missing
+  CLI JAR, nonzero CLI exits, and process-start failures. They run during
+  `vscode:prepublish` and pass locally.
 - The first GitHub Actions run failed in the Java 11 matrix leg because CLI
   integration tests attempted to translate Java 17 sealed/record fixtures.
   Those feature checks are now gated on the executing Java version; local
@@ -44,8 +50,9 @@ Java-to-C++ semantic equivalence.
   WSL's GCC 13.3.0; the same checks are now included in CI.
 - Maven and VS Code extension versions are both `0.6.0`.
 - The extension publisher is set to `juangp3` at the user's direction.
-  Marketplace publication and interactive extension translation have not
-  been performed.
+  The Marketplace item URL for `juangp3.j2c` returns 404; publisher ownership
+  and publication authorization remain unverified. Interactive extension
+  translation has not been performed.
 
 These observations are a starting inventory, not an assertion that no other
 release blockers exist. Recheck them on the release branch.
@@ -213,8 +220,9 @@ release commit; keep preview limitations explicit.
 4. **Done locally:** VSIX includes extension code, CLI JAR, README, project
    license, and a third-party runtime dependency inventory.
 5. **Partially done:** Installed the fresh VSIX into an isolated profile and
-   confirmed the `juangp3.j2c` extension ID and version. Interactive translation
-   with the extension and configured path behavior remain unverified.
+   confirmed the `juangp3.j2c` extension ID and version. The installed bundled
+   CLI translated a Java 17 records fixture. Interactive editor-command
+   translation remains unverified.
 6. **Done locally:** Rebuilt from a detached clean worktree with `npm ci`,
    Maven, extension packaging, CLI integration tests, and generated-C++
    compilation rather than relying on existing build output.
@@ -222,8 +230,9 @@ release commit; keep preview limitations explicit.
 **Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
 clean-profile installation pass locally. Follow-up GitHub Actions run
 `38058979996` passed both Java matrix jobs and generated-C++ compilation on
-candidate commit `8621956`. Interactive extension translation remains
-pending; rerun CI against the final release commit.
+candidate commit `8621956`. Extension configuration and failure handling
+checks and a bundled-CLI smoke test pass locally. Interactive editor-command
+translation remains pending; rerun CI against the finalized release commit.
 
 ## Phase 8 — Release and post-release verification
 
@@ -256,11 +265,12 @@ requirements.
 - [x] Product scope and limitations are accurate in both READMEs.
 - [ ] Project identity, version, publisher, license, and notices verified.
 - [x] CLI and Java 17 behavior tests pass.
-- [ ] Extension configuration and failure handling are tested.
+- [x] Extension configuration and failure handling are tested.
 - [x] Generated-C++ compile proof passes in CI for representative fixtures on
       candidate commit `8621956`.
 - [ ] CI builds and tests the exact release commit after it is frozen.
-- [ ] Fresh VSIX is packaged, inspected, installed, and exercised.
+- [x] Fresh VSIX is packaged, inspected, installed, and exercised through its
+      bundled CLI; interactive editor-command translation remains unverified.
 - [ ] Release artifacts, checksums, notes, and rollback path are ready.
 
 ## Recommended release posture

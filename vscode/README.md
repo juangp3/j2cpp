@@ -23,8 +23,8 @@ JVM behavior.
 
 To prepare the extension for local development or packaging, run
 `npm run vscode:prepublish` in this directory. This builds the CLI with Maven,
-runs focused CLI integration checks, and stages the executable JAR in the
-extension package.
+runs the CLI and extension configuration/failure checks, and stages the
+executable JAR in the extension package.
 
 The extension uses source roots from `j2c.sourcePaths`, then
 `java.project.sourcePaths`, and finally existing conventional `src` folders.
@@ -32,5 +32,6 @@ Set `j2c.sourcePaths` to the source roots for the Java project if automatic
 detection does not match the project layout. Dependency jars and class
 directories can be supplied with `j2c.classPath`.
 
-To run the focused CLI integration checks separately, first build the CLI from
-the repository root with `mvn package`, then run `npm run test:cli` here.
+To run the focused integration checks separately, first build the CLI from the
+repository root with `mvn package`, then run `npm run test:cli` and
+`npm run test:extension` here.

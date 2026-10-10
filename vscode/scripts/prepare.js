@@ -29,6 +29,18 @@ if (tests.status !== 0) {
 	process.exit(tests.status || 1);
 }
 
+const extensionTests = childProcess.spawnSync(
+	process.execPath,
+	[path.join(extensionDirectory, "scripts", "test-extension.js")],
+	{ stdio: "inherit" }
+);
+if (extensionTests.error) {
+	throw extensionTests.error;
+}
+if (extensionTests.status !== 0) {
+	process.exit(extensionTests.status || 1);
+}
+
 const cliJar = path.join(repositoryRoot, "target", "j2c-cli.jar");
 const extensionLib = path.join(extensionDirectory, "lib");
 fs.mkdirSync(extensionLib, { recursive: true });
