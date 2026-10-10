@@ -37,7 +37,8 @@ Java-to-C++ semantic equivalence.
 - The first GitHub Actions run failed in the Java 11 matrix leg because CLI
   integration tests attempted to translate Java 17 sealed/record fixtures.
   Those feature checks are now gated on the executing Java version; local
-  packaging passes, and a pushed CI rerun is still required.
+  packaging passes, and follow-up CI run `38058979996` passed both Java 11 and
+  Java 17 jobs, including generated-C++ compilation and VSIX upload.
 - Maven has no JVM test sources; integration tests are Node-based. Generated
   Java 17 control-flow and record fixtures both compile as C++20 with Ubuntu
   WSL's GCC 13.3.0; the same checks are now included in CI.
@@ -219,9 +220,10 @@ release commit; keep preview limitations explicit.
    compilation rather than relying on existing build output.
 
 **Gate:** Clean-worktree build, packaging, dependency audit, C++ checks, and
-clean-profile installation pass locally. The initial pushed run failed in the
-Java 11 test path; a local fix is ready for CI re-verification. Interactive
-extension translation also remains pending.
+clean-profile installation pass locally. Follow-up GitHub Actions run
+`38058979996` passed both Java matrix jobs and generated-C++ compilation on
+candidate commit `8621956`. Interactive extension translation remains
+pending; rerun CI against the final release commit.
 
 ## Phase 8 — Release and post-release verification
 
@@ -255,8 +257,9 @@ requirements.
 - [ ] Project identity, version, publisher, license, and notices verified.
 - [x] CLI and Java 17 behavior tests pass.
 - [ ] Extension configuration and failure handling are tested.
-- [ ] Generated-C++ compile proof passes in CI for representative fixtures.
-- [ ] CI builds and tests the exact release commit.
+- [x] Generated-C++ compile proof passes in CI for representative fixtures on
+      candidate commit `8621956`.
+- [ ] CI builds and tests the exact release commit after it is frozen.
 - [ ] Fresh VSIX is packaged, inspected, installed, and exercised.
 - [ ] Release artifacts, checksums, notes, and rollback path are ready.
 
