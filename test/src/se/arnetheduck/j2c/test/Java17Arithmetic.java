@@ -95,4 +95,59 @@ public class Java17Arithmetic {
 		a %= b;
 		return a;
 	}
+
+	// Varargs: an array argument passes through covariantly (Sub[][] is a
+	// Base[][]), and no trailing arguments give an empty array
+	public static class VarargBase {
+		public int weight() {
+			return 1;
+		}
+	}
+
+	public static class VarargSub extends VarargBase {
+		@Override
+		public int weight() {
+			return 2;
+		}
+	}
+
+	public static class VarargTotal {
+		public final int total;
+
+		public VarargTotal(final VarargBase[]... groups) {
+			int t = 0;
+			for (VarargBase[] group : groups) {
+				for (VarargBase b : group) {
+					t += b.weight();
+				}
+			}
+			total = t;
+		}
+	}
+
+	public static class VarargCount {
+		public final int count;
+
+		public VarargCount(final int... values) {
+			count = values.length;
+		}
+	}
+
+	public static VarargSub[][] varargGrid() {
+		return new VarargSub[][] { { new VarargSub(), new VarargSub() },
+				{ new VarargSub() } };
+	}
+
+	public static int varargRows(VarargSub[][] rows) {
+		return new VarargTotal(rows).total;
+	}
+
+	public static int covariantRows(VarargSub[][] rows) {
+		VarargBase[][] bases = rows;
+		return bases[1][0].weight();
+	}
+
+	public static int varargNone() {
+		return new VarargCount().count;
+	}
 }

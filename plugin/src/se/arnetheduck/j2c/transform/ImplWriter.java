@@ -1534,7 +1534,10 @@ public class ImplWriter extends TransformWriter {
 			deps.hard(ctx.resolve(String.class));
 		}
 
-		if (!arguments.isEmpty()) {
+		if (!arguments.isEmpty()
+				|| (mb != null && mb.getMethodDeclaration().isVarargs())) {
+			// A varargs constructor called with no arguments still takes an
+			// empty array
 			print(sep);
 			callArgs(mb, arguments, false, false);
 		}
@@ -2687,9 +2690,7 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		if (b.isVarargs() && arguments.size() < paramTypes.length) {
-			if (arguments.size() > 0) {
-				print(", ");
-			}
+			print(s);
 
 			ITypeBinding tb = paramTypes[paramTypes.length - 1];
 			hardDep(tb);

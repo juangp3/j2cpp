@@ -654,6 +654,24 @@ try {
 			generatedSources,
 			/\(v == Java17ControlFlow_Light::AMBER\) \|\| \(v == Java17ControlFlow_Light::GREEN\)/
 		);
+
+		const arithmeticOutput = path.join(tempDirectory, "arithmetic output");
+		fs.mkdirSync(arithmeticOutput);
+		const arithmetic = runCli([
+			"--output", arithmeticOutput,
+			"--sourcepath", sourceRoot,
+			path.join(fixtureDirectory, "Java17Arithmetic.java")
+		]);
+		assert.strictEqual(arithmetic.status, 0, arithmetic.stderr);
+		const arithmeticSource = fs.readFileSync(path.join(
+			arithmeticOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Arithmetic.cpp"
+		), "utf8");
+		// Arrays are covariant in every dimension: Sub[][] derives from Base[][]
+		assert(arithmeticSource.includes(
+			"typedef ::SubArray< ::se::arnetheduck::j2c::test::Java17Arithmetic_VarargSubArray, Java17Arithmetic_VarargBaseArrayArray > Java17Arithmetic_VarargSubArrayArray;"
+		));
+		// A varargs constructor called with no arguments gets an empty array
+		assert(arithmeticSource.includes("(new Java17Arithmetic_VarargCount(new ::int32_tArray()))->count"));
 	} else {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}

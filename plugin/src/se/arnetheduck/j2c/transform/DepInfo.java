@@ -238,6 +238,16 @@ public class DepInfo {
 	private List<ITypeBinding> arrayBases(ITypeBinding ct) {
 		List<ITypeBinding> ret = new ArrayList<ITypeBinding>();
 		if (ct.isArray()) {
+			ITypeBinding cct = ct.getComponentType();
+			if (!cct.isPrimitive() && !TransformUtil.same(cct, Object.class)) {
+				// Arrays are covariant: Sub[][] is a Base[][], which in turn
+				// reaches Object[][], Cloneable[] and Serializable[]
+				for (ITypeBinding base : arrayBases(cct)) {
+					ret.add(base.createArrayType(1));
+				}
+				return ret;
+			}
+
 			ret.add(ctx.resolve(Cloneable.class).createArrayType(1));
 			ret.add(ctx.resolve(Serializable.class).createArrayType(1));
 			return ret;

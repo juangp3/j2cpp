@@ -78,5 +78,9 @@ int main() {
 	(*values)[0] = 10;
 	if (Java17Arithmetic::compoundIndex(values, 5) != 1 || (*values)[0] != 2) return 27;
 	if (Java17Arithmetic::fmodAssign(7.5, 2.0) != 1.5) return 28;
+	auto grid = Java17Arithmetic::varargGrid();
+	if (Java17Arithmetic::varargRows(grid) != 6) return 40;
+	if (Java17Arithmetic::covariantRows(grid) != 2) return 41;
+	if (Java17Arithmetic::varargNone() != 0) return 42;
 	return 0;
 }
