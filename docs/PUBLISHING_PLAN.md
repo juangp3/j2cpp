@@ -12,77 +12,59 @@ Java-to-C++ semantic equivalence.
 
 ## Current known state
 
-Last rechecked on 2026-10-10 against local `modern-release`.
+Last rechecked on 2026-10-11 against local `modern-release`.
 
 - **Repositories.** `juangp3/j2cpp` is public and has a single branch,
   `modern-release`, which is therefore its default branch. Locally, `origin`
   still points to `arnetheduck/j2c` (left intact) and `modern` points to
   `juangp3/j2cpp`. No release tags exist.
-- **Pushed state.** `modern/modern-release` is at `409a0be`. The release
-  infrastructure and licensing changes described below are local and not yet
-  pushed.
+- **Pushed state.** Being pushed for M0 of
+  [VALIDATION_ROADMAP.md](VALIDATION_ROADMAP.md); previously
+  `modern/modern-release` was at `409a0be`.
 - **Worktree.** Clean on `modern-release`. The legacy Eclipse IDE metadata
-  (`plugin/.project`, `test/.project`, `plugin/META-INF/MANIFEST.MF`) and the
-  `HandlerHelper.java` handler edit are parked on the local, unpushed branch
-  `legacy/eclipse-ide-edits` (`e4261f0`). Generated `plugin/bin`, `test/bin`,
-  `target`, the staged CLI JAR, copied license files, and VSIX packages are
-  ignored.
-- **Documentation.** The root README and VS Code README describe the CLI,
-  extension, and incremental Java 17 support. `CHANGELOG.md` has a `0.6.0 —
-  Preview` section that the release workflow uses as release notes.
-- **Versions.** Maven and the VS Code extension are both `0.6.0`. The extension
-  is marked `"preview": true`, so the Marketplace shows a Preview badge. The
-  CLI is compiled with `--release 11`, matching the documented Java 11
-  minimum.
+  and the `HandlerHelper.java` handler edit are parked on the local, unpushed
+  branch `legacy/eclipse-ide-edits` (`e4261f0`). Generated `plugin/bin`,
+  `test/bin`, `target`, the staged CLI JAR, copied license files, and VSIX
+  packages are ignored.
+- **Scope of 0.6.0.** Beyond the CLI and extension: `--check`, `--version`,
+  `--format json`, the output guard, problem IDs with `j2c explain`,
+  `j2c capabilities`, the Problems panel, lambdas and method references,
+  Phase 9 gaps G1–G6, the `j2c mcp` server with VS Code registration
+  (Phase 11), and `--tests` with JUnit assertions (Phase 13 T1–T3a).
+  `CHANGELOG.md`'s `0.6.0 — Preview` section lists it all and is the
+  release notes.
+- **Versions.** Maven and the VS Code extension are both `0.6.0`. The
+  extension is marked `"preview": true`. The CLI is compiled with
+  `--release 11`, matching the documented Java 11 minimum.
 - **Licensing.** The project's EPL-1.0 text is in `LICENSE`.
   `THIRD-PARTY-NOTICES.txt` inventories the 16 runtime dependencies (14 under
-  EPL-2.0, 2 under Apache-2.0) and says where to get their sources (Maven
-  Central sources JARs, each verified to exist). `licenses/` holds the full
-  EPL-2.0 and Apache-2.0 texts plus every dependency's unmodified notice
-  files. Those include the Apache-2.0 OSGi materials and Jakarta Commons code
-  that some Eclipse bundles embed, along with the NOTICE that clause 4(d) of
-  the Apache license requires us to keep. Shading previously kept only one of
-  the 16 `about.html` files and dropped the rest. Shading now excludes those
-  files, and the originals ship under `META-INF/j2c-licenses/` in the JAR and
-  at the VSIX root.
-- **Checks.** `vscode:prepublish` runs, in order:
-  1. The Maven build.
-  2. `check-licenses.js`: the inventory, `licenses/dependencies/` and the
-     shaded JAR must all match `mvn dependency:list`, and no unattributed
-     notice may remain at the JAR root.
-  3. The CLI integration suite.
-  4. The extension-logic suite.
-
-  The extension-logic suite runs `extension.js` against a mocked `vscode`
-  module. It covers settings pass-through, failure surfacing, and
-  process-start failures, but not real editor integration.
-- **CI.** `ci.yml` builds and tests on Java 11 and 17 and compiles the
-  generated C++20 fixtures on Java 17. Runs `38058979996` and `38059779192`
-  passed. The latter ran on `789d478`. HEAD `409a0be` changes only
-  documentation and has no CI run of its own on record. `ci.yml` is now also
-  reusable, and pushing a tag no longer triggers a separate CI run.
-- **Release automation.** `release.yml` runs on `v*` tags:
-  1. It runs the full CI matrix.
-  2. It checks that the tag, Maven version, extension version, and changelog
-     heading agree.
-  3. It rebuilds from the tag and checks that the VSIX's bundled JAR matches
-     the standalone JAR byte for byte.
-  4. It writes `SHA256SUMS` and creates a **draft pre-release** with the JAR,
-     VSIX, checksums, and notes.
-
-  The version check, artifact staging, checksums, and notes steps were
-  dry-run locally. The `gh release` step has not run yet.
-- **Translation gaps.** A probe of Java 9–17 features (2026-10-10) found
-  gaps that are now fixed: `instanceof` patterns, record components, switch
-  forms, lambda edge cases, and Java integer arithmetic (G1–G6). The
-  remaining limits are the Java runtime library and memory management (G7,
-  G8). Phase 9 has the details, and `npm run probe` tracks coverage.
-- **Marketplace.** Publisher is `juangp3` at the user's direction. The item URL
-  for `juangp3.j2c` returns 404; publisher ownership and a publishing token
-  remain unverified.
-- **Not yet done.** Interactive translation from a real VS Code window. The
-  local `gh` CLI token is invalid (HTTP 401), so CI runs and releases can't be
-  queried or created from this machine until `gh auth login` is run.
+  EPL-2.0, 2 under Apache-2.0) and says where to get their sources.
+  `licenses/` holds the full EPL-2.0 and Apache-2.0 texts plus every
+  dependency's unmodified notice files, which ship under
+  `META-INF/j2c-licenses/` in the JAR and at the VSIX root.
+- **Checks.** `vscode:prepublish` runs the Maven build, then the license
+  check, the CLI integration suite, the extension-logic suite (mocked
+  `vscode` module), and an MCP protocol session. `npm run probe` tracks
+  translation gaps.
+- **CI.** `ci.yml` builds and tests on Java 11 and 17. On Java 17 it also
+  builds the generated C++20 fixtures and runs the smoke harnesses under
+  UBSan, runs the translated JUnit fixtures with GoogleTest and compares all
+  34 outcomes, and runs the probes. Last verified locally on 2026-10-11
+  (`fc01cae`); the CI run on the pushed commit is recorded in Phase 8.
+- **Release automation.** `release.yml` runs on `v*` tags: the full CI
+  matrix, a tag/version/changelog agreement check, a rebuild from the tag
+  with a byte-for-byte JAR comparison, then `SHA256SUMS` and a **draft
+  pre-release**. The `gh release` step has not run yet.
+- **Validation corpus.** [VALIDATION_PROJECTS.md](VALIDATION_PROJECTS.md)
+  lists 24 open-source projects with a `--check` baseline; 12 are clean.
+  [VALIDATION_ROADMAP.md](VALIDATION_ROADMAP.md) orders the work from here
+  (M0–M6).
+- **Marketplace.** Publisher is `juangp3`. The item URL for `juangp3.j2c`
+  returns 404; publisher ownership and a publishing token remain unverified.
+- **Not yet done.** Interactive translation from a real VS Code window, and
+  agent tools checked with a real Copilot or Claude Code client. On the
+  maintainer's machine an invalid `GH_TOKEN` overrides the valid `gh`
+  keyring login; run `gh` with it unset.
 
 ## Phase 1 — Decide repository identity and create the destination
 
