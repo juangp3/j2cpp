@@ -325,13 +325,16 @@ async function main() {
 				continue;
 			}
 			const project = corpus.projects.find((candidate) => candidate.name === result.name);
-			const previous = project.expected || {};
-			// A check-only run keeps an earlier "builds" for a clean project
-			const built = options.build
-				&& (!options.buildTiers || options.buildTiers.includes(project.tier));
-			const step = !built && previous.step === "builds" && result.step === "checks"
-				? "builds" : result.step;
-			project.expected = { problems: result.problems, step };
+			const previous = project.expected;
+			if (!previous) {
+				project.expected = { problems: result.problems, step: result.step };
+				continue;
+			}
+			// A ratchet: --update only records improvements, so a regression
+			// keeps failing until the expectation is lowered by hand
+			const step = STEPS.indexOf(result.step) > STEPS.indexOf(previous.step)
+				? result.step : previous.step;
+			project.expected = { problems: Math.min(result.problems, previous.problems), step };
 		}
 		fs.writeFileSync(corpusFile, JSON.stringify(corpus, null, "\t") + "\n");
 		writeScoreboard(corpus.projects);

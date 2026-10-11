@@ -169,6 +169,29 @@ try {
 	assert.deepStrictEqual(moduleCheck.problems, [], JSON.stringify(moduleCheck.problems));
 	assert.strictEqual(moduleCheck.files, 1);
 
+	// A String switch alone must define the npc helper it calls (jsoup)
+	const switchRoot = path.join(tempDirectory, "string switch");
+	fs.mkdirSync(path.join(switchRoot, "sw"), { recursive: true });
+	fs.writeFileSync(path.join(switchRoot, "sw", "Kind.java"), [
+		"package sw;",
+		"final class Kind {",
+		"\tstatic int of(String name) {",
+		"\t\tswitch (name) { case \"a\": return 1; default: return 0; }",
+		"\t}",
+		"\t// C++20 keywords (ModuleDescriptor has a requires() method)",
+		"\tstatic int requires(int concept) { return concept; }",
+		"}",
+		""
+	].join("\n"));
+	const switchOutput = path.join(tempDirectory, "string switch output");
+	fs.mkdirSync(switchOutput);
+	const switchRun = runCli(["--output", switchOutput, switchRoot]);
+	assert.strictEqual(switchRun.status, 0, switchRun.stderr);
+	const switchSource = fs.readFileSync(path.join(switchOutput, "src", "sw", "Kind.cpp"), "utf8");
+	assert(switchSource.includes("npc(v)->equals("), switchSource);
+	assert(switchSource.includes("static T* npc(T* t)"), switchSource);
+	assert(switchSource.includes("Kind::requires_(int32_t concept_)"), switchSource);
+
 	// Stubs for class path types guess setter and getter bodies only when the
 	// types fit: commons-cli's Option has setType(Object) beside a Class field
 	const libraryRoot = path.join(tempDirectory, "library");

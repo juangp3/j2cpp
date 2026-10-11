@@ -39,6 +39,8 @@ public class GetSetSnippet extends EmptySnippet {
 				if (getter
 						&& vb.getType().getErasure().isAssignmentCompatible(
 								mb.getReturnType().getErasure())) {
+					// Converting to a wider return type needs the field's class
+					w.hardDep(vb.getType());
 					w.println("return " + CName.of(vb) + (asMethod ? "()" : "")
 							+ " ; /* getter */");
 					return false;

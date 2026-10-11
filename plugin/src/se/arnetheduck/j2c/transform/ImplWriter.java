@@ -3278,7 +3278,9 @@ public class ImplWriter extends TransformWriter {
 	private void printCaseTest(String name, Expression label, boolean equal,
 			boolean strings) {
 		if (strings) {
-			print("(" + (equal ? "" : "!") + "npc(" + name + ")->equals(");
+			print("(" + (equal ? "" : "!"));
+			npc();
+			print(name + ")->equals(");
 			label.accept(this);
 			print("))");
 		} else {

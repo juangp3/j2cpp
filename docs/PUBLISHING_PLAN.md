@@ -588,7 +588,7 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
-#### G12–G19 — C++ build errors found by the corpus (M2)
+#### G12–G21 — C++ build errors found by the corpus (M2)
 
 **Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
 a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
@@ -632,6 +632,16 @@ a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
   is declared with the class body that uses it, and the outer instance
   comes from the initializer's static flag, which JDT reports through
   `getDeclaringMember()`.
+- **G20, String `switch` without the `npc` helper** (jsoup): the case
+  tests printed `npc(` without registering the helper, so a file whose only
+  null check was a String switch did not compile.
+- **G21, C++20 keywords** (bcrypt, jsoup, zxing): `requires`, `concept`,
+  `co_await` and the other C++20 keywords are renamed like other C++
+  keywords; `java.lang.module.ModuleDescriptor.requires()` broke stub
+  headers.
+
+G18's getters also register a hard dependency on the field type, since
+converting to a wider return type needs the complete class.
 
 ### How to test a gap fix
 
