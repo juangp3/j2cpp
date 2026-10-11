@@ -223,6 +223,22 @@ try {
 	assert.strictEqual(optionStub.split("/* setter */").length - 1, 1, optionStub);
 	assert(optionStub.includes("return name_ ; /* getter */") || optionStub.includes("return name ; /* getter */"), optionStub);
 
+	// A forwarder to a base method with an erased parameter upcasts the
+	// argument, so it needs the argument's full declaration: EmptySpliterator
+	// has tryAdvance(C), which OfRef inherits for tryAdvance(Consumer)
+	const forwarderRoot = path.join(tempDirectory, "erased forwarder");
+	fs.mkdirSync(path.join(forwarderRoot, "fw"), { recursive: true });
+	fs.writeFileSync(path.join(forwarderRoot, "fw", "Empty.java"),
+		"package fw;\npublic class Empty { static java.util.Spliterator<String> of() { return java.util.Spliterators.emptySpliterator(); } }\n");
+	const forwarderOutput = path.join(tempDirectory, "erased forwarder output");
+	fs.mkdirSync(forwarderOutput);
+	const forwarderRun = runCli(["--output", forwarderOutput, forwarderRoot]);
+	assert.strictEqual(forwarderRun.status, 0, forwarderRun.stderr);
+	const ofRefStub = fs.readFileSync(path.join(forwarderOutput, "ext", "stub", "java", "util",
+		"Spliterators_EmptySpliterator_OfRef-stub.cpp"), "utf8");
+	assert(ofRefStub.includes("Spliterators_EmptySpliterator::tryAdvance(a0);"), ofRefStub);
+	assert(ofRefStub.includes("#include <java/util/function/Consumer.hpp>"), ofRefStub);
+
 	const lambdaOutput = path.join(tempDirectory, "lambda output");
 	fs.mkdirSync(lambdaOutput);
 	const lambdas = runCli(["--output", lambdaOutput, lambdaSource]);

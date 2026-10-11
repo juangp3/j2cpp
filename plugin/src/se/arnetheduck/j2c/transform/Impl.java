@@ -349,6 +349,12 @@ public class Impl {
 							impl.getParameterTypes()[i].getErasure());
 			if (cast) {
 				javaCast(md.getParameterTypes()[i], impl.getParameterTypes()[i]);
+			} else if (!md.getParameterTypes()[i].getErasure().isEqualTo(
+					impl.getMethodDeclaration().getParameterTypes()[i]
+							.getErasure())) {
+				// The base method takes an erased (wider) type, so the
+				// argument is upcast, which needs its full declaration
+				hardDep(md.getParameterTypes()[i]);
 			}
 			print(ctx.paramName(md, i));
 			if (cast) {
