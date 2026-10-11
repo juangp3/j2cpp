@@ -59,12 +59,12 @@
       "explorer/context": [
         {
           "command": "j2c.translate",
-          "when": "resourceLangId == java || resourceIsFolder",
+          "when": "resourceLangId == java || explorerResourceIsFolder",
           "group": "navigation"
         },
         {
           "command": "j2c.check",
-          "when": "resourceLangId == java || resourceIsFolder",
+          "when": "resourceLangId == java || explorerResourceIsFolder",
           "group": "navigation"
         }
       ]

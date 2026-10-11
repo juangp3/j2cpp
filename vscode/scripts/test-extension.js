@@ -574,6 +574,25 @@ async function testTestsSettingPassesFlag() {
 	assert(harness.spawned[0][1].includes("--tests"), "j2c.tests checks JUnit tests");
 }
 
+// Menu "when" clauses may only use context keys VS Code defines: an
+// unknown key is silently false and hides the menu item
+function testMenuContextKeys() {
+	const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+	const known = new Set(["editorLangId", "resourceLangId", "explorerResourceIsFolder"]);
+	const explorer = manifest.contributes.menus["explorer/context"];
+	for (const menus of Object.values(manifest.contributes.menus)) {
+		for (const item of menus) {
+			for (const key of item.when.split(/\|\||&&/).map((term) => term.split("==")[0].trim())) {
+				assert.ok(known.has(key), `${item.command} uses unknown context key ${key}`);
+			}
+		}
+	}
+	for (const command of ["j2c.translate", "j2c.check"]) {
+		const item = explorer.find((candidate) => candidate.command === command);
+		assert.ok(item.when.includes("explorerResourceIsFolder"), `${command} is not offered on folders`);
+	}
+}
+
 async function testNoTargetIsReported() {
 	const harness = createHarness();
 	await harness.commands.get("j2c.translate")();
@@ -599,6 +618,7 @@ async function main() {
 		await testMcpServerDefinitions();
 		await testTestsSettingPassesFlag();
 		await testNoTargetIsReported();
+		testMenuContextKeys();
 		console.log("Extension configuration and failure checks passed");
 		process.exitCode = 0;
 	} finally {
