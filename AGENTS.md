@@ -52,7 +52,8 @@ Each can also be run alone (`npm run test:cli`, `test:extension`,
 `npm run corpus` checks the real projects in `test/corpus/projects.json`,
 each pinned to a commit, and fails when a problem count rises or a project
 drops a ladder step. `--project` and `--tier` select projects, `--build` also
-compiles them (in WSL on Windows), and `--update` records improvements and
+compiles them (in WSL on Windows), `--jobs N` runs N projects at once, and
+`--update` records improvements (never regressions) and
 rewrites the scoreboard in `docs/VALIDATION_PROJECTS.md`. Clones and
 dependency JARs are cached under `target/corpus`. CI runs it nightly
 (`.github/workflows/corpus.yml`).

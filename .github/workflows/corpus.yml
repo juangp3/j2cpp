@@ -50,7 +50,7 @@ jobs:
           PROJECTS: ${{ inputs.projects }}
           BUILD: ${{ inputs.build }}
         run: |
-          args=()
+          args=(--jobs 4)
           if [ -n "$PROJECTS" ]; then args+=(--project "$PROJECTS"); fi
           # Nightly runs also build the small and medium tiers
           if [ "$BUILD" = "true" ]; then

@@ -6,6 +6,7 @@
 //
 // Usage: node scripts/corpus.js [--project a,b] [--tier small,medium]
 //                               [--build [--build-tier small,medium]] [--update]
+//                               [--jobs N]
 //
 // --update writes the observed results back as the new expectations and
 // refreshes the scoreboard in docs/VALIDATION_PROJECTS.md.
@@ -36,7 +37,8 @@ function run(command, args, options = {}) {
 }
 
 function parseArguments(argv) {
-	const options = { projects: null, tiers: null, build: false, buildTiers: null, update: false };
+	const options = { projects: null, tiers: null, build: false, buildTiers: null, update: false,
+		jobs: 1, worker: null };
 	for (let i = 0; i < argv.length; ++i) {
 		const argument = argv[i];
 		if (argument === "--project") {
@@ -49,6 +51,11 @@ function parseArguments(argv) {
 			options.buildTiers = argv[++i].split(",");
 		} else if (argument === "--update") {
 			options.update = true;
+		} else if (argument === "--jobs") {
+			options.jobs = Math.max(1, Number(argv[++i]) || 1);
+		} else if (argument === "--worker") {
+			// Internal: run one project and print its result as JSON
+			options.worker = argv[++i];
 		} else {
 			throw new Error(`Unknown argument: ${argument}`);
 		}
@@ -163,7 +170,8 @@ function check(project, directory, jars) {
 
 /** make in the output directory, or in WSL on Windows when make is missing */
 function make(output) {
-	const args = ["-k", "-j8", "-C"];
+	// J2C_MAKE_JOBS lowers make's parallelism when projects run in parallel
+	const args = ["-k", `-j${process.env.J2C_MAKE_JOBS || 8}`, "-C"];
 	if (run("make", ["--version"]).status === 0) {
 		return run("make", [...args, output], { timeout: 4 * 60 * 60 * 1000 });
 	}
@@ -266,6 +274,54 @@ function writeScoreboard(projects) {
 	fs.writeFileSync(scoreboardFile, text.slice(0, start) + table + text.slice(finish + end.length));
 }
 
+async function runProject(project, building) {
+	const started = Date.now();
+	let result;
+	try {
+		const directory = checkout(project);
+		const jars = [];
+		for (const coordinates of project.dependencies) {
+			jars.push(await dependency(coordinates));
+		}
+		result = check(project, directory, jars);
+		if (building && !result.error && result.problems === 0) {
+			Object.assign(result, build(project, directory, jars));
+		}
+	} catch (error) {
+		result = { error: error.message };
+	}
+	result.name = project.name;
+	result.step = stepOf(result);
+	result.seconds = Math.round((Date.now() - started) / 1000);
+	return result;
+}
+
+/** Runs one project in a child process, so several run at once */
+function runWorker(project, building, jobs) {
+	return new Promise((resolve) => {
+		const args = [__filename, "--worker", project.name];
+		if (building) {
+			args.push("--build");
+		}
+		const makeJobs = String(Math.max(1, Math.floor(8 / jobs)));
+		const child = childProcess.spawn(process.execPath, args,
+			{ env: { ...process.env, J2C_MAKE_JOBS: process.env.J2C_MAKE_JOBS || makeJobs } });
+		let stdout = "";
+		let stderr = "";
+		child.stdout.on("data", (chunk) => { stdout += chunk; });
+		child.stderr.on("data", (chunk) => { stderr += chunk; });
+		child.on("close", () => {
+			try {
+				const lines = stdout.trim().split(/\r?\n/);
+				resolve(JSON.parse(lines[lines.length - 1]));
+			} catch (error) {
+				resolve({ name: project.name, step: "none", seconds: 0,
+					error: `worker failed: ${stderr.trim().slice(-300)}` });
+			}
+		});
+	});
+}
+
 async function main() {
 	const options = parseArguments(process.argv.slice(2));
 	if (!fs.existsSync(cliJar)) {
@@ -278,31 +334,18 @@ async function main() {
 	if (selected.length === 0) {
 		throw new Error("No project matches the selection");
 	}
+	if (options.worker) {
+		const project = corpus.projects.find((candidate) => candidate.name === options.worker);
+		console.log(JSON.stringify(await runProject(project, options.build)));
+		return;
+	}
 
+	const isBuilding = (project) => options.build
+		&& (!options.buildTiers || options.buildTiers.includes(project.tier));
 	const results = [];
 	let failures = 0;
-	for (const project of selected) {
-		const started = Date.now();
-		const building = options.build
-			&& (!options.buildTiers || options.buildTiers.includes(project.tier));
-		let result;
-		try {
-			const directory = checkout(project);
-			const jars = [];
-			for (const coordinates of project.dependencies) {
-				jars.push(await dependency(coordinates));
-			}
-			result = check(project, directory, jars);
-			if (building && !result.error && result.problems === 0) {
-				Object.assign(result, build(project, directory, jars));
-			}
-		} catch (error) {
-			result = { error: error.message };
-		}
-		result.name = project.name;
-		result.step = stepOf(result);
-		result.seconds = Math.round((Date.now() - started) / 1000);
-		const verdict = compare(project, result, building);
+	const report = (project, result) => {
+		const verdict = compare(project, result, isBuilding(project));
 		result.status = verdict.status;
 		if (verdict.status === "FAIL") {
 			failures++;
@@ -314,6 +357,29 @@ async function main() {
 		for (const line of result.firstErrors || []) {
 			console.log(`         ${line}`);
 		}
+	};
+
+	if (options.jobs <= 1) {
+		for (const project of selected) {
+			report(project, await runProject(project, isBuilding(project)));
+		}
+	} else {
+		// Downloads are shared, so fetch them once before the workers start
+		for (const project of selected) {
+			for (const coordinates of project.dependencies) {
+				await dependency(coordinates);
+			}
+		}
+		const queue = [...selected];
+		const worker = async () => {
+			for (let project = queue.shift(); project; project = queue.shift()) {
+				report(project, await runWorker(project, isBuilding(project), options.jobs));
+			}
+		};
+		await Promise.all(Array.from({ length: Math.min(options.jobs, selected.length) }, worker));
+		// Keep results in corpus order
+		results.sort((a, b) => selected.findIndex((p) => p.name === a.name)
+			- selected.findIndex((p) => p.name === b.name));
 	}
 
 	fs.mkdirSync(workRoot, { recursive: true });
