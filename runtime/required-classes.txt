@@ -1,0 +1,5 @@
+# Classes the C++ hooks (cpp/src) call; J2C always translates them
+java.lang.Class
+java.lang.String
+java.lang.System
+java.lang.Throwable

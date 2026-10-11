@@ -152,6 +152,20 @@ public class Transformer {
 		// throws ArrayStoreException; a runtime must provide both
 		hardDep(resolve(Class.class));
 		hardDep(resolve(ArrayStoreException.class));
+		// Classes a runtime's hooks call, which the program may never reach
+		if (runtimeCpp != null) {
+			File required = new File(runtimeCpp.getParentFile(),
+					"required-classes.txt");
+			if (required.isFile()) {
+				for (String line : java.nio.file.Files.readAllLines(required.toPath(),
+						java.nio.charset.StandardCharsets.UTF_8)) {
+					line = line.trim();
+					if (!line.isEmpty() && !line.startsWith("#")) {
+						hardDep(resolve(line));
+					}
+				}
+			}
+		}
 		// The ObjectArray.hpp resource includes these unconditionally
 		hardDep(resolve(Cloneable.class));
 		hardDep(resolve(java.io.Serializable.class));
@@ -682,6 +696,8 @@ public class Transformer {
 		}
 
 		if (ti.hasMain()) {
+			// The main wrapper catches uncaught exceptions
+			hardDep(resolve(Throwable.class));
 			String filename = MainWriter.write(unitRoot, ti.type());
 			sel.mains.add("src/" + filename);
 		}
@@ -784,8 +800,11 @@ public class Transformer {
 	private final Map<String, ITypeBinding> bindings = new WeakHashMap<String, ITypeBinding>();
 
 	public ITypeBinding resolve(Class<?> clazz) {
+		return resolve(clazz.getName());
+	}
+
+	public ITypeBinding resolve(String name) {
 		ITypeBinding ret;
-		String name = clazz.getName();
 		if (currentAST != null) {
 			ret = currentAST.resolveWellKnownType(name);
 			if (ret != null) {

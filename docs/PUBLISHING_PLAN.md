@@ -684,6 +684,14 @@ engine); G28–G31 by four parallel fixer agents:
   abstract method was treated as already declared, and record accessors
   were `const` and did not override.
 
+#### G43 — No array bounds checks
+
+**Status (2026-10-12):** Open. `Array.hpp` indexes without checking, so an
+out-of-range index is undefined behavior in C++, where Java throws
+`ArrayIndexOutOfBoundsException`. Checking every access costs speed, so it
+needs a decision: always, a build option (`J2C_BOUNDS_CHECKS`), or only in
+debug builds (ASan finds the errors meanwhile).
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
@@ -849,7 +857,13 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
 1. **R1:** Hello World runs against `runtime/java` (step 0 tests).
    **Done (2026-10-11).**
 2. **R2:** strings, `StringBuilder`, boxed types, `Math`, exceptions and the
-   uncaught-exception printout. About 1–2 weeks **(estimate)**.
+   uncaught-exception printout.
+   **Foundation done (2026-10-12):** concatenation of every type, Java's
+   `Double`/`Float.toString` format, the boxing caches, `parseInt` and
+   `parseDouble` with Java's messages, `System.arraycopy`, part of `Math`,
+   the exception family, and the uncaught-exception printout with exit
+   status 1; `npm run runtime` compares each `test/runtime` program with
+   `java` in CI.
 3. **R3:** collections and `Collections.sort` with comparators; needs
    G33–G35. About 2–3 weeks **(estimate)**.
 4. **R4:** streams and a simplified `String.format`. About 3–5 weeks

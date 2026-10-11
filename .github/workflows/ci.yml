@@ -72,19 +72,11 @@ jobs:
           # Some fixture tests fail on purpose; every outcome is compared instead
           "$out/bin/cpp-junit-tests" --gtest_output=json:"$out/results.json" || true
           node vscode/scripts/check-gtest.js "$out/results.json" test/junit/expected-results.json
-      - name: Run Hello World with the J2C runtime and compare with java
+      - name: Run test/runtime programs with the J2C runtime and compare with java
         if: matrix.java-version == '17'
         env:
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
-        run: |
-          out=target/runtime-hello
-          mkdir -p "$out"
-          java -jar target/j2c-cli.jar --runtime runtime --output "$out" test/runtime/hello
-          make -C "$out" all mains
-          "$out/bin/Hello" one "two words" > "$out/cpp.out" 2> "$out/cpp.err"
-          java test/runtime/hello/Hello.java one "two words" > "$out/java.out" 2> "$out/java.err"
-          diff "$out/java.out" "$out/cpp.out"
-          diff "$out/java.err" "$out/cpp.err"
+        run: node vscode/scripts/runtime-programs.js
       - name: Probe translation gaps
         if: matrix.java-version == '17'
         working-directory: vscode

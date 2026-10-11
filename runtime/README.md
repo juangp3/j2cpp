@@ -42,5 +42,11 @@ out/bin/Hello one two
 - **Do not copy OpenJDK code.** OpenJDK is GPLv2 with the Classpath
   Exception, and J2C's C++ helper headers are EPL-1.0, which the FSF lists as
   incompatible with the GPL (`docs/RUNTIME_EXPERIMENT.md`, section 7).
-- Every class lands with a test: a program in `test/runtime/` whose output
-  CI compares with the JVM's.
+- Every class lands with a test: a program in `test/runtime/<name>/` (with
+  optional `args.txt`) that `npm run runtime` translates, builds, runs, and
+  compares with `java`: stdout exactly, stderr without stack frames, and the
+  exit status. CI runs it under UBSan.
+- Natives only do the raw work (copying, conversion, system calls); checks
+  and exceptions stay in Java, so a native never needs a class the program
+  does not reach. Classes the hooks always call are listed in
+  `required-classes.txt`.
