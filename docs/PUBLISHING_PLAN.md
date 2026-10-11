@@ -908,7 +908,8 @@ mapped to `EXPECT_*` macros (Java equality, exceptions on failure, lambdas in
 | --- | --- | --- | --- |
 | T1 | With `--tests`, report test features the wrappers cannot run: `J2C-TEST-*` problem IDs for mocking libraries, runners, rules and extensions, parameterized, repeated and dynamic tests, `@Nested`, timeouts, `@TestInstance`, private methods, and methods with parameters | — | Done (2026-10-11) |
 | T2 | `--tests` generates a GoogleTest wrapper per runnable JUnit 4 or 5 class: a fresh instance per test; `@BeforeAll`, `@BeforeEach`, `@AfterEach` and `@AfterAll` in JUnit's order, including inherited and overridden methods; disabled tests skipped with their reason; `@Test(expected = ...)` checked with subclasses allowed; `j2c_gtest.hpp`; and Makefile `tests` and `test` targets (`GTEST_CFLAGS`, `GTEST_LIBS`, `TEST_LDLIBS`). Also exposed through MCP (`tests`, `testFiles`) and the `j2c.tests` setting. | — | Done (2026-10-11) |
-| T3 | JUnit `Assertions`, `Assert` and `Assumptions` in the runtime, with JUnit's equality rules and messages; exception messages in failure reports | Phase 10 milestone 1 | Planned |
+| T3a | JUnit assertions and assumptions (JUnit 4 and 5) translated into `j2c_junit.hpp` helpers with JUnit's rules and messages, needing no runtime: a failed assertion throws a Java `AssertionError`; `assertThrows` uses the class literal's type; assumptions skip. Unsupported forms (`assertAll`, `assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth, non-literal `assertThrows` classes) are reported as `J2C-TEST-UNSUPPORTED-ASSERTION`. | — | Done (2026-10-11) |
+| T3b | Runtime-backed parts: `equals` on JDK objects such as `String` and boxed numbers, and custom assertion and exception messages; then run the fixtures with real JUnit on the JVM and compare outcomes | Phase 10 milestone 1 | Planned |
 | T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Planned |
 | T5 | Optional gMock classes generated from Java interfaces, for new C++ tests | T2 | Planned |
 
@@ -925,12 +926,27 @@ Tests for T1 and T2:
   - every `J2C-TEST-*` problem at its exact line, and none without
     `--tests`.
 - CI installs `libgtest-dev`, translates the fixtures with `--tests`, builds
-  and runs them under UBSan, and compares all 14 outcomes (8 pass, 4 fail on
-  purpose, 2 skipped) with `vscode/scripts/check-gtest.js`. Verified locally
-  with GoogleTest 1.15.2.
+  and runs them under UBSan, and compares every outcome with
+  `vscode/scripts/check-gtest.js`. There are 34 tests, including 20 for
+  assertions: 19 pass, 11 fail on purpose, and 4 are skipped. Verified
+  locally with GoogleTest 1.15.2.
+- The assertion fixtures (`Java17AssertionsTest`, `Java17Assert4Test`) cover
+  every supported form:
+  - passing and failing comparisons;
+  - JUnit's double rules (NaN, -0.0);
+  - user-defined `equals`;
+  - arrays;
+  - `assertThrows` with the right type, the wrong type, and nothing
+    thrown;
+  - assumptions;
+  - an `AssertionError` caught by Java code;
+  - JUnit 4's leading messages, and its always-failing double comparison.
+
+  The CLI suite checks the translated calls and that each unsupported form
+  is reported.
 
 Not yet covered: running the same fixtures with real JUnit on the JVM and
-comparing outcomes. That needs the JUnit JARs, so it is part of T3.
+comparing outcomes. That needs the JUnit JARs, so it is part of T3b.
 
 ## Go/no-go checklist
 

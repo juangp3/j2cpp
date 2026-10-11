@@ -100,11 +100,29 @@ JUnit's order. `@Disabled` and `@Ignore` tests are skipped with their reason,
 and `@Test(expected = ...)` checks the thrown exception. A test fails when it
 throws a Java exception, as in JUnit.
 
+JUnit assertions and assumptions are translated into C++ helpers that follow
+JUnit's rules, so they work without a Java runtime:
+
+- `assertTrue` and `assertFalse`; `assertNull` and `assertNotNull`.
+- `assertEquals` and `assertNotEquals`, including floating-point delta
+  forms. Doubles compare as JUnit compares them: NaN equals NaN, and 0.0
+  differs from -0.0.
+- `assertSame` and `assertNotSame`; `assertArrayEquals`; `fail`.
+- `assertThrows` with a class literal, which returns the exception, and
+  `assertDoesNotThrow`.
+- `assumeTrue` and `assumeFalse`, which skip the test.
+
+These work from both JUnit 5's `Assertions` and JUnit 4's `Assert`. A failed
+assertion throws a Java `AssertionError` with JUnit's message, such as
+`expected: <4> but was: <5>`. Object equality calls the translated
+`equals()`, so it works for the project's own classes, but comparing JDK
+objects such as strings or boxed numbers needs a runtime, and so does
+showing custom messages. Other forms (`assertAll`, `assertTimeout`, lazy
+conditions, Hamcrest, AssertJ, Truth) are reported by `--check --tests`.
+
 `make test` needs GoogleTest (found with `pkg-config`, or set `GTEST_CFLAGS`
 and `GTEST_LIBS`) and, like any translated program, a C++ implementation of
-the JDK classes the tests use, passed with `TEST_LDLIBS`. JUnit's assertion
-methods are such classes, so until a runtime provides them, tests that call
-`assertEquals` and similar cannot fail.
+the JDK classes the tests use, passed with `TEST_LDLIBS`.
 
 With `--tests`, `--check` also reports test features the wrappers cannot run:
 mocking libraries (Mockito, PowerMock, EasyMock), runners, rules and

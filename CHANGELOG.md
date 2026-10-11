@@ -36,8 +36,12 @@ C++20-targeted output.
 - With `--tests`, `--check` reports test features the wrappers cannot run
   (mocking libraries, runners and extensions, parameterized or repeated tests,
   `@Nested`, timeouts, `@TestInstance`, private or parameterized methods).
-- JUnit assertion methods need the Java runtime; until it exists, translated
-  tests fail only by throwing.
+- JUnit assertions and assumptions (`assertEquals` with and without delta,
+  `assertTrue`, `assertNull`, `assertSame`, `assertArrayEquals`, `fail`,
+  `assertThrows`, `assertDoesNotThrow`, `assumeTrue`, and others) are
+  translated into helpers that follow JUnit's rules and messages without a
+  Java runtime. Other assertion forms are reported. Comparing JDK objects
+  and showing custom messages need the runtime.
 
 ### AI agents
 
