@@ -49,5 +49,9 @@ int main() {
 	if (Java17Lambdas::iterateNewIterable(0) != 0) return 14;
 	// LimitDerived::limit forwards to LimitBase::limit with a downcast
 	if (Java17Lambdas::inheritedCovariantReturn(4) != 4) return 15;
+	// Holder's default get() implements Source::get() for TallyHolder
+	if (Java17Lambdas::defaultOverridesAbstract(7) != 7) return 30;
+	// Box's implicit size() accessor overrides Sized::size()
+	if (Java17Lambdas::recordAccessorOverride(9) != 9) return 31;
 	return 0;
 }

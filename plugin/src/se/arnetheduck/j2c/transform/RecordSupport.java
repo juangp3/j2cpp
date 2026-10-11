@@ -1,9 +1,11 @@
 package se.arnetheduck.j2c.transform;
 
+import java.lang.reflect.Modifier;
 import java.util.List;
 
 import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.IMethodBinding;
+import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.RecordDeclaration;
@@ -85,6 +87,27 @@ final class RecordSupport {
 										"java.lang.Object")) {
 					return true;
 				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Does the implicit accessor of a component implement a method of a
+	 * supertype? It must then be a virtual override rather than a const
+	 * member, or the record stays abstract in C++ (KeywordView.title())
+	 */
+	static boolean accessorOverrides(ITypeBinding type,
+			SingleVariableDeclaration component) {
+		String name = component.getName().getIdentifier();
+		for (IMethodBinding mb : TypeUtil.methods(TypeUtil.allBases(type,
+				null))) {
+			int modifiers = mb.getModifiers();
+			if (mb.getName().equals(name)
+					&& mb.getParameterTypes().length == 0
+					&& !Modifier.isStatic(modifiers)
+					&& !Modifier.isPrivate(modifiers)) {
+				return true;
 			}
 		}
 		return false;

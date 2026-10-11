@@ -1239,8 +1239,37 @@ public final class TransformUtil {
 
 	public static boolean baseDeclared(Transformer ctx, ITypeBinding type,
 			IMethodBinding mb) {
+		if (type.isInterface()
+				&& org.eclipse.jdt.core.dom.Modifier.isDefault(mb
+						.getModifiers()) && !baseHasSameDefault(mb, type)) {
+			// A default method overriding only abstract declarations is the
+			// sole implementation (Mutable.get implementing Supplier.get), so
+			// skipping it would leave implementing classes abstract
+			return false;
+		}
+
 		return (Modifier.isAbstract(mb.getModifiers()) || type.isInterface())
 				&& baseHasSame(mb, type, ctx.resolve(Object.class));
+	}
+
+	/** Check if a super-interface has the same method as a default method */
+	private static boolean baseHasSameDefault(IMethodBinding mb,
+			ITypeBinding tb) {
+		for (ITypeBinding ib : tb.getInterfaces()) {
+			for (IMethodBinding mb2 : ib.getDeclaredMethods()) {
+				if (sameSignature(mb, mb2)
+						&& org.eclipse.jdt.core.dom.Modifier.isDefault(mb2
+								.getModifiers())) {
+					return true;
+				}
+			}
+
+			if (baseHasSameDefault(mb, ib)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	public static boolean needsEmptyCtor(boolean hasEmpty, boolean hasInit,

@@ -574,6 +574,16 @@ try {
 			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_PositiveTally.hpp"
 		), "utf8");
 		assert(positiveHeader.includes("virtual bool test(::java::lang::Object* value) override;"), positiveHeader);
+		// A default method overriding an abstract one is declared, not skipped
+		const holderHeader = fs.readFileSync(path.join(
+			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_Holder.hpp"
+		), "utf8");
+		assert(holderHeader.includes("::java::lang::Object* get() override;"), holderHeader);
+		// A record accessor implementing an interface method overrides it
+		const boxHeader = fs.readFileSync(path.join(
+			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_Box.hpp"
+		), "utf8");
+		assert(boxHeader.includes("int32_t size() override;"), boxHeader);
 		// Default and static interface methods get stub definitions
 		assert(fs.existsSync(path.join(lambdasOutput, "ext", "stub", "java", "util", "Comparator-stub.cpp")));
 

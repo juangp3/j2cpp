@@ -279,4 +279,48 @@ public class Java17Lambdas {
 		MoreLimited m = new LimitDerived();
 		return ((LimitDerived) m.limit(n)).size;
 	}
+
+	// A default method overriding an abstract superinterface method is its
+	// only implementation, so the interface must declare it (commons-lang
+	// Mutable.get overriding Supplier.get)
+	public interface Source<T> {
+		T get();
+	}
+
+	public interface Holder<T> extends Source<T> {
+		@Override
+		default T get() {
+			return getValue();
+		}
+
+		T getValue();
+	}
+
+	public static class TallyHolder implements Holder<Tally> {
+		public Tally tally = new Tally();
+
+		public Tally getValue() {
+			return tally;
+		}
+	}
+
+	public static int defaultOverridesAbstract(int value) {
+		Source<Tally> source = new TallyHolder();
+		source.get().add(value);
+		return source.get().total;
+	}
+
+	// A record accessor that implements an interface method must override it
+	// (Forge's DefaultKeywordView implementing KeywordView)
+	public interface Sized {
+		int size();
+	}
+
+	public record Box(int size) implements Sized {
+	}
+
+	public static int recordAccessorOverride(int size) {
+		Sized sized = new Box(size);
+		return sized.size();
+	}
 }

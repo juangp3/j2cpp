@@ -152,11 +152,18 @@ public class HeaderWriter extends TransformWriter {
 				continue;
 			}
 			IVariableBinding binding = component.resolveBinding();
-			softDep(binding.getType());
+			boolean overrides = RecordSupport.accessorOverrides(type,
+					component);
+			if (overrides && !binding.getType().isPrimitive()) {
+				// The return may be covariant with the overridden one
+				hardDep(binding.getType());
+			} else {
+				softDep(binding.getType());
+			}
 			printi(TransformUtil.varTypeCName(binding.getModifiers(),
 					binding.getType(), type, deps) + " "
 					+ CName.keywords(component.getName().getIdentifier())
-					+ "() const;");
+					+ (overrides ? "() override;" : "() const;"));
 			println();
 		}
 

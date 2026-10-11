@@ -424,7 +424,8 @@ public class ImplWriter extends TransformWriter {
 			print(TransformUtil.qualifiedRef(binding.getType(), true));
 			print(" " + qcname + "::"
 					+ CName.keywords(component.getName().getIdentifier())
-					+ "() const");
+					+ (RecordSupport.accessorOverrides(type, component) ? "()"
+							: "() const"));
 			println();
 			println("{");
 			indent++;
