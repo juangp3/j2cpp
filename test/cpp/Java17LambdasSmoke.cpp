@@ -35,5 +35,7 @@ int main() {
 	if ((*counter)[0] != 2) return 5;
 	if (!Java17Lambdas::isSerializable(task)) return 6;
 	if (Java17Lambdas::genericReference() == nullptr) return 7;
+	// The first reference keeps the first receiver after reassignment
+	if (Java17Lambdas::reassignedReceiver() != 2) return 8;
 	return 0;
 }

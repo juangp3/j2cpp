@@ -22,14 +22,17 @@ import org.eclipse.jdt.core.dom.CreationReference;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.ExpressionMethodReference;
+import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.LambdaExpression;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.MethodReference;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.ParameterizedType;
+import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.SuperFieldAccess;
 import org.eclipse.jdt.core.dom.SuperMethodInvocation;
@@ -220,6 +223,9 @@ final class LambdaDesugarer {
 
 		String typeArguments = typeArguments(node.typeArguments());
 		String field = "";
+		// A bound receiver passed as an argument rather than captured
+		String boundParameter = null;
+		String boundArgument = null;
 		String call;
 		if (node instanceof CreationReference) {
 			Type created = ((CreationReference) node).getType();
@@ -274,9 +280,16 @@ final class LambdaDesugarer {
 				// Bound receiver: evaluated once, when the reference is created
 				Expression receiver = (Expression) qualifier;
 				rewriteScope(receiver, node, target);
-				field = "private final "
-						+ type(receiver.resolveTypeBinding(), true)
-						+ " receiver = " + text(receiver) + "; ";
+				String receiverType = type(receiver.resolveTypeBinding(), true);
+				if (readsMutableLocal(receiver)) {
+					// A field initializer would capture the local, which Java
+					// only allows when it is effectively final
+					boundParameter = "final " + receiverType + " receiver";
+					boundArgument = text(receiver);
+				} else {
+					field = "private final " + receiverType + " receiver = "
+							+ text(receiver) + "; ";
+				}
 				call = "receiver." + typeArguments + name + "("
 						+ arguments(names, 0) + ")";
 			}
@@ -284,12 +297,39 @@ final class LambdaDesugarer {
 
 		String statement = isVoid(sam.getReturnType()) ? call + ";" : "return "
 				+ call + ";";
-		return "new " + implemented(node, target) + "() { " + field + "public "
+		String implemented = implemented(node, target);
+		String creation = "new " + implemented + "() { " + field + "public "
 				+ typeParameters(sam) + type(sam.getReturnType(), true) + " "
 				+ sam.getName() + "("
 				+ parameters + ") " + throwsClause(sam) + "{ " + statement
-				+ " } }"
-				+ lineBreaks(node.getStartPosition(), end(node));
+				+ " } }";
+		if (boundParameter != null) {
+			creation = "new Object() { " + implemented + " bind("
+					+ boundParameter + ") { return " + creation
+					+ "; } }.bind(" + boundArgument + ")";
+		}
+		return creation + lineBreaks(node.getStartPosition(), end(node));
+	}
+
+	/** Whether the expression reads a local that is not effectively final */
+	private static boolean readsMutableLocal(Expression expression) {
+		final boolean[] found = { false };
+		expression.accept(new ASTVisitor() {
+			@Override
+			public boolean visit(SimpleName node) {
+				IBinding binding = node.resolveBinding();
+				if (binding instanceof IVariableBinding) {
+					IVariableBinding variable = (IVariableBinding) binding;
+					if (!variable.isField()
+							&& !variable.isEffectivelyFinal()
+							&& !Modifier.isFinal(variable.getModifiers())) {
+						found[0] = true;
+					}
+				}
+				return false;
+			}
+		});
+		return found[0];
 	}
 
 	private static IMethodBinding functionalMethod(ITypeBinding target)

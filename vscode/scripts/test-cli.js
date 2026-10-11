@@ -420,6 +420,8 @@ try {
 			.join("\n");
 		// toString() in a lambda means the enclosing object's toString()
 		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
+		// A reassigned bound receiver is passed in, not captured
+		assert(lambdaSources.includes("->bind(tally)"));
 		// Default and static interface methods get stub definitions
 		assert(fs.existsSync(path.join(lambdasOutput, "ext", "stub", "java", "util", "Comparator-stub.cpp")));
 

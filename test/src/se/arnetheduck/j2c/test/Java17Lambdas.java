@@ -134,4 +134,28 @@ public class Java17Lambdas {
 			java.util.Collection<E> to) {
 		from.forEach(element -> to.add(element));
 	}
+
+	// A bound receiver need not be effectively final: Java evaluates it once,
+	// when the reference is created (found in Forge)
+	public static class Tally {
+		public int total;
+
+		public void add(int value) {
+			total += value;
+		}
+	}
+
+	public interface IntSink {
+		void accept(int value);
+	}
+
+	public static int reassignedReceiver() {
+		Tally tally = new Tally();
+		IntSink first = tally::add;
+		tally = new Tally();
+		first.accept(5);
+		IntSink second = tally::add;
+		second.accept(2);
+		return tally.total;
+	}
 }

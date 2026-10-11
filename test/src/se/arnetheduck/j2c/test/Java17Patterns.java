@@ -102,4 +102,12 @@ public class Java17Patterns {
 		Shape s = null;
 		return s instanceof Circle c ? c.r : 7;
 	}
+
+	// A pattern as the third operand of a chained && (found in Forge)
+	public static int thirdOperand(boolean a, boolean b, Shape s) {
+		if (a && b && s instanceof Circle c) {
+			return c.r;
+		}
+		return -1;
+	}
 }

@@ -31,5 +31,7 @@ int main() {
 	if (Java17Patterns::unbraced(circle, true) != 5 || Java17Patterns::unbraced(circle, false) != -1) return 7;
 	if (Java17Patterns::inSwitch(1, circle) != 5 || Java17Patterns::inSwitch(1, square) != -1) return 8;
 	if (Java17Patterns::nullOperand() != 7) return 9;
+	if (Java17Patterns::thirdOperand(true, true, circle) != 5 || Java17Patterns::thirdOperand(true, false, circle) != -1
+			|| Java17Patterns::thirdOperand(true, true, square) != -1) return 10;
 	return 0;
 }

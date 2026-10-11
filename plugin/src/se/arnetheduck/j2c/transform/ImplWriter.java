@@ -1959,7 +1959,10 @@ public class ImplWriter extends TransformWriter {
 			for (Expression e : extendedOperands) {
 				print(node.getOperator() + " ");
 				e.accept(this);
-				hardDep(e.resolveTypeBinding());
+				// Pattern operands have no type (see above)
+				if (e.resolveTypeBinding() != null) {
+					hardDep(e.resolveTypeBinding());
+				}
 			}
 		}
 
