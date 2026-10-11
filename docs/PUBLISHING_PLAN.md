@@ -588,7 +588,7 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
-#### G12–G18 — C++ build errors found by the corpus (M2)
+#### G12–G19 — C++ build errors found by the corpus (M2)
 
 **Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
 a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
@@ -625,6 +625,13 @@ a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
   `Class` field became `this->type = a0`, and a getter whose return type is
   wider than its field got an empty body. The guess now needs the value's
   type to fit, and otherwise leaves the stub's `unimplemented_()` body.
+- **G19, lambdas and anonymous classes in initializer blocks**
+  (commons-codec): they did not capture the block's locals, and in an
+  instance block did not receive the enclosing instance. Both decisions
+  relied on the Eclipse Java model. Captures now compare where the variable
+  is declared with the class body that uses it, and the outer instance
+  comes from the initializer's static flag, which JDT reports through
+  `getDeclaringMember()`.
 
 ### How to test a gap fix
 

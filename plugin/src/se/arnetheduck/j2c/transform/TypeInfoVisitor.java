@@ -1,11 +1,11 @@
 package se.arnetheduck.j2c.transform;
 
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.dom.ASTNode;
+import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
+import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IMethodBinding;
@@ -53,12 +53,44 @@ public class TypeInfoVisitor extends ASTVisitor {
 
 		if (typeInfo.closures() != null && anonType.closures() != null) {
 			for (IVariableBinding vb : anonType.closures()) {
-				if (!vb.getDeclaringMethod().getDeclaringClass()
-						.isEqualTo(typeInfo.type())) {
+				boolean outer = vb.getDeclaringMethod() == null ? !declaredWithin(
+						enclosingTypeBody(node.getParent()), vb)
+						: !vb.getDeclaringMethod().getDeclaringClass()
+								.isEqualTo(typeInfo.type());
+				if (outer) {
 					typeInfo.addClosure(vb);
 				}
 			}
 		}
+	}
+
+	/** The nearest class body around a node */
+	private static ASTNode enclosingTypeBody(ASTNode node) {
+		for (ASTNode n = node; n != null; n = n.getParent()) {
+			if (n instanceof AbstractTypeDeclaration
+					|| n instanceof AnonymousClassDeclaration) {
+				return n;
+			}
+		}
+		return null;
+	}
+
+	/** Whether a variable is declared inside scope; unknown counts as inside */
+	private static boolean declaredWithin(ASTNode scope, IVariableBinding vb) {
+		if (scope == null || !(scope.getRoot() instanceof CompilationUnit)) {
+			return true;
+		}
+		ASTNode declaration = ((CompilationUnit) scope.getRoot())
+				.findDeclaringNode(vb);
+		if (declaration == null) {
+			return true;
+		}
+		for (ASTNode n = declaration; n != null; n = n.getParent()) {
+			if (n == scope) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Override
@@ -145,21 +177,11 @@ public class TypeInfoVisitor extends ASTVisitor {
 			return false;
 		}
 
-		if (vb.getDeclaringMethod() == null) {
-			IJavaElement variableElement = vb.getJavaElement();
-			if (variableElement == null) {
-				return false;
-			}
-			IJavaElement je = variableElement
-					.getAncestor(IJavaElement.INITIALIZER);
-
-			// Could be a variable in an initializer block
-			if (je == null
-					|| (((IType) je.getAncestor(IJavaElement.TYPE))
-							.getFullyQualifiedName().equals(((IType) type()
-							.getJavaElement()).getFullyQualifiedName()))) {
-				return false;
-			}
+		// A local of an initializer block is captured when it is declared
+		// outside the class using it (the CLI has no Eclipse Java model)
+		if (vb.getDeclaringMethod() == null
+				&& declaredWithin(enclosingTypeBody(node), vb)) {
+			return false;
 		}
 
 		// Java 8+ captures effectively final variables too, which lambdas

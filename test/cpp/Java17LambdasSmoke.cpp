@@ -41,5 +41,8 @@ int main() {
 	if (lambdas->fieldInitializerLambda() != 13) return 9;
 	// Check<Tally>.test(Object) bridges to the default test(Tally)
 	if (!Java17Lambdas::bridgedDefault(3) || Java17Lambdas::bridgedDefault(0)) return 10;
+	// Lambdas in initializer blocks capture the blocks' locals
+	if (Java17Lambdas::staticInitializerCapture() != 42) return 11;
+	if (lambdas->instanceInitializerCapture() != 6) return 12;
 	return 0;
 }

@@ -188,4 +188,30 @@ public class Java17Lambdas {
 		tally.add(value);
 		return check.test(tally);
 	}
+
+	// Lambdas in initializer blocks capture the blocks' locals (found in
+	// commons-codec); the instance block's lambda also needs this
+	public static int staticTotal;
+
+	static {
+		int seed = 40;
+		IntSink add = value -> staticTotal += value + seed;
+		add.accept(2);
+	}
+
+	private int instanceTotal;
+
+	{
+		int offset = 5;
+		IntSink set = value -> instanceTotal = value + offset;
+		set.accept(1);
+	}
+
+	public static int staticInitializerCapture() {
+		return staticTotal;
+	}
+
+	public int instanceInitializerCapture() {
+		return instanceTotal;
+	}
 }

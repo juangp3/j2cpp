@@ -651,6 +651,11 @@ public final class TransformUtil {
 							&& !field.isEnumConstant()
 							&& !field.getDeclaringClass().isInterface();
 				}
+				// An initializer block: JDT gives a nameless method binding
+				// carrying the block's static flag
+				if (member instanceof IMethodBinding) {
+					return !Modifier.isStatic(member.getModifiers());
+				}
 
 				// Could be https://bugs.eclipse.org/bugs/show_bug.cgi?id=383486
 				IJavaElement je = tb.getJavaElement();
