@@ -45,6 +45,12 @@ cd vscode && npm ci && npm run vscode:prepublish
 3. `test-extension.js`, the extension logic with a mocked `vscode` module.
 4. `test-mcp.js`, an MCP protocol session.
 
+If VS Code's Java extension has this repository open, it compiles into
+Maven's `target/classes` (with errors left in as "Unresolved compilation
+problem"), and Maven then reuses those classes. Run `rm -rf target/classes`
+before `mvn -q package` when the editor is open; `mvn clean` would also
+delete the corpus cache in `target/corpus`.
+
 Each can also be run alone (`npm run test:cli`, `test:extension`,
 `test:mcp`, `test:licenses`) once the JAR exists. `npm run probe` translates
 `test/probes` and fails when an outcome changes.

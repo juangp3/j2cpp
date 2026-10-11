@@ -183,6 +183,28 @@ try {
 		"}",
 		""
 	].join("\n"));
+	// An enum switch expression on this also needs the helper (Forge)
+	fs.writeFileSync(path.join(switchRoot, "sw", "Mode.java"), [
+		"package sw;",
+		"enum Mode {",
+		"\tA, B;",
+		"\tboolean first() { return switch (this) { case A -> true; default -> false; }; }",
+		"}",
+		""
+	].join("\n"));
+	// Hoisted switch locals and boxed array elements (Forge)
+	fs.writeFileSync(path.join(switchRoot, "sw", "Boxes.java"), [
+		"package sw;",
+		"import java.util.ArrayList;",
+		"import java.util.List;",
+		"class Boxes {",
+		"\tstatic List<String> pick(int k) {",
+		"\t\tswitch (k) { case 1: List<String> items = new ArrayList<>(); return items; default: return null; }",
+		"\t}",
+		"\tstatic int bump(Integer[] counts, int i) { counts[i]++; return counts[i]; }",
+		"}",
+		""
+	].join("\n"));
 	const switchOutput = path.join(tempDirectory, "string switch output");
 	fs.mkdirSync(switchOutput);
 	const switchRun = runCli(["--output", switchOutput, switchRoot]);
@@ -191,6 +213,11 @@ try {
 	assert(switchSource.includes("npc(v)->equals("), switchSource);
 	assert(switchSource.includes("static T* npc(T* t)"), switchSource);
 	assert(switchSource.includes("Kind::requires_(int32_t concept_)"), switchSource);
+	const modeSource = fs.readFileSync(path.join(switchOutput, "src", "sw", "Mode.cpp"), "utf8");
+	assert(modeSource.includes("auto v = npc(this);") && modeSource.includes("static T* npc(T* t)"), modeSource);
+	const boxesSource = fs.readFileSync(path.join(switchOutput, "src", "sw", "Boxes.cpp"), "utf8");
+	assert(boxesSource.includes("#include <java/util/ArrayList.hpp>"), boxesSource);
+	assert(boxesSource.includes("counts->set(i, ::java::lang::Integer::valueOf(static_cast<int32_t>((npc((*counts)[i]))->intValue() + 1)));"), boxesSource);
 
 	// Stubs for class path types guess setter and getter bodies only when the
 	// types fit: commons-cli's Option has setType(Object) beside a Class field

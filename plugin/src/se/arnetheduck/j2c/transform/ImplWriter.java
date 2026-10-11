@@ -54,6 +54,7 @@ import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.Name;
+import org.eclipse.jdt.core.dom.NumberLiteral;
 import org.eclipse.jdt.core.dom.ParenthesizedExpression;
 import org.eclipse.jdt.core.dom.PatternInstanceofExpression;
 import org.eclipse.jdt.core.dom.PostfixExpression;
@@ -2749,13 +2750,14 @@ public class ImplWriter extends TransformWriter {
 				unboxedTargets.add(operand);
 				operand.accept(this);
 				print("; ");
-				unboxedTargets.add(operand);
-				operand.accept(this);
-				print(" = " + CName.relative(box, type, true) + "::valueOf(static_cast<"
+				printBoxedStoreStart(operand);
+				print(CName.relative(box, type, true) + "::valueOf(static_cast<"
 						+ CName.of(unboxed(operand)) + ">(");
 				npc();
 				print("_j2c_old)->" + TransformUtil.reverses.get(box.getQualifiedName())
-						+ "Value() " + operator + " 1)); return _j2c_old; }()");
+						+ "Value() " + operator + " 1))");
+				printBoxedStoreEnd(operand);
+				print("; return _j2c_old; }()");
 			}
 			return false;
 		}
@@ -2784,14 +2786,49 @@ public class ImplWriter extends TransformWriter {
 
 	/**
 	 * Whether an updated variable is a box (Integer, Character...), which Java
-	 * replaces with a new box rather than changing in place. Array elements
-	 * are left alone: their index would be evaluated twice.
+	 * replaces with a new box rather than changing in place. An array element
+	 * qualifies only when its array and index can be evaluated twice.
 	 */
 	private static boolean boxedTarget(Expression target) {
 		ITypeBinding tb = target.resolveTypeBinding();
-		return tb != null && !tb.isPrimitive()
-				&& TransformUtil.reverses.containsKey(tb.getErasure().getQualifiedName())
-				&& (target instanceof Name || target instanceof FieldAccess);
+		if (tb == null || tb.isPrimitive()
+				|| !TransformUtil.reverses.containsKey(tb.getErasure().getQualifiedName())) {
+			return false;
+		}
+		if (target instanceof ArrayAccess) {
+			ArrayAccess aa = (ArrayAccess) target;
+			return repeatable(aa.getArray()) && repeatable(aa.getIndex());
+		}
+		return target instanceof Name || target instanceof FieldAccess;
+	}
+
+	/** Whether evaluating an expression twice is harmless */
+	private static boolean repeatable(Expression e) {
+		return e instanceof Name || e instanceof NumberLiteral
+				|| e instanceof ThisExpression
+				|| (e instanceof FieldAccess && ((FieldAccess) e).getExpression() instanceof ThisExpression);
+	}
+
+	/** "target = ", or "array->set(index, " for an element of an object array */
+	private void printBoxedStoreStart(Expression target) {
+		if (target instanceof ArrayAccess) {
+			ArrayAccess aa = (ArrayAccess) target;
+			hardDep(aa.getArray().resolveTypeBinding());
+			aa.getArray().accept(this);
+			print("->set(");
+			aa.getIndex().accept(this);
+			print(", ");
+		} else {
+			unboxedTargets.add(target);
+			target.accept(this);
+			print(" = ");
+		}
+	}
+
+	private void printBoxedStoreEnd(Expression target) {
+		if (target instanceof ArrayAccess) {
+			print(")");
+		}
 	}
 
 	private static ITypeBinding unboxed(Expression target) {
@@ -2809,9 +2846,8 @@ public class ImplWriter extends TransformWriter {
 		ITypeBinding box = target.resolveTypeBinding().getErasure();
 		ITypeBinding primitive = unboxed(target);
 		hardDep(box);
-		unboxedTargets.add(target);
-		target.accept(this);
-		print(" = " + CName.relative(box, type, true) + "::valueOf(static_cast<"
+		printBoxedStoreStart(target);
+		print(CName.relative(box, type, true) + "::valueOf(static_cast<"
 				+ CName.of(primitive) + ">(");
 		String helper = value != null && isIntegral(primitive) ? integerHelper(operator)
 				: null;
@@ -2838,6 +2874,7 @@ public class ImplWriter extends TransformWriter {
 			}
 		}
 		print("))");
+		printBoxedStoreEnd(target);
 	}
 
 	@Override
@@ -3047,7 +3084,8 @@ public class ImplWriter extends TransformWriter {
 		locals.get(locals.size() - 1).add(name);
 
 		// npc() throws NullPointerException for a null selector, as Java does
-		printi("auto " + name + " = npc(");
+		printi("auto " + name + " = ");
+		npc();
 		node.getExpression().accept(this);
 		println(");");
 
@@ -3319,6 +3357,14 @@ public class ImplWriter extends TransformWriter {
 						print(" = ");
 						fragment.getInitializer().accept(this);
 						println(";");
+						// The declaration is hoisted, so converting the value
+						// to the variable's type needs its complete class
+						ITypeBinding ib = fragment.getInitializer()
+								.resolveTypeBinding();
+						if (ib != null
+								&& !ib.isEqualTo(fragment.resolveBinding().getType())) {
+							hardDep(ib);
+						}
 					}
 				}
 			} else if (s instanceof SwitchCase) {
