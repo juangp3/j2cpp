@@ -588,7 +588,7 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
-#### G12–G21 — C++ build errors found by the corpus (M2)
+#### G12–G24 — C++ build errors found by the corpus (M2)
 
 **Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
 a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
@@ -642,6 +642,20 @@ a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
 
 G18's getters also register a hard dependency on the field type, since
 converting to a wider return type needs the complete class.
+
+Fixed by the first round of parallel fixer agents (see the orchestrator
+workflow in VALIDATION_ROADMAP.md M2):
+
+- **G22, inherited-method forwarders with erased parameters** (jsoup,
+  RoaringBitmap): `Impl.printSuperCall` forwards an interface method to an
+  inherited base method; when the base parameter is erased (`C` to
+  `Object`), the upcast needs the argument's complete class, which is now
+  included (`Spliterators.EmptySpliterator.OfRef` stub).
+- **G23, enhanced for over a `new` expression** (javapoet):
+  `for (T t : new TreeSet<>(...))` now emits `(new TreeSet(...))->iterator()`.
+- **G24, inherited covariant return naming a subclass** (RoaringBitmap):
+  the base's C++ signature returns the base type (to avoid a circular
+  include), so the generated forwarder now downcasts with `java_cast`.
 
 ### How to test a gap fix
 

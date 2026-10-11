@@ -134,7 +134,12 @@ Limits: most fixes touch `ImplWriter.java`, so merges can conflict; every
 agent starts without the session's context (cost); and C++ builds share one
 machine. Start with up to 3 agents per round and widen if merges stay clean.
 The first round (2026-10-11) took the javapoet `for` loop, the Spliterators
-stub forwarding, and RoaringBitmap's covariant `super` return.
+stub forwarding, and RoaringBitmap's covariant `super` return. All three
+merged with only append-only conflicts in the shared fixture and test files,
+and afterwards every clean small and medium project builds (15 of 15).
+Lessons: create worktrees from `modern-release` (they started on the
+legacy `master`), give each agent its own scratch folder, and assign smoke
+return codes in the brief.
 
 ### M3 — Translator gaps from the corpus
 

@@ -57,7 +57,7 @@ compiles. `--update` raises the expectations and rewrites this table.
 | jBCrypt | small | 0 | builds |
 | semver4j | small | 0 | builds |
 | bcrypt | small | 0 | builds |
-| javapoet | small | 0 | checks |
+| javapoet | small | 0 | builds |
 | jsemver | small | 0 | builds |
 | minimal-json | small | 0 | builds |
 | JavaHamcrest | small | 0 | builds |
@@ -66,9 +66,9 @@ compiles. `--update` raises the expectations and rewrites this table.
 | gson | medium | 8 | none |
 | commons-codec | medium | 0 | builds |
 | williamfiset-algorithms | medium | 0 | builds |
-| jsoup | medium | 0 | checks |
+| jsoup | medium | 0 | builds |
 | commons-text | medium | 4 | none |
-| RoaringBitmap | medium | 0 | checks |
+| RoaringBitmap | medium | 0 | builds |
 | zxing-core | medium | 0 | builds |
 | jackson-core | medium | 3 | none |
 | joda-time | large | 0 | checks |
