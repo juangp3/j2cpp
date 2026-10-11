@@ -28,6 +28,7 @@ public final class ProblemCatalog {
 	public static final String TEST_INSTANCE_LIFECYCLE = "J2C-TEST-INSTANCE-LIFECYCLE";
 	public static final String TEST_PRIVATE_METHOD = "J2C-TEST-PRIVATE-METHOD";
 	public static final String TEST_PARAMETERS = "J2C-TEST-PARAMETERS";
+	public static final String TEST_UNSUPPORTED_ASSERTION = "J2C-TEST-UNSUPPORTED-ASSERTION";
 
 	public static final class Entry {
 		public final String id;
@@ -131,6 +132,16 @@ public final class ProblemCatalog {
 				"JUnit does not run private test or lifecycle methods, and the generated "
 						+ "wrappers cannot call them.",
 				"Make the method package-private, protected or public.");
+		add(TEST_UNSUPPORTED_ASSERTION,
+				"Assertion form not supported in translated tests",
+				"Translated tests support assertTrue/False, assertNull/NotNull, "
+						+ "assertEquals/NotEquals (with or without delta), assertSame/NotSame, "
+						+ "assertArrayEquals, fail, assertThrows with a class literal, "
+						+ "assertDoesNotThrow and assumeTrue/False. Other forms (assertAll, "
+						+ "assertTimeout, assertIterableEquals, lazy BooleanSupplier conditions, "
+						+ "Hamcrest, AssertJ, Truth) need the Java runtime.",
+				"Rewrite the assertion with a supported form, for example assertTrue(...) "
+						+ "with the condition written out, or keep this test on the JVM.");
 		add(TEST_PARAMETERS,
 				"Test method with parameters",
 				"JUnit can inject parameters such as TestInfo through extensions; the "

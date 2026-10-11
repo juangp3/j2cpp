@@ -55,6 +55,189 @@ final class JUnitSupport {
 			"org.junit.jupiter.api.extension.RegisterExtension");
 	private static final List<String> MOCKING = Arrays.asList("org.mockito",
 			"org.powermock", "org.easymock");
+	/** Classes whose static methods are translated into j2c_junit.hpp calls */
+	private static final List<String> ASSERTION_CLASSES = Arrays.asList(
+			"org.junit.jupiter.api.Assertions", "org.junit.Assert",
+			"org.junit.jupiter.api.Assumptions", "org.junit.Assume");
+	/** Assertion entry points that are reported rather than translated */
+	private static final List<String> OTHER_ASSERTION_CLASSES = Arrays.asList(
+			"org.hamcrest.MatcherAssert", "org.assertj.core.api.Assertions",
+			"com.google.common.truth.Truth");
+
+	/** How a JUnit assertion call is translated (see j2c_junit.hpp) */
+	static final class Assertion {
+		/** Helper function in namespace j2c::junit */
+		final String helper;
+		/** Indexes of the arguments passed as values, in order */
+		final List<Integer> values;
+		/** Indexes of message arguments, evaluated after the values */
+		final List<Integer> messages;
+		/** Explicit template arguments: value types, or null to deduce */
+		final List<ITypeBinding> typeArguments;
+		/** assertThrows: the exception class literal's type */
+		final ITypeBinding thrown;
+
+		Assertion(String helper, List<Integer> values, List<Integer> messages,
+				List<ITypeBinding> typeArguments, ITypeBinding thrown) {
+			this.helper = helper;
+			this.values = values;
+			this.messages = messages;
+			this.typeArguments = typeArguments;
+			this.thrown = thrown;
+		}
+	}
+
+	/** Whether the method is a JUnit assertion or assumption */
+	static boolean isAssertionMethod(IMethodBinding method) {
+		ITypeBinding declaring = method.getDeclaringClass();
+		String name = declaring == null ? "" : declaring.getErasure()
+				.getQualifiedName();
+		return ASSERTION_CLASSES.contains(name)
+				|| OTHER_ASSERTION_CLASSES.contains(name)
+				|| (name.equals("org.junit.Assert") && method.getName().equals(
+						"assertThat"));
+	}
+
+	/**
+	 * The translation of a call to a JUnit assertion or assumption, or null
+	 * when the form is not supported without the Java runtime.
+	 */
+	static Assertion assertion(IMethodBinding method, List<?> arguments) {
+		ITypeBinding declaring = method.getDeclaringClass().getErasure();
+		if (!ASSERTION_CLASSES.contains(declaring.getQualifiedName())) {
+			return null;
+		}
+		// JUnit 4 takes an optional message first, JUnit 5 last
+		boolean junit4 = declaring.getQualifiedName().startsWith("org.junit.Ass");
+		String name = method.getName();
+		ITypeBinding[] parameters = method.getMethodDeclaration()
+				.getParameterTypes();
+		List<Integer> values = new ArrayList<Integer>();
+		for (int i = 0; i < parameters.length; ++i) {
+			values.add(i);
+		}
+		List<Integer> messages = new ArrayList<Integer>();
+		if (parameters.length > 0) {
+			int candidate = junit4 ? 0 : parameters.length - 1;
+			ITypeBinding type = parameters[candidate];
+			boolean messageType = isString(type) || (!junit4 && type.getErasure()
+					.getQualifiedName().equals("java.util.function.Supplier"));
+			List<Integer> remaining = new ArrayList<Integer>(values);
+			remaining.remove(Integer.valueOf(candidate));
+			if (messageType && shape(name, types(parameters, remaining), junit4) != null) {
+				values = remaining;
+				messages.add(candidate);
+			}
+		}
+
+		String helper = shape(name, types(parameters, values), junit4);
+		if (helper == null) {
+			return null;
+		}
+		List<ITypeBinding> typeArguments = new ArrayList<ITypeBinding>();
+		ITypeBinding thrown = null;
+		switch (helper) {
+		case "assertThrows":
+			Object classArgument = arguments.get(values.get(0));
+			if (!(classArgument instanceof org.eclipse.jdt.core.dom.TypeLiteral)) {
+				return null; // the class must be known when translating
+			}
+			thrown = ((org.eclipse.jdt.core.dom.TypeLiteral) classArgument).getType()
+					.resolveBinding();
+			values = values.subList(1, values.size());
+			typeArguments = null;
+			break;
+		case "assertDoesNotThrow":
+			typeArguments = null;
+			break;
+		case "assertArrayEqualsWithin":
+			typeArguments.add(parameters[values.get(0)]);
+			typeArguments.add(parameters[values.get(2)]);
+			break;
+		case "assertTrue":
+		case "assertFalse":
+		case "assumeTrue":
+		case "assumeFalse":
+		case "failTest":
+		case "floatingWithoutDelta":
+			typeArguments.add(null); // unused: written as void
+			break;
+		default:
+			typeArguments.add(parameters[values.get(0)]);
+		}
+		return new Assertion(helper, values, messages, typeArguments, thrown);
+	}
+
+	/** The helper for a call with these value parameter types, or null */
+	private static String shape(String name, List<ITypeBinding> types,
+			boolean junit4) {
+		int count = types.size();
+		switch (name) {
+		case "assertTrue":
+		case "assertFalse":
+		case "assumeTrue":
+		case "assumeFalse":
+			return count == 1 && isBoolean(types.get(0)) ? name : null;
+		case "assertNull":
+		case "assertNotNull":
+			return count == 1 && !types.get(0).isPrimitive() ? name : null;
+		case "assertSame":
+		case "assertNotSame":
+			return count == 2 && !types.get(0).isPrimitive() ? name : null;
+		case "assertEquals":
+		case "assertNotEquals":
+			if (count == 2) {
+				// JUnit 4's assertEquals(double, double) always fails
+				return junit4 && isFloating(types.get(0)) && name.equals("assertEquals") ? "floatingWithoutDelta"
+						: name;
+			}
+			return count == 3 && isFloating(types.get(0))
+					&& isFloating(types.get(2)) ? name + "Within" : null;
+		case "assertArrayEquals":
+			if (count == 2 && types.get(0).isArray()) {
+				return name;
+			}
+			return count == 3 && types.get(0).isArray()
+					&& isFloating(types.get(2)) ? "assertArrayEqualsWithin" : null;
+		case "fail":
+			return count == 0 ? "failTest" : null;
+		case "assertThrows":
+			return count == 2
+					&& types.get(0).getErasure().getQualifiedName().equals("java.lang.Class")
+					&& isExecutable(types.get(1)) ? name : null;
+		case "assertDoesNotThrow":
+			return count == 1 && isExecutable(types.get(0)) ? name : null;
+		default:
+			return null;
+		}
+	}
+
+	private static List<ITypeBinding> types(ITypeBinding[] parameters,
+			List<Integer> indexes) {
+		List<ITypeBinding> types = new ArrayList<ITypeBinding>();
+		for (int index : indexes) {
+			types.add(parameters[index]);
+		}
+		return types;
+	}
+
+	private static boolean isString(ITypeBinding type) {
+		return type.getQualifiedName().equals("java.lang.String");
+	}
+
+	private static boolean isBoolean(ITypeBinding type) {
+		return type.isPrimitive() && type.getName().equals("boolean");
+	}
+
+	private static boolean isFloating(ITypeBinding type) {
+		return type.isPrimitive()
+				&& (type.getName().equals("double") || type.getName().equals("float"));
+	}
+
+	private static boolean isExecutable(ITypeBinding type) {
+		return type.getErasure().getQualifiedName().equals(
+				"org.junit.jupiter.api.function.Executable");
+	}
 
 	/** One test method, as the wrapper runs it */
 	static final class TestMethod {
@@ -271,6 +454,18 @@ final class JUnitSupport {
 					add(node.getName(), ProblemCatalog.TEST_PARAMETERS,
 							"Test or lifecycle method " + method.getName()
 									+ " has parameters, which translated tests cannot supply");
+				}
+				return true;
+			}
+
+			@Override
+			public boolean visit(org.eclipse.jdt.core.dom.MethodInvocation node) {
+				IMethodBinding method = node.resolveMethodBinding();
+				if (method != null && isAssertionMethod(method)
+						&& assertion(method, node.arguments()) == null) {
+					add(node, ProblemCatalog.TEST_UNSUPPORTED_ASSERTION,
+							method.getDeclaringClass().getName() + "." + method.getName()
+									+ " in this form is not supported in translated tests");
 				}
 				return true;
 			}

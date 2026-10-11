@@ -28,6 +28,7 @@ public class DepInfo {
 	private boolean synchronized_;
 	private boolean fmod;
 	private boolean javaMath;
+	private boolean junit;
 
 	public DepInfo(Transformer ctx) {
 		this.ctx = ctx;
@@ -135,6 +136,16 @@ public class DepInfo {
 
 	public boolean needsFmod() {
 		return fmod;
+	}
+
+	public boolean needsJUnit() {
+		return junit;
+	}
+
+	/** JUnit assertion helpers (j2c_junit.hpp), for translated tests */
+	public void setNeedsJUnit() {
+		junit = true;
+		hard(ctx.resolve(AssertionError.class));
 	}
 
 	public boolean needsJavaMath() {

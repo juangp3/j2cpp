@@ -12,7 +12,8 @@ import org.eclipse.jdt.core.dom.ITypeBinding;
 /**
  * Writes a GoogleTest file per JUnit test class. GoogleTest only runs the
  * tests and reports results: the translated test methods keep their Java
- * semantics, and a test fails when it throws, as in JUnit.
+ * semantics, a test fails when it throws, as in JUnit, and a failed
+ * assumption skips it.
  */
 final class GTestWriter {
 	static final String HELPER_HPP = "/se/arnetheduck/j2c/resources/j2c_gtest.hpp";
@@ -55,21 +56,23 @@ final class GTestWriter {
 			out.println("protected:");
 			out.println("    " + cppType + "* test = nullptr;");
 			out.println("    static bool suiteFailed;");
+			out.println("    static bool suiteAborted;");
 			if (anyEnabled && !testClass.beforeAll.isEmpty()) {
 				out.println();
 				out.println("    static void SetUpTestSuite()");
 				out.println("    {");
-				lifecycle(out, "@BeforeAll", null, cppType, testClass.beforeAll,
-						"ADD_FAILURE() << \"@BeforeAll threw \" << j2c::describe(thrown);\n"
-								+ "            suiteFailed = true;");
+				lifecycle(out, null, cppType, testClass.beforeAll,
+						"ADD_FAILURE() << \"@BeforeAll threw \" << j2c::describe(outcome.thrown);",
+						"suiteFailed = true;", "suiteAborted = true;");
 				out.println("    }");
 			}
 			if (anyEnabled && !testClass.afterAll.isEmpty()) {
 				out.println();
 				out.println("    static void TearDownTestSuite()");
 				out.println("    {");
-				lifecycle(out, "@AfterAll", null, cppType, testClass.afterAll,
-						"ADD_FAILURE() << \"@AfterAll threw \" << j2c::describe(thrown);");
+				lifecycle(out, null, cppType, testClass.afterAll,
+						"ADD_FAILURE() << \"@AfterAll threw \" << j2c::describe(outcome.thrown);",
+						null, null);
 				out.println("    }");
 			}
 
@@ -78,17 +81,23 @@ final class GTestWriter {
 			out.println("    void SetUp() override");
 			out.println("    {");
 			disabled(out, testClass);
+			out.println("        if (suiteAborted) {");
+			out.println("            GTEST_SKIP() << \"Assumption failed in @BeforeAll\";");
+			out.println("        }");
 			out.println("        if (suiteFailed) {");
 			out.println("            FAIL() << \"@BeforeAll threw an exception\";");
 			out.println("        }");
-			out.println("        auto thrown = j2c::callJava([&] {");
+			out.println("        auto outcome = j2c::run([&] {");
 			out.println("            test = new " + cppType + "();");
 			for (IMethodBinding method : testClass.beforeEach) {
 				out.println("            " + call("test", cppType, method) + ";");
 			}
 			out.println("        });");
-			out.println("        if (thrown != nullptr) {");
-			out.println("            FAIL() << \"Constructor or @BeforeEach threw \" << j2c::describe(thrown);");
+			out.println("        if (outcome.aborted) {");
+			out.println("            GTEST_SKIP() << \"Assumption failed in @BeforeEach\";");
+			out.println("        }");
+			out.println("        if (outcome.thrown != nullptr) {");
+			out.println("            FAIL() << \"Constructor or @BeforeEach threw \" << j2c::describe(outcome.thrown);");
 			out.println("        }");
 			out.println("    }");
 			if (!testClass.afterEach.isEmpty()) {
@@ -98,13 +107,15 @@ final class GTestWriter {
 				out.println("        if (test == nullptr) {");
 				out.println("            return;");
 				out.println("        }");
-				lifecycle(out, "@AfterEach", "test", cppType, testClass.afterEach,
-						"ADD_FAILURE() << \"@AfterEach threw \" << j2c::describe(thrown);");
+				lifecycle(out, "test", cppType, testClass.afterEach,
+						"ADD_FAILURE() << \"@AfterEach threw \" << j2c::describe(outcome.thrown);",
+						null, null);
 				out.println("    }");
 			}
 			out.println("};");
 			out.println();
 			out.println("bool " + fixture + "::suiteFailed = false;");
+			out.println("bool " + fixture + "::suiteAborted = false;");
 			out.println();
 			out.println("}");
 
@@ -112,23 +123,26 @@ final class GTestWriter {
 				out.println();
 				out.println("TEST_F(" + fixture + ", " + test.method.getName() + ")");
 				out.println("{");
-				out.println("    auto thrown = j2c::callJava([&] { "
+				out.println("    auto outcome = j2c::run([&] { "
 						+ call("test", cppType, test.method) + "; });");
+				out.println("    if (outcome.aborted) {");
+				out.println("        GTEST_SKIP() << \"Assumption failed\";");
+				out.println("    }");
 				if (test.expected == null) {
-					out.println("    if (thrown != nullptr) {");
-					out.println("        FAIL() << \"Test threw \" << j2c::describe(thrown);");
+					out.println("    if (outcome.thrown != nullptr) {");
+					out.println("        FAIL() << \"Test threw \" << j2c::describe(outcome.thrown);");
 					out.println("    }");
 				} else {
 					String expected = test.expected.getQualifiedName();
-					out.println("    if (thrown == nullptr) {");
+					out.println("    if (outcome.thrown == nullptr) {");
 					out.println("        FAIL() << \"Expected " + expected
 							+ " to be thrown\";");
 					out.println("    }");
 					out.println("    if (dynamic_cast< "
 							+ CName.qualified(test.expected, true)
-							+ "* >(thrown) == nullptr) {");
+							+ "* >(outcome.thrown) == nullptr) {");
 					out.println("        FAIL() << \"Expected " + expected
-							+ " but \" << j2c::describe(thrown) << \" was thrown\";");
+							+ " but \" << j2c::describe(outcome.thrown) << \" was thrown\";");
 					out.println("    }");
 				}
 				out.println("}");
@@ -139,15 +153,25 @@ final class GTestWriter {
 		return file;
 	}
 
-	private static void lifecycle(PrintWriter out, String what, String instance,
-			String cppType, Iterable<IMethodBinding> methods, String onFailure) {
-		out.println("        auto thrown = j2c::callJava([&] {");
+	/** Runs lifecycle methods; onFailure and onAbort may be null */
+	private static void lifecycle(PrintWriter out, String instance,
+			String cppType, Iterable<IMethodBinding> methods, String report,
+			String onFailure, String onAbort) {
+		out.println("        auto outcome = j2c::run([&] {");
 		for (IMethodBinding method : methods) {
 			out.println("            " + call(instance, cppType, method) + ";");
 		}
 		out.println("        });");
-		out.println("        if (thrown != nullptr) {");
-		out.println("            " + onFailure);
+		if (onAbort != null) {
+			out.println("        if (outcome.aborted) {");
+			out.println("            " + onAbort);
+			out.println("        }");
+		}
+		out.println("        if (outcome.thrown != nullptr) {");
+		out.println("            " + report);
+		if (onFailure != null) {
+			out.println("            " + onFailure);
+		}
 		out.println("        }");
 	}
 

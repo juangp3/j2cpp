@@ -57,6 +57,7 @@ public class Transformer {
 	/** Whether JUnit tests get GoogleTest wrappers (see GTestWriter) */
 	private boolean tests;
 	private final List<JUnitSupport.TestClass> testClasses = new ArrayList<JUnitSupport.TestClass>();
+	private boolean junitAssertions;
 
 	private final Stats direct = new Stats();
 	private final Stats deps = new Stats();
@@ -120,6 +121,15 @@ public class Transformer {
 		this.tests = tests;
 	}
 
+	public boolean translatesTests() {
+		return tests;
+	}
+
+	/** Called when a JUnit assertion was translated into j2c_junit.hpp */
+	public void usesJUnitAssertions() {
+		junitAssertions = true;
+	}
+
 	public void process(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
 		monitor.subTask("Moving old files");
@@ -132,8 +142,9 @@ public class Transformer {
 		hardDep(resolve(Cloneable.class));
 		hardDep(resolve(java.io.Serializable.class));
 		if (tests) {
-			// The GoogleTest helper reports thrown Java exceptions
+			// The GoogleTest and assertion helpers use these
 			hardDep(resolve(Throwable.class));
+			hardDep(resolve(AssertionError.class));
 		}
 		selection.addAll(Arrays.asList(units));
 		todo.addAll(selection);
@@ -174,6 +185,11 @@ public class Transformer {
 	}
 
 	private void writeTests() throws IOException {
+		if (testClasses.isEmpty() && !junitAssertions) {
+			return;
+		}
+		FileUtil.writeResource(JUNIT_HPP, root.append("src").append(
+				"j2c_junit.hpp").toFile());
 		if (testClasses.isEmpty()) {
 			return;
 		}
@@ -183,6 +199,8 @@ public class Transformer {
 			sel.tests.add(GTestWriter.write(root, testClass));
 		}
 	}
+
+	private static final String JUNIT_HPP = "/se/arnetheduck/j2c/resources/j2c_junit.hpp";
 
 	private void writeResources() throws IOException {
 		// TODO Auto-generated method stub

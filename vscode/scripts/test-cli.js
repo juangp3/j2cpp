@@ -247,9 +247,20 @@ try {
 	const wrapperDirectory = "test/se/arnetheduck/j2c/test/junit";
 	assert.deepStrictEqual(junitReport.testFiles, [
 		`${wrapperDirectory}/DerivedTest_test.cpp`,
+		`${wrapperDirectory}/Java17Assert4Test_test.cpp`,
+		`${wrapperDirectory}/Java17AssertionsTest_test.cpp`,
 		`${wrapperDirectory}/Java17JUnit4Test_test.cpp`,
 		`${wrapperDirectory}/Java17JUnit5Test_test.cpp`
 	], "Abstract test classes get no wrapper of their own");
+
+	// JUnit assertions become j2c_junit.hpp calls with Java's overload types;
+	// JUnit 4's leading message is passed after the values
+	assert(junitReport.generatedFiles.includes("src/j2c_junit.hpp"));
+	const assertionSource = fs.readFileSync(path.join(junitOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17AssertionsTest.cpp"), "utf8");
+	assert(assertionSource.includes("::j2c::junit::assertEquals< int64_t >(int64_t(5LL), int32_t(5))"));
+	assert(assertionSource.includes("::j2c::junit::assertThrows< ::java::lang::IllegalArgumentException >(\"java.lang.IllegalArgumentException\""));
+	const assert4Source = fs.readFileSync(path.join(junitOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17Assert4Test.cpp"), "utf8");
+	assert(assert4Source.includes("::j2c::junit::assertEquals< int64_t >(int64_t(3LL), int64_t(3LL), u\"lengths\"_j)"));
 	assert(junitReport.generatedFiles.includes("test/j2c_gtest.hpp"));
 	const junitMakefile = fs.readFileSync(path.join(junitOutput, "Makefile"), "utf8");
 	assert(junitMakefile.includes(`${wrapperDirectory}/Java17JUnit5Test_test.cpp`));
@@ -258,13 +269,39 @@ try {
 	assert.match(derivedWrapper, /test->baseSetUp\(\);\s*test->derivedSetUp\(\);/,
 		"Superclass @BeforeEach methods run first");
 	const junit4Wrapper = fs.readFileSync(path.join(junitOutput, wrapperDirectory, "Java17JUnit4Test_test.cpp"), "utf8");
-	assert(junit4Wrapper.includes("dynamic_cast< ::java::lang::IllegalArgumentException* >(thrown)"));
+	assert(junit4Wrapper.includes("dynamic_cast< ::java::lang::IllegalArgumentException* >(outcome.thrown)"));
 	assert(junit4Wrapper.includes("{ \"ignored\", \"\" }"));
 
 	const plainOutput = path.join(tempDirectory, "junit without tests");
 	fs.mkdirSync(plainOutput);
 	assert.strictEqual(runCli(["--output", plainOutput, "--sourcepath", junitSourcePath, junitRoot]).status, 0);
 	assert(!fs.existsSync(path.join(plainOutput, "test")), "Without --tests no wrappers are generated");
+	assert(!fs.readFileSync(path.join(plainOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17AssertionsTest.cpp"), "utf8")
+		.includes("::j2c::junit::"), "Without --tests assertions are ordinary calls");
+
+	// Assertion forms that need the Java runtime are reported, not stubbed
+	const assertionScratch = path.join(tempDirectory, "assertion scratch");
+	fs.mkdirSync(path.join(assertionScratch, "scratch"), { recursive: true });
+	const unsupportedAssertions = path.join(assertionScratch, "scratch", "UnsupportedAssertions.java");
+	fs.writeFileSync(unsupportedAssertions, [
+		"package scratch;",
+		"import static org.junit.jupiter.api.Assertions.*;",
+		"import org.junit.jupiter.api.Test;",
+		"class UnsupportedAssertions {",
+		"\t@Test void lazy() { assertTrue(() -> true); }",
+		"\t@Test void grouped() { assertAll(() -> {}); }",
+		"\t@Test void classVariable() { Class<IllegalStateException> type = IllegalStateException.class; assertThrows(type, () -> {}); }",
+		"\t@Test void supported() { assertEquals(1, 1); }",
+		"}",
+		""
+	].join("\n"));
+	const assertionProblems = JSON.parse(runCli(["--check", "--tests", "--format", "json",
+		"--sourcepath", [assertionScratch, junitApi].join(path.delimiter), unsupportedAssertions]).stdout);
+	assert.deepStrictEqual(
+		assertionProblems.problems.map((problem) => `${problem.id}@${problem.line}`),
+		["J2C-TEST-UNSUPPORTED-ASSERTION@5", "J2C-TEST-UNSUPPORTED-ASSERTION@6", "J2C-TEST-UNSUPPORTED-ASSERTION@7"],
+		JSON.stringify(assertionProblems.problems, null, 1)
+	);
 
 	// Test features the wrappers cannot run are reported in tests mode
 	const testScratch = path.join(tempDirectory, "test scratch");

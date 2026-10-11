@@ -123,6 +123,10 @@ public class Impl {
 			printlnd("#include <cmath>", includes);
 		}
 
+		if (deps.needsJUnit()) {
+			printlnd("#include <j2c_junit.hpp>", includes);
+		}
+
 		if (deps.needsJavaMath()) {
 			printlnd("#include <limits>", includes);
 			printlnd("#include <type_traits>", includes);

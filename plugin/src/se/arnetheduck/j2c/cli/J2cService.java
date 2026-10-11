@@ -425,8 +425,9 @@ final class J2cService {
 				"Lambdas that use this inside an anonymous class are not translated",
 				"instanceof patterns in field initializers are not translated",
 				"Exceptions from close() during exception unwinding terminate the program",
-				"JUnit assertions (Assertions, Assert) need the Java runtime; translated tests "
-						+ "fail by throwing until it exists, and mocking libraries are not supported"));
+				"In translated tests, assertEquals on JDK objects (strings, boxed numbers) and "
+						+ "custom assertion messages need the Java runtime; mocking libraries "
+						+ "are not supported"));
 		List<String> ids = new ArrayList<String>();
 		for (ProblemCatalog.Entry entry : ProblemCatalog.all()) {
 			ids.add(entry.id);

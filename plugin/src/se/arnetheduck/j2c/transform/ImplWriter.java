@@ -2161,6 +2161,55 @@ public class ImplWriter extends TransformWriter {
 		return null;
 	}
 
+	/**
+	 * A JUnit assertion as a j2c_junit.hpp call: values in Java order, then
+	 * messages (JUnit 4 passes its message first), with the Java parameter
+	 * types as template arguments so overloads convert as in Java.
+	 */
+	private void printAssertion(MethodInvocation node,
+			JUnitSupport.Assertion assertion) {
+		deps.setNeedsJUnit();
+		ctx.usesJUnitAssertions();
+		List<Expression> arguments = node.arguments();
+
+		print("::j2c::junit::" + assertion.helper);
+		if (assertion.thrown != null) {
+			hardDep(assertion.thrown);
+			print("< " + CName.relative(assertion.thrown, type, true) + " >");
+		} else if (assertion.typeArguments != null) {
+			String separator = "";
+			print("< ");
+			for (ITypeBinding typeArgument : assertion.typeArguments) {
+				print(separator);
+				separator = ", ";
+				if (typeArgument == null) {
+					print("void");
+				} else {
+					hardDep(typeArgument);
+					print(TransformUtil.relativeRef(typeArgument, type, true));
+				}
+			}
+			print(" >");
+		}
+
+		print("(");
+		String separator = "";
+		if (assertion.thrown != null) {
+			print("\"" + assertion.thrown.getQualifiedName() + "\"");
+			separator = ", ";
+		}
+		List<Integer> order = new ArrayList<Integer>(assertion.values);
+		order.addAll(assertion.messages);
+		for (int index : order) {
+			print(separator);
+			separator = ", ";
+			Expression argument = arguments.get(index);
+			hardDep(argument.resolveTypeBinding());
+			argument.accept(this);
+		}
+		print(")");
+	}
+
 	private void staticCast(Expression left, ITypeBinding lt,
 			ITypeBinding common) {
 		if (common != null && !lt.isEqualTo(common) && !lt.isNullType()) {
@@ -2422,6 +2471,15 @@ public class ImplWriter extends TransformWriter {
 	@Override
 	public boolean visit(MethodInvocation node) {
 		IMethodBinding b = node.resolveMethodBinding();
+		if (ctx.translatesTests() && JUnitSupport.isAssertionMethod(b)) {
+			JUnitSupport.Assertion assertion = JUnitSupport.assertion(b,
+					node.arguments());
+			if (assertion != null) {
+				printAssertion(node, assertion);
+				return false;
+			}
+			// Unsupported forms are reported by JUnitSupport.problems
+		}
 		ITypeBinding rtb = b.getMethodDeclaration().getReturnType();
 		boolean erased = (rtb.isTypeVariable() || rtb.isArray()
 				&& rtb.getElementType().isTypeVariable())

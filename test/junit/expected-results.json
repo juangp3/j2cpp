@@ -18,5 +18,29 @@
   "se_arnetheduck_j2c_test_junit_DerivedTest": {
     "inheritedTest": "pass",
     "overriddenTest": "pass"
+  },
+  "se_arnetheduck_j2c_test_junit_Java17AssertionsTest": {
+    "primitivesPass": "pass",
+    "primitiveMismatchFails": "fail",
+    "doublesWithinDelta": "pass",
+    "doubleSpecialValues": "pass",
+    "nullsAndIdentity": "pass",
+    "objectsUseEquals": "pass",
+    "objectMismatchFails": "fail",
+    "arraysEqual": "pass",
+    "arrayMismatchFails": "fail",
+    "assertThrowsReturnsException": "pass",
+    "assertThrowsWrongTypeFails": "fail",
+    "assertThrowsNothingFails": "fail",
+    "doesNotThrow": "pass",
+    "failFails": "fail",
+    "assumptionSkips": "skip",
+    "assertionErrorIsCatchable": "pass"
+  },
+  "se_arnetheduck_j2c_test_junit_Java17Assert4Test": {
+    "messageFirstPasses": "pass",
+    "messageFirstFails": "fail",
+    "doubleWithoutDeltaFails": "fail",
+    "assumptionSkips": "skip"
   }
 }
