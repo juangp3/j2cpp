@@ -36,7 +36,9 @@ public class GetSetSnippet extends EmptySnippet {
 			if (ms == TransformUtil.isStatic(vb) && vb.getName().equals(v)) {
 				boolean asMethod = TransformUtil.asMethod(vb);
 				// a.isAssignmentCompatible(b): a value of type a fits in b
+				// Boxing would need a conversion the guess cannot write
 				if (getter
+						&& vb.getType().isPrimitive() == mb.getReturnType().isPrimitive()
 						&& vb.getType().getErasure().isAssignmentCompatible(
 								mb.getReturnType().getErasure())) {
 					// Converting to a wider return type needs the field's class
@@ -47,6 +49,7 @@ public class GetSetSnippet extends EmptySnippet {
 				} else if (setter
 						&& mb.getReturnType().getName().equals("void")
 						&& mb.getParameterTypes().length == 1
+						&& mb.getParameterTypes()[0].isPrimitive() == vb.getType().isPrimitive()
 						&& mb.getParameterTypes()[0].getErasure()
 								.isAssignmentCompatible(vb.getType().getErasure())) {
 					w.print(TransformUtil.indent(1));

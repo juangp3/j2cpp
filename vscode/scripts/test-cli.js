@@ -204,6 +204,9 @@ try {
 		"\tpublic void setType(Class<?> type) { this.type = type; }",
 		"\tpublic void setType(Object type) { this.type = (Class<?>) type; }",
 		"\tpublic Object getName() { return name; }",
+		"\tprivate boolean flag;",
+		"\tpublic Boolean getFlag() { return flag; }",
+		"\tpublic void setFlag(Boolean flag) { this.flag = flag; }",
 		"}",
 		""
 	].join("\n"));
@@ -221,6 +224,8 @@ try {
 	assert.strictEqual(libraryRun.status, 0, libraryRun.stderr);
 	const optionStub = fs.readFileSync(path.join(libraryOutput, "ext", "stub", "lib", "Option-stub.cpp"), "utf8");
 	assert.strictEqual(optionStub.split("/* setter */").length - 1, 1, optionStub);
+	// A boolean field is not returned as a Boolean box (MutableBoolean in Forge)
+	assert(!optionStub.includes("return flag ; /* getter */"), optionStub);
 	assert(optionStub.includes("return name_ ; /* getter */") || optionStub.includes("return name ; /* getter */"), optionStub);
 
 	// A forwarder to a base method with an erased parameter upcasts the
