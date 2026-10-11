@@ -9,3 +9,4 @@ plugin/bin/
 test/bin/
 vscode/CHANGELOG.md
 vscode/licenses/
+.claude/worktrees/
