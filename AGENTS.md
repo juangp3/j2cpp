@@ -49,6 +49,14 @@ Each can also be run alone (`npm run test:cli`, `test:extension`,
 `test:mcp`, `test:licenses`) once the JAR exists. `npm run probe` translates
 `test/probes` and fails when an outcome changes.
 
+`npm run corpus` checks the real projects in `test/corpus/projects.json`,
+each pinned to a commit, and fails when a problem count rises or a project
+drops a ladder step. `--project` and `--tier` select projects, `--build` also
+compiles them (in WSL on Windows), and `--update` records improvements and
+rewrites the scoreboard in `docs/VALIDATION_PROJECTS.md`. Clones and
+dependency JARs are cached under `target/corpus`. CI runs it nightly
+(`.github/workflows/corpus.yml`).
+
 CI (`.github/workflows/ci.yml`) also translates every `Java17*` fixture,
 builds it with `make`, and runs the `test/cpp/*Smoke.cpp` harnesses with
 `CFLAGS="-fsanitize=undefined -fno-sanitize-recover=all"`. To reproduce

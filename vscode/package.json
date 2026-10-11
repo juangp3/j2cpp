@@ -24,6 +24,7 @@
     "test:licenses": "node scripts/check-licenses.js",
     "test:mcp": "node scripts/test-mcp.js",
     "probe": "node scripts/probe.js",
+    "corpus": "node scripts/corpus.js",
     "package": "vsce package"
   },
   "devDependencies": {

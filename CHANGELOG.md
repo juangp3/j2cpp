@@ -15,6 +15,8 @@ C++20-targeted output.
 - Translation problems are reported as `file:line` diagnostics without a stack
   trace. Exit status is 0 on success, 1 for translation problems, and 2 for
   invalid arguments.
+- Source directories skip `module-info.java` and `package-info.java`, which
+  declare no types; a module declaration no longer fails the check.
 - Sources are read as UTF-8 by default and generated C++ is always UTF-8,
   independent of the platform charset.
 - VS Code: **J2C: Translate to C++** and **J2C: Check Translatability** in the

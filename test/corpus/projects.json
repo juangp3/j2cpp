@@ -1,0 +1,413 @@
+{
+	"comment": "Validation corpus for vscode/scripts/corpus.js; see docs/VALIDATION_PROJECTS.md. Each project is pinned to a commit. 'expected' is a ratchet: a run fails when problems rise or the ladder step drops. Update it with --update after an improvement.",
+	"projects": [
+		{
+			"name": "hashids-java",
+			"repository": "https://github.com/yomorun/hashids-java",
+			"commit": "039da8c2af0d3ad485b3fa57afdde56248f641f3",
+			"tier": "small",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "builds"
+			}
+		},
+		{
+			"name": "jBCrypt",
+			"repository": "https://github.com/jeremyh/jBCrypt",
+			"commit": "e015c2c110ab7cf544400893f3543b45f359ff58",
+			"tier": "small",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "builds"
+			}
+		},
+		{
+			"name": "semver4j",
+			"repository": "https://github.com/vdurmont/semver4j",
+			"commit": "7653e418d610ffcd2811bcb55fd72d00d420950b",
+			"tier": "small",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "bcrypt",
+			"repository": "https://github.com/patrickfav/bcrypt",
+			"commit": "d068562a2d700db0981a32b534e3fc046d327c8f",
+			"tier": "small",
+			"roots": [
+				"modules/bcrypt/src/main/java",
+				"modules/bcrypt-cli/src/main/java"
+			],
+			"dependencies": [
+				"at.favre.lib:bytes:1.6.1",
+				"commons-cli:commons-cli:1.6.0"
+			],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "javapoet",
+			"repository": "https://github.com/square/javapoet",
+			"commit": "b9017a9503b76e11b4ad4c1a9f050e2d29112cb0",
+			"tier": "small",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "jsemver",
+			"repository": "https://github.com/zafarkhaja/jsemver",
+			"commit": "75b5abe97ca55c4569ea84e09330db22a0df2db7",
+			"tier": "small",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "minimal-json",
+			"repository": "https://github.com/ralfstx/minimal-json",
+			"commit": "c091e6985620da04d5abcd902aafb6c9583c48ea",
+			"tier": "small",
+			"roots": [
+				"com.eclipsesource.json/src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "builds"
+			}
+		},
+		{
+			"name": "JavaHamcrest",
+			"repository": "https://github.com/hamcrest/JavaHamcrest",
+			"commit": "3d58e993a5d12e65ec1309497cf8fab4bf5f3645",
+			"tier": "small",
+			"roots": [
+				"hamcrest/src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "builds"
+			}
+		},
+		{
+			"name": "JSON-java",
+			"repository": "https://github.com/stleary/JSON-java",
+			"commit": "6527427aad82f2a2b2f49a6a0f7cd39e6cda5709",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "javaewah",
+			"repository": "https://github.com/lemire/javaewah",
+			"commit": "86f37ab370b74282989e40917b2786ad9fb65f94",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "gson",
+			"repository": "https://github.com/google/gson",
+			"commit": "67427c40f7306276e63e09c8bb66fefb90429d86",
+			"tier": "medium",
+			"roots": [
+				"gson/src/main/java"
+			],
+			"dependencies": [
+				"com.google.errorprone:error_prone_annotations:2.36.0"
+			],
+			"expected": {
+				"problems": 8,
+				"step": "none"
+			}
+		},
+		{
+			"name": "commons-codec",
+			"repository": "https://github.com/apache/commons-codec",
+			"commit": "d7bff678de1efdf767f713c5a178ba9dd9e1562d",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "williamfiset-algorithms",
+			"repository": "https://github.com/williamfiset/algorithms",
+			"commit": "08c6d5f3cbee6870f480272404a271cc003b7437",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "jsoup",
+			"repository": "https://github.com/jhy/jsoup",
+			"commit": "088614f4a1454232a1f03c63b7f80742f1f2a854",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [
+				"org.jspecify:jspecify:1.0.0",
+				"com.google.re2j:re2j:1.8"
+			],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "commons-text",
+			"repository": "https://github.com/apache/commons-text",
+			"commit": "4acfe820c81ecb89e014757117b0ea9333808ed2",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [
+				"org.apache.commons:commons-lang3:3.21.0"
+			],
+			"expected": {
+				"problems": 4,
+				"step": "none"
+			}
+		},
+		{
+			"name": "RoaringBitmap",
+			"repository": "https://github.com/RoaringBitmap/RoaringBitmap",
+			"commit": "7f2b0a58f392d745035c06b15b6699ef05a1211a",
+			"tier": "medium",
+			"roots": [
+				"roaringbitmap/src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "zxing-core",
+			"repository": "https://github.com/zxing/zxing",
+			"commit": "33dfdefcb35576612841e614d44ba9edc9aee2b5",
+			"tier": "medium",
+			"roots": [
+				"core/src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "jackson-core",
+			"repository": "https://github.com/FasterXML/jackson-core",
+			"commit": "e2f6ac4e4a987e69d3c80c7a7b7a21eedded08a0",
+			"tier": "medium",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [
+				"ch.randelshofer:fastdoubleparser:2.0.1"
+			],
+			"expected": {
+				"problems": 3,
+				"step": "none"
+			}
+		},
+		{
+			"name": "joda-time",
+			"repository": "https://github.com/JodaOrg/joda-time",
+			"commit": "5ffcf3c2bce34c95207ef2746229a40a932afeee",
+			"tier": "large",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [
+				"org.joda:joda-convert:1.9.2"
+			],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "commons-collections",
+			"repository": "https://github.com/apache/commons-collections",
+			"commit": "2fd30e866fb51afca6552ef2533204d3353e9fd3",
+			"tier": "large",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 4,
+				"step": "none"
+			}
+		},
+		{
+			"name": "TheAlgorithms-Java",
+			"repository": "https://github.com/TheAlgorithms/Java",
+			"commit": "e43ec3897e48f23843972d02cd05a5bb1b6864a2",
+			"tier": "large",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [
+				"org.apache.commons:commons-lang3:3.18.0",
+				"org.apache.commons:commons-collections4:4.5.0"
+			],
+			"expected": {
+				"problems": 32,
+				"step": "none"
+			}
+		},
+		{
+			"name": "commons-lang",
+			"repository": "https://github.com/apache/commons-lang",
+			"commit": "dd2c9e85784b288c7507c3736818040b3b457842",
+			"tier": "large",
+			"roots": [
+				"src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		},
+		{
+			"name": "javaparser",
+			"repository": "https://github.com/javaparser/javaparser",
+			"commit": "19eead3ebc6efb7c028dbdd1e8aa3cfd26cc2e88",
+			"tier": "large",
+			"roots": [
+				"javaparser-core/src/main/java",
+				"javaparser-symbol-solver-core/src/main/java"
+			],
+			"dependencies": [
+				"org.javassist:javassist:3.30.2-GA",
+				"com.google.guava:guava:33.3.1-jre"
+			],
+			"expected": {
+				"problems": 431,
+				"step": "none"
+			}
+		},
+		{
+			"name": "commons-math",
+			"repository": "https://github.com/apache/commons-math",
+			"commit": "465966883044581a1ad5adc389cec43b6b941e84",
+			"tier": "large",
+			"roots": [
+				"commons-math-core/src/main/java",
+				"commons-math-legacy/src/main/java",
+				"commons-math-legacy-core/src/main/java",
+				"commons-math-legacy-exception/src/main/java",
+				"commons-math-neuralnet/src/main/java",
+				"commons-math-transform/src/main/java"
+			],
+			"dependencies": [],
+			"expected": {
+				"problems": 918,
+				"step": "none"
+			}
+		},
+		{
+			"name": "guava",
+			"repository": "https://github.com/google/guava",
+			"commit": "6b3a8d7498a7fde122967ba37a023ba3dcb47792",
+			"tier": "xl",
+			"roots": [
+				"guava/src"
+			],
+			"dependencies": [
+				"com.google.guava:failureaccess:1.0.2",
+				"org.jspecify:jspecify:1.0.0",
+				"com.google.errorprone:error_prone_annotations:2.36.0",
+				"com.google.j2objc:j2objc-annotations:3.0.0"
+			],
+			"expected": {
+				"problems": 17,
+				"step": "none"
+			}
+		},
+		{
+			"name": "forge-engine",
+			"repository": "https://github.com/Card-Forge/forge",
+			"commit": "ca64cc928ec6678303e5dc2ac7ee7f62170f91c3",
+			"tier": "xl",
+			"roots": [
+				"forge-core/src/main/java",
+				"forge-game/src/main/java",
+				"forge-ai/src/main/java"
+			],
+			"dependencies": [
+				"com.google.guava:guava:33.3.1-android",
+				"org.apache.commons:commons-lang3:3.18.0",
+				"org.apache.commons:commons-text:1.12.0",
+				"com.apptasticsoftware:rssreader:3.8.2",
+				"org.tinylog:tinylog-api:2.7.0",
+				"org.tinylog:tinylog-impl:2.7.0",
+				"io.sentry:sentry:8.21.1",
+				"org.jgrapht:jgrapht-core:1.5.2",
+				"org.apache.commons:commons-math3:3.6.1"
+			],
+			"expected": {
+				"problems": 0,
+				"step": "checks"
+			}
+		}
+	]
+}

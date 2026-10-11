@@ -1,6 +1,7 @@
 # Validation roadmap: from `--check` to passing tests on real projects
 
-Status: proposed 2026-10-11. M0 in progress.
+Status (2026-10-11): M0 waiting on the maintainer's manual checks; M1 done;
+M2 started.
 
 ## Goal
 
@@ -73,6 +74,11 @@ machine holds an invalid token that overrides the valid keyring login.
 Clear it, or run `gh` with it unset.
 
 ### M1 — Corpus harness
+
+**Status (2026-10-11):** Done. `npm run corpus`, 26 projects; nightly CI in
+`.github/workflows/corpus.yml`. On Windows, a project whose tree has a file
+name Windows rejects (TheAlgorithms) is read from Git objects instead of
+checked out. Building it surfaced the first M2 work: see the scoreboard.
 
 - `test/corpus/projects.json`: per project, the repository, a **pinned
   commit**, source roots, dependency Maven coordinates, and the expected

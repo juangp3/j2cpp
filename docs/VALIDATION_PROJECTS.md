@@ -20,9 +20,10 @@ are in [Methodology and caveats](#methodology-and-caveats).
   at 8 or 11 is fine; one at 21 is not (see TheAlgorithms).
 - **Deps:** non-test runtime dependencies. They must be on `--classpath`
   (or added to `--sourcepath`) before `--check` can pass.
-- **Baseline:** the result of
+- **Baseline:** the first measurement (2026-10-11), the result of
   `j2c --check --format json --sourcepath <main roots> <main roots>`, with
-  **no dependencies supplied**. Most problems are therefore unresolved
+  **no dependencies supplied**. The [scoreboard](#scoreboard) has the
+  current results, with dependencies. Most problems are therefore unresolved
   imports, not J2C gaps. Each project's notes give the real cause.
 - **Tests:** the test frameworks and features found, checked against what
   `--tests` supports today (Phase 13 T1–T3a): JUnit 4 and 5 `@Test`,
@@ -41,6 +42,44 @@ Phase 10 runtime exists, translated code compiles and links, but JDK calls
 reach `unimplemented_()` stubs. So "translates clean" here means `--check`
 passes and the C++ is expected to build; running the tests for real needs
 Phase 10 step 1 and Phase 13 T3b.
+
+## Scoreboard
+
+How far each project gets, from `test/corpus/projects.json`. `npm run corpus`
+(in `vscode/`) checks every project at its pinned commit and fails when a
+problem count rises or a project drops a step. `--build` also translates and
+compiles. `--update` raises the expectations and rewrites this table.
+
+<!-- corpus-scoreboard:begin -->
+| Project | Tier | Problems | Ladder step |
+| --- | --- | ---: | --- |
+| hashids-java | small | 0 | builds |
+| jBCrypt | small | 0 | builds |
+| semver4j | small | 0 | checks |
+| bcrypt | small | 0 | checks |
+| javapoet | small | 0 | checks |
+| jsemver | small | 0 | checks |
+| minimal-json | small | 0 | builds |
+| JavaHamcrest | small | 0 | builds |
+| JSON-java | medium | 0 | checks |
+| javaewah | medium | 0 | checks |
+| gson | medium | 8 | none |
+| commons-codec | medium | 0 | checks |
+| williamfiset-algorithms | medium | 0 | checks |
+| jsoup | medium | 0 | checks |
+| commons-text | medium | 4 | none |
+| RoaringBitmap | medium | 0 | checks |
+| zxing-core | medium | 0 | checks |
+| jackson-core | medium | 3 | none |
+| joda-time | large | 0 | checks |
+| commons-collections | large | 4 | none |
+| TheAlgorithms-Java | large | 32 | none |
+| commons-lang | large | 0 | checks |
+| javaparser | large | 431 | none |
+| commons-math | large | 918 | none |
+| guava | xl | 17 | none |
+| forge-engine | xl | 0 | checks |
+<!-- corpus-scoreboard:end -->
 
 ## Summary
 

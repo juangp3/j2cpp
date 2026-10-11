@@ -33,6 +33,10 @@ import se.arnetheduck.j2c.transform.Transformer;
 final class J2cService {
 	/** Written into every output directory, so it can be safely replaced */
 	static final String OUTPUT_MARKER = ".j2c-output";
+	// Module and package declarations have nothing to translate, and checking
+	// a module declaration fails when its packages are compiled as sources
+	private static final List<String> DECLARES_NO_TYPES = Arrays.asList(
+			"module-info.java", "package-info.java");
 	/** Version of the JSON shapes produced below */
 	static final int SCHEMA_VERSION = 1;
 
@@ -257,7 +261,8 @@ final class J2cService {
 		for (File entry : entries) {
 			if (entry.isDirectory()) {
 				collectSources(entry, sources);
-			} else if (entry.getName().endsWith(".java")) {
+			} else if (entry.getName().endsWith(".java")
+					&& !DECLARES_NO_TYPES.contains(entry.getName())) {
 				sources.add(entry);
 			}
 		}

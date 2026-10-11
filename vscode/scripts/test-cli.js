@@ -158,6 +158,17 @@ try {
 		["J2C-LAMBDA-NON-DENOTABLE-TYPE@7"], JSON.stringify(capture.problems));
 	assert(capture.problems[0].message.includes("captured wildcard"));
 
+	// A module declaration is skipped: it has nothing to translate, and
+	// checking it against packages compiled as sources fails
+	const moduleRoot = path.join(tempDirectory, "module source");
+	fs.mkdirSync(path.join(moduleRoot, "mod", "api"), { recursive: true });
+	fs.writeFileSync(path.join(moduleRoot, "module-info.java"), "module mod { exports mod.api; }\n");
+	fs.writeFileSync(path.join(moduleRoot, "mod", "api", "package-info.java"), "package mod.api;\n");
+	fs.writeFileSync(path.join(moduleRoot, "mod", "api", "Api.java"), "package mod.api;\npublic class Api {}\n");
+	const moduleCheck = JSON.parse(runCli(["--check", "--format", "json", moduleRoot]).stdout);
+	assert.deepStrictEqual(moduleCheck.problems, [], JSON.stringify(moduleCheck.problems));
+	assert.strictEqual(moduleCheck.files, 1);
+
 	const lambdaOutput = path.join(tempDirectory, "lambda output");
 	fs.mkdirSync(lambdaOutput);
 	const lambdas = runCli(["--output", lambdaOutput, lambdaSource]);
