@@ -169,6 +169,37 @@ try {
 	assert.deepStrictEqual(moduleCheck.problems, [], JSON.stringify(moduleCheck.problems));
 	assert.strictEqual(moduleCheck.files, 1);
 
+	// Stubs for class path types guess setter and getter bodies only when the
+	// types fit: commons-cli's Option has setType(Object) beside a Class field
+	const libraryRoot = path.join(tempDirectory, "library");
+	fs.mkdirSync(path.join(libraryRoot, "lib"), { recursive: true });
+	fs.writeFileSync(path.join(libraryRoot, "lib", "Option.java"), [
+		"package lib;",
+		"public class Option {",
+		"\tprivate Class<?> type;",
+		"\tprivate String name;",
+		"\tpublic void setType(Class<?> type) { this.type = type; }",
+		"\tpublic void setType(Object type) { this.type = (Class<?>) type; }",
+		"\tpublic Object getName() { return name; }",
+		"}",
+		""
+	].join("\n"));
+	const libraryClasses = path.join(tempDirectory, "library classes");
+	const javac = childProcess.spawnSync("javac", ["-d", libraryClasses, path.join(libraryRoot, "lib", "Option.java")],
+		{ encoding: "utf8" });
+	assert.strictEqual(javac.status, 0, javac.stderr);
+	const userRoot = path.join(tempDirectory, "library user");
+	fs.mkdirSync(path.join(userRoot, "app"), { recursive: true });
+	fs.writeFileSync(path.join(userRoot, "app", "Use.java"),
+		"package app;\npublic class Use { Object name(lib.Option o) { o.setType(String.class); return o.getName(); } }\n");
+	const libraryOutput = path.join(tempDirectory, "library output");
+	fs.mkdirSync(libraryOutput);
+	const libraryRun = runCli(["--output", libraryOutput, "--classpath", libraryClasses, userRoot]);
+	assert.strictEqual(libraryRun.status, 0, libraryRun.stderr);
+	const optionStub = fs.readFileSync(path.join(libraryOutput, "ext", "stub", "lib", "Option-stub.cpp"), "utf8");
+	assert.strictEqual(optionStub.split("/* setter */").length - 1, 1, optionStub);
+	assert(optionStub.includes("return name_ ; /* getter */") || optionStub.includes("return name ; /* getter */"), optionStub);
+
 	const lambdaOutput = path.join(tempDirectory, "lambda output");
 	fs.mkdirSync(lambdaOutput);
 	const lambdas = runCli(["--output", lambdaOutput, lambdaSource]);

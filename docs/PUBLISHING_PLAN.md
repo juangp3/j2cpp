@@ -588,7 +588,7 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
-#### G12–G17 — C++ build errors found by the corpus (M2)
+#### G12–G18 — C++ build errors found by the corpus (M2)
 
 **Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
 a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
@@ -619,6 +619,12 @@ a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
   branches now cast to its class bound (or `Object`), and an intersection
   dependency includes each bound's header instead of a missing
   `Object.hpp`.
+- **G18, guessed stub bodies for getters and setters** (bcrypt): stubs for
+  class path types guess `setX` and `getX` bodies from a field `x`, but
+  compared the types backwards. commons-cli's `setType(Object)` beside a
+  `Class` field became `this->type = a0`, and a getter whose return type is
+  wider than its field got an empty body. The guess now needs the value's
+  type to fit, and otherwise leaves the stub's `unimplemented_()` body.
 
 ### How to test a gap fix
 

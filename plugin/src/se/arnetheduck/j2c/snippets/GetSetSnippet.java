@@ -35,16 +35,18 @@ public class GetSetSnippet extends EmptySnippet {
 		for (IVariableBinding vb : tb.getDeclaredFields()) {
 			if (ms == TransformUtil.isStatic(vb) && vb.getName().equals(v)) {
 				boolean asMethod = TransformUtil.asMethod(vb);
+				// a.isAssignmentCompatible(b): a value of type a fits in b
 				if (getter
-						&& mb.getReturnType().isAssignmentCompatible(
-								vb.getType())) {
+						&& vb.getType().getErasure().isAssignmentCompatible(
+								mb.getReturnType().getErasure())) {
 					w.println("return " + CName.of(vb) + (asMethod ? "()" : "")
 							+ " ; /* getter */");
+					return false;
 				} else if (setter
 						&& mb.getReturnType().getName().equals("void")
 						&& mb.getParameterTypes().length == 1
-						&& vb.getType().isAssignmentCompatible(
-								mb.getParameterTypes()[0])) {
+						&& mb.getParameterTypes()[0].getErasure()
+								.isAssignmentCompatible(vb.getType().getErasure())) {
 					w.print(TransformUtil.indent(1));
 					if (ms) {
 						w.print(CName.of(tb) + "::");
@@ -54,9 +56,11 @@ public class GetSetSnippet extends EmptySnippet {
 
 					w.println(CName.of(vb) + (asMethod ? "()" : "") + " = "
 							+ ctx.paramName(mb, 0) + "; /* setter */");
+					return false;
 				}
 
-				return false;
+				// Types differ, as in setType(Object) beside a Class field
+				return true;
 			}
 		}
 
