@@ -158,4 +158,34 @@ public class Java17Lambdas {
 		second.accept(2);
 		return tally.total;
 	}
+
+	// A lambda in a field initializer that uses the enclosing instance
+	// (found in williamfiset/algorithms)
+	private final IntBinaryOperator plusBase = (a, b) -> a + b + base;
+
+	public int fieldInitializerLambda() {
+		return plusBase.applyAsInt(1, 2);
+	}
+
+	// A default method that implements a generic superinterface method needs
+	// a bridge in the interface (found in jsemver)
+	public interface Check<T> {
+		boolean test(T value);
+	}
+
+	public interface PositiveTally extends Check<Tally> {
+		default boolean test(Tally tally) {
+			return tally.total > 0;
+		}
+	}
+
+	public static class AnyPositive implements PositiveTally {
+	}
+
+	public static boolean bridgedDefault(int value) {
+		Check<Tally> check = new AnyPositive();
+		Tally tally = new Tally();
+		tally.add(value);
+		return check.test(tally);
+	}
 }

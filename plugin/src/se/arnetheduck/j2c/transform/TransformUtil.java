@@ -28,6 +28,7 @@ import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
+import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.IPackageBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
@@ -641,6 +642,16 @@ public final class TransformUtil {
 		if (tb.isLocal()) {
 			IMethodBinding mb = tb.getDeclaringMethod();
 			if (mb == null) {
+				// A field initializer; the Java model below only exists in an
+				// Eclipse workspace, not in the CLI
+				IBinding member = tb.getDeclaringMember();
+				if (member instanceof IVariableBinding) {
+					IVariableBinding field = (IVariableBinding) member;
+					return !Modifier.isStatic(field.getModifiers())
+							&& !field.isEnumConstant()
+							&& !field.getDeclaringClass().isInterface();
+				}
+
 				// Could be https://bugs.eclipse.org/bugs/show_bug.cgi?id=383486
 				IJavaElement je = tb.getJavaElement();
 
@@ -1055,7 +1066,8 @@ public final class TransformUtil {
 	public static String printEnumCtorParams(Transformer ctx, PrintWriter pw,
 			ITypeBinding type, String sep, DepInfo deps) {
 		if (type.isEnum()) {
-			pw.print(sep + "::java::lang::String* name, int ordinal");
+			// Prefixed: a Java constructor parameter may be called name or ordinal
+			pw.print(sep + "::java::lang::String* j2c_name, int j2c_ordinal");
 			deps.soft(ctx.resolve(String.class));
 			return ", ";
 		}
@@ -1072,7 +1084,7 @@ public final class TransformUtil {
 	public static String printEnumCtorCallParams(PrintWriter pw,
 			ITypeBinding type, String sep) {
 		if (type.isEnum()) {
-			pw.print(sep + "name, ordinal");
+			pw.print(sep + "j2c_name, j2c_ordinal");
 			return ", ";
 		}
 

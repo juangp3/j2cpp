@@ -19,7 +19,8 @@ const path = require("path");
 
 const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
-const cliJar = path.join(repositoryRoot, "target", "j2c-cli.jar");
+// J2C_CLI_JAR runs a copy, so rebuilding target/ does not disturb a long run
+const cliJar = process.env.J2C_CLI_JAR || path.join(repositoryRoot, "target", "j2c-cli.jar");
 const corpusFile = path.join(repositoryRoot, "test", "corpus", "projects.json");
 const scoreboardFile = path.join(repositoryRoot, "docs", "VALIDATION_PROJECTS.md");
 const workRoot = path.join(repositoryRoot, "target", "corpus");
@@ -196,7 +197,7 @@ function build(project, directory, jars) {
 	// Distinct compiler errors, without their locations
 	const errors = new Map();
 	for (const line of `${result.stdout}\n${result.stderr}`.split(/\r?\n/)) {
-		const match = /^(.*?):\d+:\d+: error: (.*)$/.exec(line);
+		const match = /^(.*?):\d+:\d+: (?:fatal )?error: (.*)$/.exec(line);
 		if (match && !errors.has(match[2])) {
 			errors.set(match[2], `${path.basename(match[1])}: ${match[2]}`);
 		}

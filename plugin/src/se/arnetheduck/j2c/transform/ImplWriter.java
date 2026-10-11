@@ -831,6 +831,8 @@ public class ImplWriter extends TransformWriter {
 
 	/** C++ names of hoisted instanceof pattern variables, by binding key */
 	private final Map<String, String> patternNames = new HashMap<String, String>();
+	// Boxed variables printed once as assignment targets, without unboxing
+	private final Set<Expression> unboxedTargets = new HashSet<Expression>();
 	/** Statements wrapped in braces to scope their pattern variables */
 	private final Set<ASTNode> patternBlocks = new HashSet<ASTNode>();
 
@@ -850,7 +852,7 @@ public class ImplWriter extends TransformWriter {
 			Expression expr = (Expression) node;
 
 			if ((expr.resolveBoxing() || expr.resolveUnboxing())
-					&& checkBoxNesting(expr)) {
+					&& checkBoxNesting(expr) && !unboxedTargets.remove(expr)) {
 
 				if (expr.resolveBoxing()) {
 					ITypeBinding tb2 = boxingType(expr);
@@ -1255,6 +1257,12 @@ public class ImplWriter extends TransformWriter {
 			return false;
 		}
 
+		if (node.getOperator() != Operator.ASSIGN && boxedTarget(lhs)) {
+			String operator = node.getOperator().toString();
+			printBoxedUpdate(lhs, operator.substring(0, operator.length() - 1), rhs);
+			return false;
+		}
+
 		if (printIntegerAssignment(node)) {
 			return false;
 		}
@@ -1412,6 +1420,21 @@ public class ImplWriter extends TransformWriter {
 			return false;
 		}
 
+		if (target.isPrimitive() && source != null && !source.isPrimitive()
+				&& !TransformUtil.isNullLiteral(node.getExpression())
+				&& !TransformUtil.reverses.containsKey(source.getErasure()
+						.getQualifiedName())) {
+			// (int) object: a checked cast to the box, then unboxing
+			ITypeBinding box = node.getAST().resolveWellKnownType(
+					TransformUtil.primitives.get(target.getName()));
+			print("(");
+			npc();
+			javaCast(source, box);
+			node.getExpression().accept(this);
+			print(")))->" + target.getName() + "Value()");
+			return false;
+		}
+
 		if (target.isPrimitive()
 				|| TransformUtil.isNullLiteral(node.getExpression())) {
 			staticCast(source, target);
@@ -1521,6 +1544,17 @@ public class ImplWriter extends TransformWriter {
 	@Override
 	public boolean visit(ConditionalExpression node) {
 		ITypeBinding tb = node.resolveTypeBinding();
+		if (tb != null && tb.isIntersectionType()) {
+			// c ? "text" : 1 has type Object & Serializable & Comparable<...>,
+			// which C++ cannot name: use its class bound, else Object
+			ITypeBinding common = ctx.resolve(Object.class);
+			for (ITypeBinding bound : tb.getTypeBounds()) {
+				if (bound.isClass()) {
+					common = bound.getErasure();
+				}
+			}
+			tb = common;
+		}
 		node.getExpression().accept(this);
 		print(" ? ");
 		cast(node.getThenExpression(), tb, true);
@@ -2699,16 +2733,111 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(PostfixExpression node) {
-		node.getOperand().accept(this);
+		Expression operand = node.getOperand();
+		if (boxedTarget(operand)) {
+			String operator = node.getOperator() == PostfixExpression.Operator.INCREMENT ? "+"
+					: "-";
+			ASTNode parent = node.getParent();
+			if (parent instanceof ExpressionStatement
+					|| parent instanceof ForStatement) {
+				// The old value is unused
+				printBoxedUpdate(operand, operator, null);
+			} else {
+				// x++ evaluates to the old box
+				ITypeBinding box = operand.resolveTypeBinding().getErasure();
+				print("[&]() { auto _j2c_old = ");
+				unboxedTargets.add(operand);
+				operand.accept(this);
+				print("; ");
+				unboxedTargets.add(operand);
+				operand.accept(this);
+				print(" = " + CName.relative(box, type, true) + "::valueOf(static_cast<"
+						+ CName.of(unboxed(operand)) + ">(");
+				npc();
+				print("_j2c_old)->" + TransformUtil.reverses.get(box.getQualifiedName())
+						+ "Value() " + operator + " 1)); return _j2c_old; }()");
+			}
+			return false;
+		}
+		operand.accept(this);
 		print(node.getOperator().toString());
 		return false;
 	}
 
 	@Override
 	public boolean visit(PrefixExpression node) {
+		Expression operand = node.getOperand();
+		if ((node.getOperator() == PrefixExpression.Operator.INCREMENT || node
+				.getOperator() == PrefixExpression.Operator.DECREMENT)
+				&& boxedTarget(operand)) {
+			print("(");
+			printBoxedUpdate(operand,
+					node.getOperator() == PrefixExpression.Operator.INCREMENT ? "+"
+							: "-", null);
+			print(")");
+			return false;
+		}
 		print(node.getOperator().toString());
-		node.getOperand().accept(this);
+		operand.accept(this);
 		return false;
+	}
+
+	/**
+	 * Whether an updated variable is a box (Integer, Character...), which Java
+	 * replaces with a new box rather than changing in place. Array elements
+	 * are left alone: their index would be evaluated twice.
+	 */
+	private static boolean boxedTarget(Expression target) {
+		ITypeBinding tb = target.resolveTypeBinding();
+		return tb != null && !tb.isPrimitive()
+				&& TransformUtil.reverses.containsKey(tb.getErasure().getQualifiedName())
+				&& (target instanceof Name || target instanceof FieldAccess);
+	}
+
+	private static ITypeBinding unboxed(Expression target) {
+		return target.getAST().resolveWellKnownType(
+				TransformUtil.reverses.get(target.resolveTypeBinding().getErasure()
+						.getQualifiedName()));
+	}
+
+	/**
+	 * target = Box::valueOf(static_cast<primitive>(target op value)), with
+	 * value 1 when null (++ and --)
+	 */
+	private void printBoxedUpdate(Expression target, String operator,
+			Expression value) {
+		ITypeBinding box = target.resolveTypeBinding().getErasure();
+		ITypeBinding primitive = unboxed(target);
+		hardDep(box);
+		unboxedTargets.add(target);
+		target.accept(this);
+		print(" = " + CName.relative(box, type, true) + "::valueOf(static_cast<"
+				+ CName.of(primitive) + ">(");
+		String helper = value != null && isIntegral(primitive) ? integerHelper(operator)
+				: null;
+		if (helper != null) {
+			boolean shift = !helper.equals("jdiv") && !helper.equals("jrem");
+			String promotedType = promoted(primitive, null);
+			if (!shift) {
+				promotedType = promoted(promotedType, operandType(value));
+			}
+			deps.setNeedsJavaMath();
+			print(helper + "<" + promotedType + ">(");
+			target.accept(this);
+			print(", ");
+			value.accept(this);
+			print(")");
+		} else {
+			target.accept(this);
+			print(" " + operator + " ");
+			if (value == null) {
+				print("1");
+			} else {
+				hardDep(value.resolveTypeBinding());
+				value.accept(this);
+			}
+		}
+		print("))");
 	}
 
 	@Override

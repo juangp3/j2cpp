@@ -36,6 +36,14 @@ public class DepInfo {
 
 	/** Soft dependency, forward declaration sufficient */
 	public void soft(ITypeBinding dep) {
+		if (dep.isIntersectionType()) {
+			// A & B has no header of its own
+			for (ITypeBinding bound : dep.getTypeBounds()) {
+				soft(bound);
+			}
+			return;
+		}
+
 		if (TransformUtil.addDep(dep, softDeps)) {
 			ctx.softDep(dep);
 		}
@@ -45,6 +53,13 @@ public class DepInfo {
 
 	/** Hard dependency, class declaration required */
 	public void hard(ITypeBinding dep) {
+		if (dep.isIntersectionType()) {
+			for (ITypeBinding bound : dep.getTypeBounds()) {
+				hard(bound);
+			}
+			return;
+		}
+
 		if (TransformUtil.addDep(dep, hardDeps)) {
 			ctx.hardDep(dep);
 			soft(dep);

@@ -597,9 +597,13 @@ public class Header {
 	}
 
 	private void printMethods() {
-		if (TypeUtil.isClassLike(type)) {
-			for (List<IMethodBinding> e : methods.values()) {
-				for (IMethodBinding mb : e) {
+		for (List<IMethodBinding> e : methods.values()) {
+			for (IMethodBinding mb : e) {
+				// Interfaces bridge only default methods, which have a body
+				// to forward to (Predicate<Version>.test(Object) to a default
+				// test(Version))
+				if (TypeUtil.isClassLike(type)
+						|| org.eclipse.jdt.core.dom.Modifier.isDefault(mb.getModifiers())) {
 					access = TransformUtil.declareBridge(ctx, out, type, mb,
 							deps, access);
 				}

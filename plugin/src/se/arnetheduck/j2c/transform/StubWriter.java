@@ -388,8 +388,8 @@ public class StubWriter {
 		println("}");
 		println();
 
-		// Headers declare bridges only for class-like types
-		if (TypeUtil.isClassLike(type)) {
+		// Headers declare bridges for class-like types and default methods
+		if (TypeUtil.isClassLike(type) || org.eclipse.jdt.core.dom.Modifier.isDefault(mb.getModifiers())) {
 			TransformUtil.defineBridge(ctx, out, type, mb, deps);
 		}
 	}

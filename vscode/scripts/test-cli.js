@@ -416,6 +416,22 @@ try {
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"go"_j)) || (npc(v)->equals(u"run"_j))`));
 		assert(featureSource.includes("finally([&] { if (reader != nullptr) { reader->close(); } })"));
 		assert(!featureSource.includes("try ("), "try-with-resources must not be emitted verbatim");
+		// Boxed compound assignments, increments and decrements make new boxes
+		assert(featureSource.includes("a = ::java::lang::Integer::valueOf(static_cast<int32_t>((npc(a))->intValue() + 2))"));
+		assert(featureSource.includes("b = ::java::lang::Long::valueOf(static_cast<int64_t>((npc(b))->longValue() * 3))"));
+		assert(featureSource.includes("auto _j2c_old = a;"));
+		assert(featureSource.includes("jdiv<int32_t>((npc(a))->intValue(), 2)"));
+		assert(!featureSource.includes("->intValue() +="), "a box must not be updated in place");
+		// (int) object checks the box, then unboxes
+		assert(featureSource.includes("(npc(java_cast< ::java::lang::Integer* >(value)))->intValue()"));
+		// A conditional with an intersection type casts to a nameable type
+		assert(featureSource.includes("static_cast< ::java::lang::Object* >(u\"none\"_j)"));
+		assert(!/#include <Object\.hpp>/.test(featureSource), "no header exists for an intersection type");
+		// Implicit enum constructor parameters cannot clash with Java ones
+		const namedHeader = fs.readFileSync(path.join(
+			featuresOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Features_Named.hpp"
+		), "utf8");
+		assert(namedHeader.includes("::java::lang::String* j2c_name, int j2c_ordinal, ::java::lang::String* name"));
 
 		const lambdasOutput = path.join(tempDirectory, "lambdas output");
 		fs.mkdirSync(lambdasOutput);
@@ -433,6 +449,13 @@ try {
 		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
 		// A reassigned bound receiver is passed in, not captured
 		assert(lambdaSources.includes("->bind(tally)"));
+		// A field-initializer lambda receives the enclosing instance
+		assert(lambdaSources.includes("new Java17Lambdas_1(this)"));
+		// An interface bridges its default method to the generic superinterface
+		const positiveHeader = fs.readFileSync(path.join(
+			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_PositiveTally.hpp"
+		), "utf8");
+		assert(positiveHeader.includes("virtual bool test(::java::lang::Object* value) override;"), positiveHeader);
 		// Default and static interface methods get stub definitions
 		assert(fs.existsSync(path.join(lambdasOutput, "ext", "stub", "java", "util", "Comparator-stub.cpp")));
 

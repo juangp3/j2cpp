@@ -37,5 +37,9 @@ int main() {
 	if (Java17Lambdas::genericReference() == nullptr) return 7;
 	// The first reference keeps the first receiver after reassignment
 	if (Java17Lambdas::reassignedReceiver() != 2) return 8;
+	// plusBase = (a, b) -> a + b + base, created by a field initializer
+	if (lambdas->fieldInitializerLambda() != 13) return 9;
+	// Check<Tally>.test(Object) bridges to the default test(Tally)
+	if (!Java17Lambdas::bridgedDefault(3) || Java17Lambdas::bridgedDefault(0)) return 10;
 	return 0;
 }

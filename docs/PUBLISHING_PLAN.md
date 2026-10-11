@@ -588,6 +588,38 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
+#### G12–G17 — C++ build errors found by the corpus (M2)
+
+**Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
+a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
+`Java17LambdasSmoke.cpp` where it needs no JDK code.
+
+- **G12, updating a box** (semver4j, williamfiset/algorithms, zxing):
+  `Integer x; x += 2`, `x++` and `++x` emitted `npc(x)->intValue() += 2`.
+  Java replaces the box, so J2C now emits
+  `x = Integer::valueOf(static_cast<int32_t>(x.intValue() + 2))`, with the
+  Java integer helpers for `/`, `%` and shifts, and a lambda returning the
+  old box for `x++` used as a value. Array elements are not handled yet.
+- **G13, cast from a reference to a primitive** (zxing): `(int) object` is a
+  checked cast to `Integer` and then unboxing, not a C++ `static_cast`.
+- **G14, lambda in an instance field initializer** (williamfiset/algorithms):
+  the generated class did not receive the enclosing instance. JDT has no
+  declaring method there, and J2C fell back to the Eclipse Java model, which
+  the CLI does not have; it now uses `ITypeBinding.getDeclaringMember()`.
+- **G15, enum constructor parameter called `name` or `ordinal`**
+  (commons-codec): clashed with the implicit enum parameters, now
+  `j2c_name` and `j2c_ordinal`.
+- **G16, default method implementing a generic superinterface method**
+  (jsemver): `interface E extends Predicate<V> { default boolean test(V v) }`
+  needs a bridge `test(Object*)` in the interface, which was defined but not
+  declared, leaving implementing classes abstract. Interfaces now declare
+  bridges for default methods.
+- **G17, conditional with an intersection type** (zxing):
+  `c ? "text" : 1` has type `Object & Serializable & Comparable<...>`. The
+  branches now cast to its class bound (or `Object`), and an intersection
+  dependency includes each bound's header instead of a missing
+  `Object.hpp`.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
