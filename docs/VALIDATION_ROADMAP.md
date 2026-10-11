@@ -50,6 +50,7 @@ The 2026-10-11 baseline over 24 projects showed:
 | M5 | Runtime, then T3b | 0.6.x, then 0.7.0 | hashids-java's tests match the JVM |
 | M6 | JUnit 3, parameterized tests and TestNG | about 1 week | joda-time and commons-codec tests build |
 | M7 | Agent-efficient, readable output | A1–A3 during M2; the rest after | Token benchmark shows the J2C workflow far cheaper than LLM-only translation |
+| M8 | UI boundaries for applications (proposed) | U1–U3 small; U4–U8 with Phase 10 | Forge core (engine plus forge-gui) translated with a C++ facade; UI route chosen by a one-screen experiment |
 
 ### M0 — Ship 0.6.0
 
@@ -261,6 +262,32 @@ Order:
 
 This takes Phase 12 items 1, 4 and 7 into M7, because they are central to the
 project's goal.
+
+### M8 — UI boundaries for applications (proposed)
+
+J2C does not translate UI toolkits. It translates everything below the UI,
+and makes the UI rewrite cheap for an agent. Study and measurements:
+[UI_TRANSLATION_STUDY.md](UI_TRANSLATION_STUDY.md).
+
+| ID | Item | Done when |
+| --- | --- | --- |
+| U1 | Library-use report: `--check --report library-use` and an MCP option; member-level, from bindings; toolkit groups (Swing, AWT-UI, AWT-headless, JavaFX, SWT, libGDX, Android); signature or body use | Fixture assertions pass; Forge desktop reports 251 types and 1,556 members, and forge-gui reports 1 file |
+| U2 | `j2c boundary` and the `j2c_boundary` MCP tool: proposed engine and UI sets, the leak list with evidence and fix hints; no class-level transitive closure | The boundary fixture's leak list matches exactly; Forge reports only `AutoUpdater` |
+| U3 | `--forbid-api <prefixes>` with a new `J2C-FORBIDDEN-API` problem ID | CLI, MCP and corpus checks pass |
+| U4 | Engine facade: `--facade <types>` headers, string helpers, and a `RUNTIME.md` section on implementing translated interfaces in C++ | A smoke harness implements a Java interface in C++, called from translated code, under UBSan |
+| U5 | MCP `j2c_ui_inventory` and `j2c_ui_slice` with a token budget, and the diff since a commit (with A6) | `test-mcp.js` passes; a Forge screen slice fits its budget |
+| U6 | UI token benchmark, an extension of A7: 2–3 Forge screens ported with and without U5 | Tokens and build results recorded |
+| U7 | Runtime: headless AWT value types (`java.awt.geom`, `Point`, `Dimension`, `Rectangle`, `Color`) | Differential programs match the JVM |
+| U8 | libGDX probe: libGDX core in the corpus, then a C++ backend prototype | libGDX core reaches "builds"; later, a sample renders a frame |
+
+Order: U1–U3 alongside M2 and M3 (small, read-only analysis); U4 with
+Phase 10 step 1; U5 and U6 after M7 A1 and A6; U7 after Phase 10 milestone
+2; U8 after milestone 4 (threads, buffers).
+
+Forge track: a corpus entry for engine plus forge-gui (expect clean), the
+`AutoUpdater` fix, then `SimulateMatch` as the first runnable target. The UI
+route is decided by a one-screen experiment: translated libGDX or an agent
+rewrite.
 
 ## Deferred
 
