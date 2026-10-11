@@ -138,6 +138,26 @@ try {
 		"}",
 		""
 	].join("\n"));
+	// A captured wildcard as an invariant type argument cannot be implemented
+	// by any class; it is reported (found in commons-collections)
+	const captureSource = path.join(scratchPackage, "Capture.java");
+	fs.writeFileSync(captureSource, [
+		"package scratch;",
+		"import java.util.Collection;",
+		"import java.util.function.ToIntFunction;",
+		"public class Capture {",
+		"\tstatic <C> int sum(Iterable<C> items, ToIntFunction<C> f) { return 0; }",
+		"\tstatic <E> int sizes(Iterable<? extends Collection<E>> items) {",
+		"\t\treturn sum(items, Collection::size);",
+		"\t}",
+		"}",
+		""
+	].join("\n"));
+	const capture = JSON.parse(runCli(["--check", "--format", "json", captureSource]).stdout);
+	assert.deepStrictEqual(capture.problems.map((problem) => `${problem.id}@${problem.line}`),
+		["J2C-LAMBDA-NON-DENOTABLE-TYPE@7"], JSON.stringify(capture.problems));
+	assert(capture.problems[0].message.includes("captured wildcard"));
+
 	const lambdaOutput = path.join(tempDirectory, "lambda output");
 	fs.mkdirSync(lambdaOutput);
 	const lambdas = runCli(["--output", lambdaOutput, lambdaSource]);

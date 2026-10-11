@@ -563,9 +563,76 @@ final class LambdaDesugarer {
 			if (i > 0) {
 				name.append(", ");
 			}
+			if (arguments[i].isCapture()) {
+				// An invariant type argument must be exactly the capture,
+				// which no class can name
+				throw capturedWildcard(target);
+			}
 			name.append(type(arguments[i], true));
 		}
 		return name.append('>').toString();
+	}
+
+	private static Unsupported capturedWildcard(ITypeBinding target) {
+		return new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
+				"its target type " + target.getErasure().getName()
+						+ " has a captured wildcard type argument that no class can implement");
+	}
+
+	/**
+	 * A stand-in for a captured wildcard where any supertype is accepted (it
+	 * was reached through "? super"): its upper bound, or the erasure when the
+	 * bound mentions the capture itself.
+	 */
+	private static ITypeBinding captureUpperBound(ITypeBinding capture) {
+		ITypeBinding wildcard = capture.getWildcard();
+		if (wildcard != null && wildcard.isUpperbound()
+				&& wildcard.getBound() != null) {
+			ITypeBinding bound = wildcard.getBound();
+			return bound.isCapture() ? captureUpperBound(bound) : bound;
+		}
+		for (ITypeBinding bound : capture.getTypeBounds()) {
+			if (!mentionsCapture(bound)) {
+				return bound;
+			}
+		}
+		return capture.getErasure();
+	}
+
+	private static boolean mentionsCapture(ITypeBinding type) {
+		if (type == null) {
+			return false;
+		}
+		if (type.isCapture()) {
+			return true;
+		}
+		if (type.isArray()) {
+			return mentionsCapture(type.getElementType());
+		}
+		if (type.isWildcardType()) {
+			return mentionsCapture(type.getBound());
+		}
+		for (ITypeBinding argument : type.getTypeArguments()) {
+			if (mentionsCapture(argument)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A readable name for a type that has no Java syntax */
+	private static String describe(ITypeBinding type) {
+		if (type.isIntersectionType()) {
+			StringBuilder names = new StringBuilder();
+			for (ITypeBinding bound : type.getTypeBounds()) {
+				names.append(names.length() == 0 ? "" : " & ").append(bound.getName());
+			}
+			return "intersection type " + names;
+		}
+		if (type.isAnonymous()) {
+			return "anonymous class " + type.getBinaryName();
+		}
+		return "type " + type.getName();
 	}
 
 	/**
@@ -575,11 +642,25 @@ final class LambdaDesugarer {
 	private static String type(ITypeBinding type, boolean ground)
 			throws Unsupported {
 		if (type.isCapture()) {
+			if (ground) {
+				// Reached only through "? super" (see groundType), where any
+				// supertype of the capture is accepted
+				return type(captureUpperBound(type), false);
+			}
 			type = type.getWildcard();
 		}
 		if (type.isWildcardType()) {
 			if (ground) {
-				return type(wildcardBound(type), false);
+				ITypeBinding bound = wildcardBound(type);
+				if (bound != null && bound.isCapture()) {
+					if (type.isUpperbound()) {
+						// "? extends CAP" needs a subtype of the capture
+						throw new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
+								"its target type involves a captured wildcard that no class can implement");
+					}
+					return type(captureUpperBound(bound), false);
+				}
+				return type(bound, false);
 			}
 			ITypeBinding bound = type.getBound();
 			return bound == null ? "?" : "?"
@@ -596,8 +677,7 @@ final class LambdaDesugarer {
 		if (type.isIntersectionType() || type.isAnonymous()
 				|| type.isNullType()) {
 			throw new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
-					"the type " + type.getName()
-					+ " cannot be written in Java source");
+					"the " + describe(type) + " cannot be written in Java source");
 		}
 
 		String name = typeName(type);
@@ -638,8 +718,7 @@ final class LambdaDesugarer {
 		ITypeBinding erasure = type.getErasure();
 		if (erasure.isAnonymous()) {
 			throw new Unsupported(ProblemCatalog.LAMBDA_NON_DENOTABLE_TYPE,
-					"the type " + type.getName()
-					+ " cannot be written in Java source");
+					"the " + describe(erasure) + " cannot be written in Java source");
 		}
 		String simple = withoutArguments(erasure.getName());
 		if (erasure.isLocal()) {

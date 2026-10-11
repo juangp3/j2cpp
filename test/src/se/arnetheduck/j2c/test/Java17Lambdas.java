@@ -121,4 +121,17 @@ public class Java17Lambdas {
 	public static boolean isSerializable(Runnable task) {
 		return task instanceof java.io.Serializable;
 	}
+
+	// Targets with captured wildcards under "? super", found in commons-lang:
+	// the generated class implements Consumer<Object> and Consumer<E>
+	public static int countAll(java.util.List<?> items) {
+		int[] count = { 0 };
+		items.forEach(item -> count[0]++);
+		return count[0];
+	}
+
+	public static <E> void copyInto(java.util.Collection<? extends E> from,
+			java.util.Collection<E> to) {
+		from.forEach(element -> to.add(element));
+	}
 }
