@@ -29,6 +29,17 @@ C++20-targeted output.
   not create (its contents would be moved to a backup) unless `--force` is
   given; the extension asks first.
 
+### Runtime (first milestone)
+
+- `--runtime <directory>` translates against a J2C runtime instead of the
+  running JDK: its Java sources replace `java.*`, its C++ natives replace
+  the generated stubs, and the Makefile builds its hooks. The repository's
+  `runtime/` covers `System.out.println` and `main`'s arguments; CI runs a
+  translated Hello World and compares its output with `java`.
+- Every translation now includes `java.lang.Class` and
+  `java.lang.ArrayStoreException`, which generated code always uses, and
+  programs link the program library again after the `-ext` library.
+
 ### Unit tests
 
 - `--tests` translates JUnit 4 and 5 test classes and generates a GoogleTest

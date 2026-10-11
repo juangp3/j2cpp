@@ -17,6 +17,8 @@ public class MakefileWriter {
 		public final Set<String> mains = new TreeSet<String>();
 		/** GoogleTest wrappers for JUnit tests, relative to the root */
 		public final Set<String> tests = new TreeSet<String>();
+		/** A J2C runtime's hand-written C++, relative to the root */
+		public final Set<String> runtime = new TreeSet<String>();
 	}
 
 	private final IPath root;
@@ -30,7 +32,8 @@ public class MakefileWriter {
 				name, list(sel.impls, ""), list(sel.stubs, ""),
 				list(sel.natives, ""), list(ext.impls, "ext/"),
 				list(ext.stubs, "ext/"), list(ext.natives, "ext/"),
-				list(sel.mains, ""), list(sel.tests, ""));
+				list(sel.mains, ""), list(sel.tests, ""),
+				list(ext.runtime, ""));
 	}
 
 	private static String list(Collection<String> items, String prefix) {

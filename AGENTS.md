@@ -23,6 +23,9 @@ Guidance for AI coding agents (and people) changing this repository. For
   translating.
 - `test/cpp/`: native smoke tests run against generated code.
 - `test/probes/`: feature probes with expected outcomes.
+- `runtime/`: the J2C runtime (`--runtime`), Java sources translated by J2C
+  plus hand-written C++ natives and hooks; `test/runtime/` holds programs CI
+  runs against it and compares with `java`.
 - `licenses/`: notices for bundled dependencies, checked against the build.
 - `docs/PUBLISHING_PLAN.md`: release plan, translation gaps (Phase 9), and
   roadmap.

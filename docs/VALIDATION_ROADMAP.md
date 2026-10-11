@@ -180,6 +180,12 @@ This is Phase 12 item 2, moved up because the corpus needs it.
 
 ### M5 — Runtime and runtime-backed assertions
 
+**Status (2026-10-11):** the runtime is a curated Java runtime translated
+by J2C plus hand-written C++ natives, with no OpenJDK code (see
+[RUNTIME_EXPERIMENT.md](RUNTIME_EXPERIMENT.md) and Phase 10). R1 is done:
+`--runtime runtime` runs a translated Hello World in CI. Next: R2 (strings,
+`StringBuilder`, boxed types, `Math`, exceptions).
+
 Phase 10 as planned:
 
 1. Step 1 (0.6.x): `--runtime`, `docs/RUNTIME.md`, the conformance check, and

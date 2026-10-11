@@ -5,7 +5,9 @@ Translatability** to Java editor and Explorer context menus.
 
 - **Translate**: select a Java source file or source folder, then choose an
   existing output directory. Generated implementation files are written below
-  `src`; dependency headers and stubs are written below `ext`.
+  `src`; dependency headers and stubs are written below `ext`. JDK classes
+  are stubs, so the program does not run until a runtime provides them; the
+  CLI's `--runtime` option (not yet a setting here) uses the J2C runtime.
 - **Check**: reports every compile error and unsupported construct in the
   selection without writing anything. Run it on a source folder to see whether
   a project can be translated.

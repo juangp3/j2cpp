@@ -219,8 +219,10 @@ assignment, array identity hashing, and reference stringification can differ
 from JVM behavior. **The generated program does not run on its own:** JDK
 classes (`String`, collections, `System.out`, and so on) are generated as
 stubs that call `unimplemented_()`, so a runtime implementation of the Java
-classes you use must be provided. Generated objects are never freed unless
-you link a garbage collector.
+classes you use must be provided. `--runtime runtime` uses the repository's
+own runtime ([runtime/README.md](runtime/README.md)); it is in its first
+milestone and covers `System.out.println` and `main`'s arguments. Generated
+objects are never freed unless you link a garbage collector.
 
 The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:

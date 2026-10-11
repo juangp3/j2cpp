@@ -28,6 +28,8 @@ public class SourceProject {
 	private final List<File> sourcePaths;
 	private final List<File> classPaths;
 	private final Charset encoding;
+	// False when the sources provide java.lang themselves (a J2C runtime)
+	private boolean systemLibrary = true;
 	private final Map<String, SourceUnit> units = new HashMap<String, SourceUnit>();
 
 	/** Rewritten sources by unit; null when a unit needed no rewriting */
@@ -46,6 +48,14 @@ public class SourceProject {
 		this.sourcePaths = absolutePaths(sourcePaths);
 		this.classPaths = absolutePaths(classPaths);
 		this.encoding = encoding;
+	}
+
+	/**
+	 * Whether the running JDK's class library is visible. A runtime that
+	 * provides java.lang as source replaces it.
+	 */
+	public void setSystemLibrary(boolean systemLibrary) {
+		this.systemLibrary = systemLibrary;
 	}
 
 	private static List<File> absolutePaths(Collection<File> paths) {
@@ -240,7 +250,8 @@ public class SourceProject {
 		}
 		String[] encodings = new String[roots.size()];
 		Arrays.fill(encodings, encoding.name());
-		parser.setEnvironment(paths(classPaths), paths(roots), encodings, true);
+		parser.setEnvironment(paths(classPaths), paths(roots), encodings,
+				systemLibrary);
 		Map<String, String> options = new HashMap<String, String>();
 		JavaCore.setComplianceOptions(JavaCore.VERSION_17, options);
 		parser.setCompilerOptions(options);

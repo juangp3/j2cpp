@@ -169,6 +169,26 @@ try {
 	assert.deepStrictEqual(moduleCheck.problems, [], JSON.stringify(moduleCheck.problems));
 	assert.strictEqual(moduleCheck.files, 1);
 
+	// --runtime translates against runtime/ instead of the running JDK
+	const runtimeDirectory = path.join(repositoryRoot, "runtime");
+	const runtimeOutput = path.join(tempDirectory, "runtime output");
+	fs.mkdirSync(runtimeOutput);
+	const runtimeRun = runCli(["--runtime", runtimeDirectory, "--output", runtimeOutput,
+		path.join(repositoryRoot, "test", "runtime", "hello")]);
+	assert.strictEqual(runtimeRun.status, 0, runtimeRun.stderr || runtimeRun.stdout);
+	const runtimeObject = fs.readFileSync(path.join(runtimeOutput, "ext", "src", "java", "lang", "Object.hpp"), "utf8");
+	// The runtime's Object has no wait(), unlike the JDK's
+	assert(!runtimeObject.includes("wait("), runtimeObject);
+	assert.strictEqual(
+		fs.readFileSync(path.join(runtimeOutput, "ext", "native", "java", "lang", "Object-native.cpp"), "utf8"),
+		fs.readFileSync(path.join(runtimeDirectory, "cpp", "native", "java", "lang", "Object-native.cpp"), "utf8"));
+	const runtimeMakefile = fs.readFileSync(path.join(runtimeOutput, "Makefile"), "utf8");
+	assert(runtimeMakefile.includes("\truntime/j2c_runtime.cpp \\"), runtimeMakefile);
+	assert(fs.existsSync(path.join(runtimeOutput, "runtime", "j2c_runtime.cpp")));
+	const notRuntime = runCli(["--runtime", tempDirectory, "--check", path.join(repositoryRoot, "test", "runtime", "hello")]);
+	assert.strictEqual(notRuntime.status, 2);
+	assert(notRuntime.stderr.includes("Not a J2C runtime"), notRuntime.stderr);
+
 	// A String switch alone must define the npc helper it calls (jsoup)
 	const switchRoot = path.join(tempDirectory, "string switch");
 	fs.mkdirSync(path.join(switchRoot, "sw"), { recursive: true });

@@ -757,6 +757,105 @@ The roadmap delivers this in two steps. Step 1 (option b) lets users bring
 their own runtime. Step 2 (option a) ships one. Step 1 comes first because
 it is small, useful on its own, and builds the mechanism step 2 needs.
 
+### Experiment result (2026-10-11)
+
+See [RUNTIME_EXPERIMENT.md](RUNTIME_EXPERIMENT.md). Translating OpenJDK 17's
+java.base wholesale is not viable: J2C's dependency closure is the same
+2,066 files (903k lines) for every program, needs 694 natives plus HotSpot
+services (`Unsafe`, `VarHandle`, `MethodHandle`, module boot), and the stock
+CLI cannot even resolve `java.lang` from sources. A curated runtime written
+in Java and translated by J2C printed "hi" with 17 Java files (135 lines) and
+70 lines of C++.
+
+### Step 0 — Runtime-from-source support in J2C (target: 0.6.x, before step 1)
+
+**Status (2026-10-11):** Done as `--runtime <directory>` (items 1–3 and
+the native overlay of item 4), with `runtime/` and a CI step that runs a
+translated Hello World under UBSan and compares its output with `java`.
+
+1. **Sources replace the system library.** When the source path (or a new
+   `--runtime <dir>`) provides `java/lang/Object.java`, call JDT's
+   `setEnvironment(..., includeRunningVMBootclasspath = false)`. Today J2C
+   always includes the running JDK, so JDT reports "package java.lang is
+   accessible from more than one module" and translation fails with "Could
+   not resolve Java type java.lang.ClassLoader".
+2. **Hard dependencies match what the helpers include:** `java.lang.Class`
+   (every class declares `class_()`/`getClass0()`) and
+   `java.lang.ArrayStoreException` (included by `SubArray.hpp`), next to
+   `ClassLoader`, `Cloneable` and `Serializable`.
+3. **Link order:** runtime objects and libraries come before or around
+   `-l$(NAME)` (or use `--start-group`), because the runtime refers back to
+   classes in the program's libraries.
+4. **Natives:** keep `-native.cpp` stubs, and let a runtime supply its own
+   file per class (an overlay directory). Optionally support an OCNI-style
+   C++ block inside the Java `native` method, like J2ObjC's `/*-[ … ]-*/`.
+
+Tests: a fixture runtime of about 17 Java files (`test/runtime-mini/`) and a
+CI job that translates Hello World against it, builds in WSL or Linux with
+UBSan, and compares the output with `java`.
+
+### Step 2 design (replaces "hand-written C++")
+
+- The bundled runtime is **Java source translated by J2C**, plus a small
+  C++ layer for natives and hooks (`class_`, `_j`, `init_jvm`, `make_args`,
+  `unimplemented_`).
+- The core classes are **hand-written, simplified Java**, written from the
+  Java SE specification, J2ObjC-style: `Object`, `String` (UTF-16
+  `char[]`, no compact strings), `System` (no initPhase1, properties or
+  module boot), `PrintStream` (UTF-8 encoding in Java), `Class`, the boxed
+  types, `Math`, and the `Throwable` family.
+- **Plain-Java library classes** (`ArrayList`, `HashMap`, `TimSort`,
+  `Collections`, `Arrays`, …) are **also written for the runtime from the
+  specification. Decision (2026-10-11): no OpenJDK code.** OpenJDK is GPLv2
+  with the Classpath Exception, and J2C's helper headers are EPL-1.0, which
+  the FSF considers GPL-incompatible. Revisit only if the helper headers'
+  copyright holders relicense them.
+- Never translate java.base wholesale. The runtime manifest lists every
+  provided class, and classes it does not list keep today's stubs.
+
+### Translator gaps found by the experiment (add to Phase 9)
+
+Each needs a fixture. Counts are from compiling the P1 closure of java.base.
+
+- **G32, signature-polymorphic calls** (`MethodHandle.invoke*`,
+  `VarHandle.*`) are emitted as `Object...` varargs (465 errors). Report a
+  new problem ID, or lower `VarHandle` access modes to `std::atomic`.
+- **G33, `Iface.super.m()`** emits `super::m` (66 errors, 25 files).
+- **G34, a local class created from another class** does not pass its
+  captured variables or outer instance (54 errors, 27 files).
+- **G35, interface diamonds with primitive specializations**: missing
+  final overriders or bridges, so classes stay abstract (65 errors).
+- **G36, unboxing a type-variable value to a primitive** emits
+  unbalanced parentheses (12 errors).
+- **G37, indexing an array whose type is a type variable** (3 errors).
+- **G38, identifiers that are C macros** (`IOV_MAX`) need mangling
+  (19 errors).
+- **G39, a local variable named like a method that is called in its
+  scope** (6 errors).
+- **G40, a pattern variable hoisted into a clashing declaration**
+  (2 errors).
+- **G41, volatile fields as `std::atomic`**: `->` on arrays and compound
+  assignment such as `|=` (2 errors).
+- **G42, `LambdaDesugarer` output that JDT rejects**:
+  - Diamond with constructor references (`Collectors.toMap`).
+  - Member types of parameterized types (`Proxy`).
+  - Captured-wildcard suppliers (`AbstractPipeline`).
+
+  The writers also crash with "closures is null" if such a unit is ever
+  written.
+
+### Milestones (replace step 2's list)
+
+1. **R1:** Hello World runs against `runtime/java` (step 0 tests).
+   **Done (2026-10-11).**
+2. **R2:** strings, `StringBuilder`, boxed types, `Math`, exceptions and the
+   uncaught-exception printout. About 1–2 weeks **(estimate)**.
+3. **R3:** collections and `Collections.sort` with comparators; needs
+   G33–G35. About 2–3 weeks **(estimate)**.
+4. **R4:** streams and a simplified `String.format`. About 3–5 weeks
+   **(estimate)**.
+5. **R5:** optional Boehm GC (G8), unchanged.
+
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
 Goal: a user who has C++ implementations of some JDK classes can use them

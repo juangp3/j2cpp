@@ -1,4 +1,4 @@
-INCLUDES := $(INCLUDES) -Isrc -Iext/src
+INCLUDES := $(INCLUDES) -Isrc -Iext/src -Iruntime
 EXTRA_LIBS ?= -l$(NAME)-ext
 
 CPPFLAGS := $(CPPFLAGS) $(INCLUDES)
@@ -15,6 +15,9 @@ LIB = lib$(NAME).a
 EXT_LIB = lib$(NAME)-ext.a
 
 LIBS = $(BIN)/$(LIB) $(BIN)/$(EXT_LIB)
+# The runtime in the ext library refers back to the program's classes, and
+# single-pass linkers need the program library again after it
+LINK_LIBS = -l$(NAME) $(EXTRA_LIBS) -l$(NAME)
 
 SRC = src
 STUB = stub
@@ -45,6 +48,10 @@ MAIN_SRCS = \
 TEST_SRCS = \
 %9$s
 
+# Hand-written C++ of a J2C runtime (j2c --runtime)
+RUNTIME_SRCS = \
+%10$s
+
 MAINS = $(MAIN_SRCS:$(SRC)/%%-main.cpp=$(BIN)/%%)
 OBJS = $(SRCS:$(SRC)/%%.cpp=$(OBJ)/%%.o)
 STUB_OBJS = $(STUB_SRCS:$(STUB)/%%.cpp=$(OBJ)/%%.o)
@@ -53,6 +60,8 @@ NATIVE_OBJS = $(NATIVE_SRCS:$(NATIVE)/%%.cpp=$(OBJ)/%%.o)
 EXT_OBJS = $(EXT_SRCS:ext/$(SRC)/%%.cpp=$(OBJ)/%%.o)
 EXT_STUB_OBJS = $(EXT_STUB_SRCS:ext/$(STUB)/%%.cpp=$(OBJ)/%%.o)
 EXT_NATIVE_OBJS = $(EXT_NATIVE_SRCS:ext/$(NATIVE)/%%.cpp=$(OBJ)/%%.o)
+
+RUNTIME_OBJS = $(RUNTIME_SRCS:runtime/%%.cpp=$(OBJ)/runtime/%%.o)
 
 TEST_OBJS = $(TEST_SRCS:test/%%.cpp=$(OBJ)/test/%%.o)
 TESTS_BIN = $(BIN)/$(NAME)-tests
@@ -87,6 +96,9 @@ $(EXT_STUB_OBJS):$(OBJ)/%%.o: ext/$(STUB)/%%.cpp | print-opts
 $(EXT_NATIVE_OBJS):$(OBJ)/%%.o: ext/$(NATIVE)/%%.cpp | print-opts
 	$(cc-command)
 
+$(RUNTIME_OBJS):$(OBJ)/runtime/%%.o: runtime/%%.cpp | print-opts
+	$(cc-command)
+
 %%.a:
 	@echo Archive $@
 	@mkdir -p $(dir $@)
@@ -95,11 +107,11 @@ $(EXT_NATIVE_OBJS):$(OBJ)/%%.o: ext/$(NATIVE)/%%.cpp | print-opts
 
 $(BIN)/$(LIB): $(OBJS) $(STUB_OBJS) $(NATIVE_OBJS)
 
-$(BIN)/$(EXT_LIB): $(EXT_OBJS) $(EXT_STUB_OBJS) $(EXT_NATIVE_OBJS)
+$(BIN)/$(EXT_LIB): $(EXT_OBJS) $(EXT_STUB_OBJS) $(EXT_NATIVE_OBJS) $(RUNTIME_OBJS)
 
 $(MAINS):$(BIN)/%%:$(SRC)/%%-main.cpp $(LIBS)
 	@mkdir -p $(dir $@); 
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -L$(BIN) -o $@ $< -l$(NAME) $(EXTRA_LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -L$(BIN) -o $@ $< $(LINK_LIBS)
 
 mains: $(MAINS)
 
@@ -109,7 +121,7 @@ $(TEST_OBJS):$(OBJ)/test/%%.o: test/%%.cpp | print-opts
 
 $(TESTS_BIN): $(TEST_OBJS) $(LIBS)
 	@mkdir -p $(dir $@);
-	$(CXX) $(CXXFLAGS) -L$(BIN) -o $@ $(TEST_OBJS) -l$(NAME) $(EXTRA_LIBS) $(TEST_LDLIBS) $(GTEST_LIBS)
+	$(CXX) $(CXXFLAGS) -L$(BIN) -o $@ $(TEST_OBJS) $(LINK_LIBS) $(TEST_LDLIBS) $(GTEST_LIBS)
 
 tests: $(TESTS_BIN)
 
@@ -124,4 +136,4 @@ print-opts:
 	
 .PHONY: all mains tests test clean print-opts
 
--include $(OBJS:%%.o=%%.d) $(TEST_OBJS:%%.o=%%.d)
+-include $(OBJS:%%.o=%%.d) $(TEST_OBJS:%%.o=%%.d) $(RUNTIME_OBJS:%%.o=%%.d)

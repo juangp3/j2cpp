@@ -135,6 +135,9 @@ java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
 
+`--runtime <directory>` translates against a J2C runtime instead of the
+running JDK (see `runtime/README.md` in the repository).
+
 Exit status is 0 on success, 1 when problems stop a check or translation,
 and 2 for invalid arguments. With `--format json`, invalid arguments produce
 `{"status": "usage-error", "message": ...}`. The JSON shapes are versioned

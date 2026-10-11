@@ -110,11 +110,21 @@ public class Transformer {
 
 	private MakefileWriter.Info cur;
 
+	private File runtimeCpp;
+
 	private final Set<String> done = new HashSet<String>();
 
 	public List<Snippet> snippets = new ArrayList<Snippet>();
 
 	protected AST currentAST;
+
+	/**
+	 * A J2C runtime's C++ directory: native/ replaces generated native stubs,
+	 * src/ holds hooks (class_, _j, init_jvm, make_args, unimplemented_)
+	 */
+	public void setRuntimeCpp(File runtimeCpp) {
+		this.runtimeCpp = runtimeCpp;
+	}
 
 	/** Generate GoogleTest wrappers for JUnit tests in the selection */
 	public void setTests(boolean tests) {
@@ -138,6 +148,10 @@ public class Transformer {
 		long start = System.currentTimeMillis();
 
 		hardDep(resolve(ClassLoader.class));
+		// Every class declares class_() and getClass0(), and SubArray.hpp
+		// throws ArrayStoreException; a runtime must provide both
+		hardDep(resolve(Class.class));
+		hardDep(resolve(ArrayStoreException.class));
 		// The ObjectArray.hpp resource includes these unconditionally
 		hardDep(resolve(Cloneable.class));
 		hardDep(resolve(java.io.Serializable.class));
@@ -155,6 +169,7 @@ public class Transformer {
 
 		writeResources();
 		writeTests();
+		writeRuntime();
 
 		new ForwardWriter(this, root).write(forwards.values());
 
@@ -210,6 +225,56 @@ public class Transformer {
 				TransformUtil.headerPath(root, "ObjectArray.hpp").toFile());
 		FileUtil.writeResource(SUB_ARRAY_HPP,
 				TransformUtil.headerPath(root, "SubArray.hpp").toFile());
+	}
+
+	/** Copies a runtime's C++ into the output (see setRuntimeCpp) */
+	private void writeRuntime() throws IOException {
+		if (runtimeCpp == null) {
+			return;
+		}
+		// native/ replaces the generated stub of a class the program uses
+		List<String> natives = new ArrayList<String>();
+		listFiles(new File(runtimeCpp, "native"), "", natives);
+		for (String rel : natives) {
+			File source = new File(new File(runtimeCpp, "native"), rel);
+			for (String prefix : new String[] { "", "ext/" }) {
+				File generated = new File(root.toFile(), prefix + "native/" + rel);
+				if (generated.isFile()) {
+					FileUtil.copy(source, generated);
+				}
+			}
+		}
+
+		// src/ holds the hooks and other hand-written C++
+		List<String> sources = new ArrayList<String>();
+		listFiles(new File(runtimeCpp, "src"), "", sources);
+		for (String rel : sources) {
+			if (rel.endsWith(".cpp") || rel.endsWith(".hpp")) {
+				File target = new File(root.toFile(), "runtime/" + rel);
+				target.getParentFile().mkdirs();
+				FileUtil.copy(new File(new File(runtimeCpp, "src"), rel), target);
+				if (rel.endsWith(".cpp")) {
+					ext.runtime.add("runtime/" + rel);
+				}
+			}
+		}
+	}
+
+	/** Files below a directory, as sorted paths with forward slashes */
+	private static void listFiles(File directory, String prefix,
+			List<String> files) {
+		File[] entries = directory.listFiles();
+		if (entries == null) {
+			return;
+		}
+		Arrays.sort(entries);
+		for (File entry : entries) {
+			if (entry.isDirectory()) {
+				listFiles(entry, prefix + entry.getName() + "/", files);
+			} else {
+				files.add(prefix + entry.getName());
+			}
+		}
 	}
 
 	public String getName() {

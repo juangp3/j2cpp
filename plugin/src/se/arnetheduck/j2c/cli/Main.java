@@ -21,7 +21,7 @@ public class Main {
 	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "[--format <text|json>] [--force] [--tests] "
+			+ "[--format <text|json>] [--force] [--tests] [--runtime <directory>] "
 			+ "<java-file-or-source-directory>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
@@ -33,6 +33,9 @@ public class Main {
 			+ "create; its contents are moved to a backup in the temporary folder." + NL
 			+ "--tests checks JUnit tests and generates GoogleTest wrappers that run "
 			+ "them (make test)." + NL
+			+ "--runtime translates against a J2C runtime directory instead of "
+			+ "the running JDK: java/ holds its Java sources, cpp/ its C++ natives "
+			+ "and hooks (see runtime/README.md)." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents.";
 
@@ -141,6 +144,8 @@ public class Main {
 				request.force = true;
 			} else if ("--tests".equals(arg)) {
 				request.tests = true;
+			} else if ("--runtime".equals(arg)) {
+				request.runtime = new File(value(args, ++i, arg));
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {
