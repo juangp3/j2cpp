@@ -112,6 +112,30 @@ pinned commit.
 Timebox: two weeks. Whatever is left becomes Phase 9 entries with a
 priority.
 
+#### Orchestrator and fixer agents
+
+M2 and M3 produce a queue of independent, reproducible gaps, which suits
+parallel agents:
+
+1. **Orchestrator** (the main session): runs `npm run corpus --build
+   --jobs 4`, groups the errors into distinct gaps, and writes one brief per
+   gap: the error, the generated C++ line, the Java source, and the cached
+   project path for reproduction.
+2. **Fixer agents**, one per gap, each in its own git worktree, follow the
+   AGENTS.md loop: minimal reproduction, fix at the narrowest layer, a test
+   that fails without the fix, the CLI suite, and the UBSan fixture builds.
+   They commit on their branch and never edit the plan, the scoreboard or
+   `test/corpus/projects.json`.
+3. **Orchestrator merges** each branch, resolves conflicts, runs the full
+   validation (fixtures under UBSan, GoogleTest outcomes, probes, and the
+   corpus ratchet), records the gaps in Phase 9, and runs `--update`.
+
+Limits: most fixes touch `ImplWriter.java`, so merges can conflict; every
+agent starts without the session's context (cost); and C++ builds share one
+machine. Start with up to 3 agents per round and widen if merges stay clean.
+The first round (2026-10-11) took the javapoet `for` loop, the Spliterators
+stub forwarding, and RoaringBitmap's covariant `super` return.
+
 ### M3 — Translator gaps from the corpus
 
 - commons-collections:
