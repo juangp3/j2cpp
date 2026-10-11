@@ -47,7 +47,7 @@ The 2026-10-11 baseline over 24 projects showed:
 | M3 | Translator gaps from the corpus | 2–4 days (alongside M2) | commons-collections clean, or each remaining report justified |
 | M4 | Project auto-setup | 2–4 days | jsoup, commons-text and joda-time check with no dependency problems |
 | M5 | Runtime, then T3b | 0.6.x, then 0.7.0 | hashids-java's tests match the JVM |
-| M6 | JUnit 3 and parameterized tests | about 1 week | joda-time and commons-codec tests build |
+| M6 | JUnit 3, parameterized tests and TestNG | about 1 week | joda-time and commons-codec tests build |
 | M7 | Agent-efficient, readable output | A1–A3 during M2; the rest after | Token benchmark shows the J2C workflow far cheaper than LLM-only translation |
 
 ### M0 — Ship 0.6.0
@@ -152,6 +152,9 @@ Phase 10 as planned:
   `test*` methods. It unlocks jBCrypt, javaewah, joda-time and Guava.
 - **T3d, parameterized tests:** `@ValueSource`, `@CsvSource` and
   `@MethodSource` become GoogleTest parameterized tests.
+- **T3e, TestNG:** `@Test`, `@BeforeMethod`/`@AfterMethod`,
+  `@BeforeClass`/`@AfterClass`, `expectedExceptions` and `Assert.*`.
+  Forge's tests use it (95 files).
 - **Later:** Hamcrest and Truth assertions.
 - **Deferred:** T5 (gMock).
 
@@ -203,12 +206,13 @@ corpus's output before and after, plus the corpus builds.
 | R6 | No `clinit()` for classes with no static initialization anywhere in their supertypes | <1% | Medium |
 | R7 | No `npc()` where the value cannot be null (`this`, `new`, literals, concatenation results) | <1% | Medium |
 | R8 | Refinement markers, such as `// j2c: lambda for IntBinaryOperator (Hello.java:11)` | Small | Low |
+| R9 | Pragmatic profile, `--semantics strict\|pragmatic`: drop Java machinery the whole program provably does not use (`class_` without reflection, `npc` without `NullPointerException` handlers, `clinit` without static side effects, `std::function` for lambdas that never escape), and list each decision with its reason. `strict` stays the default. | ~7%, and much more readable | Medium |
 
 Order:
 
 1. A1–A3 during M2: the M2 triage needs mapped, deduplicated errors anyway.
 2. The A7 baseline early, so later items are judged by tokens saved.
-3. R1–R5 after M2; then A4–A6; then R6–R8.
+3. R1–R5 after M2; then A4–A6; then R6–R9 (R9 builds on R6 and R7).
 
 This takes Phase 12 items 1, 4 and 7 into M7, because they are central to the
 project's goal.

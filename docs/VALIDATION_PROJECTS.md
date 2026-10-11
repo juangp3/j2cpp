@@ -84,6 +84,12 @@ Phase 10 step 1 and Phase 13 T3b.
 | [apache/commons-math](https://github.com/apache/commons-math) | Apache-2.0 | 132,887 / 85,514 | 8 | commons-numbers, commons-rng, commons-statistics | 918 in 92/658 files (deps) | JUnit 4 (324 files) | B |
 | [google/guava](https://github.com/google/guava) | Apache-2.0 | 400,140 / 305,905 | 8 | Error Prone, JSpecify, j2objc annotations, failureaccess | not run | JUnit 3 and 4, Truth (707) | D |
 
+### Extra large: real application
+
+| Project | License | Main / test lines | Java | Deps | Baseline | Tests | Rating |
+| --- | --- | ---: | --- | --- | --- | --- | --- |
+| [Card-Forge/forge](https://github.com/Card-Forge/forge) | GPL-3.0 | 443,054 / 143 test files | 17 | Guava, commons-lang3, commons-text, jgrapht, commons-math3, sentry, tinylog; Swing and libGDX in the UI modules | engine **clean** (1,165 files, with dependency JARs) | TestNG (95 files) | D (engine B) |
+
 ## Project notes
 
 Shared facts are in the tables. These notes cover what each project
@@ -251,6 +257,33 @@ translated alongside. Tests are mostly JUnit 4 (324 files).
 concurrency abstraction, `Unsafe` (12 files), reflection (149 files). Its
 tests are mostly JUnit 3 and Truth. `--check` was not run on it. Try it last.
 
+
+### Extra large
+
+**Forge.** A community-driven Magic: The Gathering engine, with daily
+commits. Measured at `ca64cc9` (2026-10-10):
+
+| Part | Files | Lines | Approx. tokens |
+| --- | ---: | ---: | ---: |
+| Engine: forge-core, forge-game, forge-ai | 1,165 | 187k | 2.13M |
+| UI: forge-gui-desktop (Swing), forge-gui-mobile (libGDX), platform shells | ~850 | 177k | ~2.0M |
+| Card scripts (`forge-gui/res/cardsfolder`, data) | 34,087 | – | 6.2M |
+
+- **Engine:** `--check` with the real dependency JARs takes 11 s and finds
+  no problems. Full translation takes about 60 s and writes 5,153 C++ files
+  (about 5.1M tokens). Forge found two J2C bugs, G10 and G11 in Phase 9,
+  both fixed.
+- **Hardest parts:** the largest files are `Card.java` (about 80k tokens),
+  `CardFactoryUtil` and `AbilityUtils`. Guava is used in 226 engine files,
+  so Guava itself must be translated too. Streams (65 files) and threads
+  need the runtime. Long games allocate heavily, so garbage collection
+  (Phase 10 milestone 3) is needed early.
+- **UI:** Swing and libGDX have no C++ equivalent. Any migration rewrites
+  the UI against a C++ toolkit, on top of the translated engine.
+- **Tests:** TestNG, which `--tests` does not support yet (M6).
+- **License:** GPL-3.0. Translating it for validation is fine. Generated
+  code derived from it stays under the GPL.
+
 ## Recommended order
 
 1. **hashids-java, jBCrypt:** one file each. Use them to prove the whole
@@ -265,6 +298,7 @@ tests are mostly JUnit 3 and Truth. `--check` was not run on it. Try it last.
    (Phase 9 gaps).
 7. **jackson-core, zxing core, commons-math** with their dependencies.
 8. **javaparser**, then **Guava**.
+9. **Forge engine**, after Guava and the runtime's collections.
 
 Two follow-up items would unlock much of the list:
 
@@ -280,6 +314,8 @@ Two follow-up items would unlock much of the list:
   or LGPL-3.0). Mostly self-contained, with unit tests, spread over three
   sizes. jgrapht was considered but left out because its repository and
   license could not be verified.
+  Forge is the exception: GPL-3.0, included as a real application
+  rather than a library.
 - **Licenses:** as reported by GitHub. Where GitHub said "Other", the
   `LICENSE` file was read: JSON-java is Public Domain, jBCrypt has an
   ISC-style license, and javaparser is dual-licensed.

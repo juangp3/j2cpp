@@ -562,6 +562,32 @@ The deferred items listed under Phase 5 also remain: falling back to
 header-only output for dependency units with errors, and validating every
 selected unit before writing anything.
 
+#### G10 — Bound method reference on a reassigned local
+
+**Status (2026-10-11):** Done. Found in Forge (5 sites, such as `forEach(cards::add)`).
+
+- **Symptom:** `--check` reported "Local variable … must be final or
+  effectively final" for code javac accepts. Java evaluates a bound
+  receiver once, when the reference is created, so it may be any local.
+  The rewrite stored it in a field initializer, which captures the local.
+- **Fix:** when the receiver reads a local that is not effectively final,
+  `LambdaDesugarer` passes it as an argument instead:
+  `new Object() { I bind(final T receiver) { return new I() {...}; } }.bind(cards)`.
+  Other references keep the field form, so their output is unchanged.
+- **Test:** `Java17Lambdas.reassignedReceiver` and its smoke check (the
+  first reference keeps the first receiver), plus a `test-cli.js` assertion.
+
+#### G11 — Pattern as the third or later operand of `&&`
+
+**Status (2026-10-11):** Done. Found in Forge (3 sites).
+
+- **Symptom:** `if (a && b && o instanceof String s)` crashed translation
+  with a `NullPointerException` in `DepInfo`. JDT gives pattern operands no
+  type, and only the first two operands were guarded.
+- **Fix:** the extended-operand loop in `ImplWriter` skips the dependency
+  for an operand without a type, as the first two already did.
+- **Test:** `Java17Patterns.thirdOperand` and its smoke check.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
