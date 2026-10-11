@@ -523,6 +523,8 @@ try {
 		assert(lambdaSources.includes("new Java17Lambdas_1(this)"));
 		// An enhanced for over a new expression parenthesizes it before ->
 		assert(lambdaSources.includes("auto _i = (new Java17Lambdas_Countdown(from))->iterator();"));
+		// An inherited covariant return is downcast from the base's C++ type
+		assert(lambdaSources.includes("return java_cast< Java17Lambdas_LimitDerived* >(Java17Lambdas_LimitBase::limit(n));"));
 		// An interface bridges its default method to the generic superinterface
 		const positiveHeader = fs.readFileSync(path.join(
 			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_PositiveTally.hpp"

@@ -47,5 +47,7 @@ int main() {
 	// for (Tally tally : new Countdown(from)) sums from + ... + 1
 	if (Java17Lambdas::iterateNewIterable(4) != 10) return 13;
 	if (Java17Lambdas::iterateNewIterable(0) != 0) return 14;
+	// LimitDerived::limit forwards to LimitBase::limit with a downcast
+	if (Java17Lambdas::inheritedCovariantReturn(4) != 4) return 15;
 	return 0;
 }

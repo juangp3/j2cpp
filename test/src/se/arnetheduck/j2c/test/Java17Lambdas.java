@@ -251,4 +251,32 @@ public class Java17Lambdas {
 		}
 		return sum;
 	}
+
+	// A subclass that re-implements an interface inherits a covariant return
+	// naming the subclass itself; the base's C++ signature returns the base
+	// type, so the generated forwarder must downcast (found in RoaringBitmap)
+	public interface Limited {
+		Limited limit(int n);
+	}
+
+	public interface MoreLimited extends Limited {
+	}
+
+	public static class LimitBase implements Limited {
+		public int size;
+
+		public LimitDerived limit(int n) {
+			LimitDerived d = new LimitDerived();
+			d.size = n;
+			return d;
+		}
+	}
+
+	public static class LimitDerived extends LimitBase implements MoreLimited {
+	}
+
+	public static int inheritedCovariantReturn(int n) {
+		MoreLimited m = new LimitDerived();
+		return ((LimitDerived) m.limit(n)).size;
+	}
 }

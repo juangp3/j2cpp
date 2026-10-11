@@ -323,6 +323,16 @@ public class Impl {
 		println("{");
 
 		boolean erased = TransformUtil.returnErased(impl);
+		ITypeBinding irt = impl.getReturnType();
+		if (!erased && !irt.isPrimitive()) {
+			// The base declares a narrower return type than its C++ signature
+			// when the covariant return is a subclass of the declaring class
+			// (see TransformUtil.returnType), so downcast the base call
+			ITypeBinding baseRt = TransformUtil.returnType(
+					impl.getDeclaringClass(), impl);
+			erased = baseRt != null
+					&& !baseRt.isEqualTo(irt.getErasure());
+		}
 		method(decl);
 
 		if (TransformUtil.isVoid(impl.getReturnType())) {
