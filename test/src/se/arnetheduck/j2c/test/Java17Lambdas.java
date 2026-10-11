@@ -214,4 +214,41 @@ public class Java17Lambdas {
 	public int instanceInitializerCapture() {
 		return instanceTotal;
 	}
+
+	// An enhanced for over a new expression needs parentheses before
+	// ->iterator() in C++ (found in javapoet)
+	public static class Countdown implements Iterable<Tally> {
+		private final int from;
+
+		public Countdown(int from) {
+			this.from = from;
+		}
+
+		@Override
+		public java.util.Iterator<Tally> iterator() {
+			return new java.util.Iterator<Tally>() {
+				private int next = from;
+
+				@Override
+				public boolean hasNext() {
+					return next > 0;
+				}
+
+				@Override
+				public Tally next() {
+					Tally tally = new Tally();
+					tally.add(next--);
+					return tally;
+				}
+			};
+		}
+	}
+
+	public static int iterateNewIterable(int from) {
+		int sum = 0;
+		for (Tally tally : new Countdown(from)) {
+			sum += tally.total;
+		}
+		return sum;
+	}
 }

@@ -44,5 +44,8 @@ int main() {
 	// Lambdas in initializer blocks capture the blocks' locals
 	if (Java17Lambdas::staticInitializerCapture() != 42) return 11;
 	if (lambdas->instanceInitializerCapture() != 6) return 12;
+	// for (Tally tally : new Countdown(from)) sums from + ... + 1
+	if (Java17Lambdas::iterateNewIterable(4) != 10) return 13;
+	if (Java17Lambdas::iterateNewIterable(0) != 0) return 14;
 	return 0;
 }

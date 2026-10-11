@@ -521,6 +521,8 @@ try {
 		assert(lambdaSources.includes("->bind(tally)"));
 		// A field-initializer lambda receives the enclosing instance
 		assert(lambdaSources.includes("new Java17Lambdas_1(this)"));
+		// An enhanced for over a new expression parenthesizes it before ->
+		assert(lambdaSources.includes("auto _i = (new Java17Lambdas_Countdown(from))->iterator();"));
 		// An interface bridges its default method to the generic superinterface
 		const positiveHeader = fs.readFileSync(path.join(
 			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_PositiveTally.hpp"

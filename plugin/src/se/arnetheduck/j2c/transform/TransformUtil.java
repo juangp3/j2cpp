@@ -25,6 +25,7 @@ import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ArrayCreation;
 import org.eclipse.jdt.core.dom.Assignment;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
+import org.eclipse.jdt.core.dom.EnhancedForStatement;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.FieldAccess;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
@@ -1422,6 +1423,14 @@ public final class TransformUtil {
 			if (fi.getExpression() == creation) {
 				// Here, -> binds tighter than new, thus we get an error without
 				// parens.
+				return true;
+			}
+		} else if (parent instanceof EnhancedForStatement) {
+			EnhancedForStatement efs = (EnhancedForStatement) parent;
+			if (efs.getExpression() == creation
+					&& !creation.resolveTypeBinding().isArray()) {
+				// An Iterable is written as 'expr->iterator()', where -> binds
+				// tighter than new (arrays are wrapped in npc() instead).
 				return true;
 			}
 		}
