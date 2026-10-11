@@ -140,6 +140,16 @@ and afterwards every clean small and medium project builds (15 of 15).
 Lessons: create worktrees from `modern-release` (they started on the
 legacy `master`), give each agent its own scratch folder, and assign smoke
 return codes in the brief.
+The second round (4 agents, plus fixes in the main session) took the large
+tier: java.time covariant headers, abstract classes from default methods and
+record accessors, array covariance and empty varargs, and enum constants
+with constructor arguments. Afterwards commons-lang, joda-time and the Forge
+engine (1,165 files) build, so every project that checks clean also builds
+(18 of 18). Fixture and test files assigned per agent kept every merge
+conflict-free. Open follow-up: a hard dependency added by a class path
+stub can leave its header ungenerated (seen with `java.lang.Module` and
+`ModuleDescriptor`); avoided for now by adding the dependency only when the
+types differ.
 
 ### M3 — Translator gaps from the corpus
 

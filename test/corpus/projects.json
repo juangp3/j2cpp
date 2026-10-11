@@ -279,7 +279,7 @@
 			],
 			"expected": {
 				"problems": 0,
-				"step": "checks"
+				"step": "builds"
 			}
 		},
 		{
@@ -324,7 +324,7 @@
 			"dependencies": [],
 			"expected": {
 				"problems": 0,
-				"step": "checks"
+				"step": "builds"
 			}
 		},
 		{
@@ -406,7 +406,7 @@
 			],
 			"expected": {
 				"problems": 0,
-				"step": "checks"
+				"step": "builds"
 			}
 		}
 	]

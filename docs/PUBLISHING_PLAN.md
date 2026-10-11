@@ -588,7 +588,7 @@ selected unit before writing anything.
   for an operand without a type, as the first two already did.
 - **Test:** `Java17Patterns.thirdOperand` and its smoke check.
 
-#### G12–G24 — C++ build errors found by the corpus (M2)
+#### G12–G31 — C++ build errors found by the corpus (M2)
 
 **Status (2026-10-11):** Done. Found by `npm run corpus --build`; each fix has
 a fixture and a `test-cli.js` assertion, and runtime behavior is checked in
@@ -656,6 +656,33 @@ workflow in VALIDATION_ROADMAP.md M2):
 - **G24, inherited covariant return naming a subclass** (RoaringBitmap):
   the base's C++ signature returns the base type (to avoid a circular
   include), so the generated forwarder now downcasts with `java_cast`.
+
+Round 2 (2026-10-11), from building the large tier (commons-lang, the Forge
+engine); G28–G31 by four parallel fixer agents:
+
+- **G25, enum `switch (this)` expression** (Forge): printed `npc(` without
+  the helper.
+- **G26, local declared in a switch case** (Forge): the hoisted
+  initializer now includes the value's class (`ArrayList` to `List`).
+- **G27, boxed array elements** (Forge): `counts[i]++` on an `Integer[]`
+  stores a new box with `set()`, when the array and index can be evaluated
+  twice. Also: guessed stub getters and setters never box (G18 follow-up).
+- **G28, covariant returns in JDK headers** (java.time in commons-lang and
+  Forge): `TransformUtil.returnType` already narrowed circular covariant
+  returns, but the class path header and stub writers did not use it.
+- **G29, enum constants with bodies and constructor arguments** (Forge
+  `DeckFormat`): `asBaseConstructor` compared compilation units through the
+  Eclipse Java model; without it, private constructors were never
+  inherited by anonymous classes. It now compares top-level classes.
+- **G30, array covariance and empty varargs** (commons-lang
+  `StringEscapeUtils`): multi-dimensional array types now follow Java's
+  `S[] <: T[]` rule (`Sub[][]` is a `Base[][]`), and `new X()` on a varargs
+  constructor passes an empty array.
+- **G31, default methods and record accessors implementing abstract
+  methods** (commons-lang `MutableInt`, Forge `MutableBoolean` and
+  `DefaultKeywordView`): an interface default overriding an inherited
+  abstract method was treated as already declared, and record accessors
+  were `const` and did not override.
 
 ### How to test a gap fix
 

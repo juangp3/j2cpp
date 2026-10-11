@@ -71,14 +71,14 @@ compiles. `--update` raises the expectations and rewrites this table.
 | RoaringBitmap | medium | 0 | builds |
 | zxing-core | medium | 0 | builds |
 | jackson-core | medium | 3 | none |
-| joda-time | large | 0 | checks |
+| joda-time | large | 0 | builds |
 | commons-collections | large | 4 | none |
 | TheAlgorithms-Java | large | 32 | none |
-| commons-lang | large | 0 | checks |
+| commons-lang | large | 0 | builds |
 | javaparser | large | 431 | none |
 | commons-math | large | 918 | none |
 | guava | xl | 17 | none |
-| forge-engine | xl | 0 | checks |
+| forge-engine | xl | 0 | builds |
 <!-- corpus-scoreboard:end -->
 
 ## Summary
