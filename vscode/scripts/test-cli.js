@@ -618,6 +618,16 @@ try {
 			.join("\n");
 		assert(generatedHeaders.includes("Java17User"));
 		assert(generatedHeaders.includes("operator=="));
+		// Enum constants with bodies take the enum constructors' arguments
+		assert.match(
+			generatedHeaders,
+			/Java17Records_Tier_1\(::java::lang::String\* j2c_name, int j2c_ordinal, Java17Records_Limits\* main0, Java17Records_Limits\* side0, int32_t copies0\);/,
+			"Enum constant bodies must declare the enum constructors"
+		);
+		assert.match(
+			generatedHeaders,
+			/Java17Records_Tier_2\(::java::lang::String\* j2c_name, int j2c_ordinal, Java17Records_Limits\* main0, Java17Records_Limits\* side0, int32_t copies0, int32_t extra0\);/
+		);
 
 		const controlFlow = runCli([
 			"--output", outputDirectory,

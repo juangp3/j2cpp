@@ -77,4 +77,62 @@ public class Java17Records {
 	public static int sum() {
 		return eval(new Add(new Num(2), new Add(new Num(3), new Num(4))));
 	}
+
+	// Enum constants with bodies created with constructor arguments: the
+	// anonymous constant classes forward to the matching private enum
+	// constructor, including overloads and a null argument
+	public static class Limits<T> {
+		public int size;
+
+		public Limits(int size) {
+			this.size = size;
+		}
+	}
+
+	public enum Tier {
+		BASIC(new Limits<String>(4), new Limits<String>(1), 2),
+		LIMITED(new Limits<String>(3), null, 5) {
+			@Override
+			public int bonus() {
+				return 7;
+			}
+		},
+		CUSTOM(new Limits<String>(6), new Limits<String>(2), 1, 30) {
+			@Override
+			public int bonus() {
+				return extra + side();
+			}
+		};
+
+		private final Limits<String> main;
+		private final Limits<String> side;
+		private final int copies;
+		protected final int extra;
+
+		Tier(Limits<String> main0, Limits<String> side0, int copies0,
+				int extra0) {
+			main = main0;
+			side = side0;
+			copies = copies0;
+			extra = extra0;
+		}
+
+		Tier(Limits<String> main0, Limits<String> side0, int copies0) {
+			this(main0, side0, copies0, 0);
+		}
+
+		public int side() {
+			return side == null ? -1 : side.size;
+		}
+
+		public int bonus() {
+			return main.size * copies;
+		}
+	}
+
+	public static int tierScore() {
+		// 8 + 7 * 10 + 32 * 100 - 1000 == 2278
+		return Tier.BASIC.bonus() + Tier.LIMITED.bonus() * 10
+				+ Tier.CUSTOM.bonus() * 100 + Tier.LIMITED.side() * 1000;
+	}
 }

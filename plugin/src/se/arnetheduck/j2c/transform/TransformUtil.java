@@ -820,12 +820,23 @@ public final class TransformUtil {
 		IJavaElement mbje = mb.getJavaElement();
 		IJavaElement tbje = tb.getJavaElement();
 		if (mbje == null || tbje == null) {
-			return false;
+			// No Java model (the CLI parses sources directly): a private
+			// constructor is accessible within its top-level class, as for
+			// enum constants with bodies (enum constructors are private)
+			return topLevel(mb.getDeclaringClass()).isEqualTo(topLevel(tb));
 		}
 
 		IJavaElement mbcu = mbje.getAncestor(IJavaElement.COMPILATION_UNIT);
 		IJavaElement tbcu = tbje.getAncestor(IJavaElement.COMPILATION_UNIT);
 		return mbcu != null && mbcu.equals(tbcu);
+	}
+
+	private static ITypeBinding topLevel(ITypeBinding tb) {
+		ITypeBinding ret = tb.getErasure();
+		while (ret.getDeclaringClass() != null) {
+			ret = ret.getDeclaringClass().getErasure();
+		}
+		return ret;
 	}
 
 	public static Collection<ITypeBinding> returnDeps(ITypeBinding type,

@@ -18,5 +18,7 @@ java::lang::String* java::lang::operator "" _j(const char16_t*, size_t) {
 int main() {
 	// Records implementing a sealed interface, matched with patterns
 	if (Java17Records::sum() != 9) return 1;
+	// Enum constants with bodies, built through overloaded enum constructors
+	if (Java17Records::tierScore() != 2278) return 50;
 	return 0;
 }
