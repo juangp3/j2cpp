@@ -128,4 +128,16 @@ public class Java17Features {
 	public static String conditionalMix(Integer value) {
 		return "[" + (value == null ? "none" : value.intValue()) + "]";
 	}
+
+	// JDK classes overriding interface methods with covariant returns that
+	// include each other, such as LocalDate.atTime and
+	// LocalDateTime.toLocalDate (found in commons-lang)
+	public static String covariantTime() {
+		java.time.LocalDateTime noon = java.time.LocalDate.now().atTime(
+				java.time.LocalTime.NOON);
+		java.time.LocalDate today = java.time.LocalDateTime.now().toLocalDate();
+		java.time.LocalDateTime local = java.time.ZonedDateTime.now()
+				.toLocalDateTime();
+		return noon.toString() + today + local;
+	}
 }

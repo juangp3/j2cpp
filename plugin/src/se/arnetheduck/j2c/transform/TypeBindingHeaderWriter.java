@@ -161,7 +161,10 @@ public class TypeBindingHeaderWriter {
 		header.method(mb);
 
 		pw.print(i1);
-		TransformUtil.printSignature(ctx, pw, type, mb, deps, false);
+		// Like HeaderWriter, narrow a covariant return type that would need
+		// a circular include: C++ rejects one that is only forward-declared
+		TransformUtil.printSignature(ctx, pw, type, mb,
+				TransformUtil.returnType(type, mb), deps, false);
 
 		pw.print(TransformUtil.methodSpecifiers(mb));
 

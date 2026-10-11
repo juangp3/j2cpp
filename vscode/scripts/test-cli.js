@@ -534,6 +534,18 @@ try {
 			featuresOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Features_Named.hpp"
 		), "utf8");
 		assert(namedHeader.includes("::java::lang::String* j2c_name, int j2c_ordinal, ::java::lang::String* name"));
+		// JDK headers narrow covariant returns that would need circular
+		// includes, as source headers do, and callers cast back
+		const localDateHeader = fs.readFileSync(path.join(
+			featuresOutput, "ext", "src", "java", "time", "LocalDate.hpp"
+		), "utf8");
+		assert(localDateHeader.includes("::java::time::chrono::ChronoLocalDateTime* atTime(LocalTime* a0) override;"), localDateHeader);
+		assert(!localDateHeader.includes(" LocalDateTime* atTime(LocalTime* a0) override;"));
+		const localDateTimeHeader = fs.readFileSync(path.join(
+			featuresOutput, "ext", "src", "java", "time", "LocalDateTime.hpp"
+		), "utf8");
+		assert(localDateTimeHeader.includes("::java::time::chrono::ChronoLocalDate* toLocalDate() override;"));
+		assert(featureSource.includes("java_cast< ::java::time::LocalDateTime* >(npc(::java::time::LocalDate::now())->atTime("));
 
 		const lambdasOutput = path.join(tempDirectory, "lambdas output");
 		fs.mkdirSync(lambdasOutput);

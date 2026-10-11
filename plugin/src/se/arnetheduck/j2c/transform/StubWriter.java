@@ -347,7 +347,9 @@ public class StubWriter {
 			constructors.add(mb);
 		}
 
-		TransformUtil.printSignature(ctx, out, type, mb, deps, true);
+		// The return type TypeBindingHeaderWriter declares
+		TransformUtil.printSignature(ctx, out, type, mb,
+				TransformUtil.returnType(type, mb), deps, true);
 
 		println();
 		print("{");
