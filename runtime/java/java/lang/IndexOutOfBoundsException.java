@@ -11,4 +11,8 @@ public class IndexOutOfBoundsException extends RuntimeException {
 	public IndexOutOfBoundsException(int index) {
 		super("Index out of range: " + index);
 	}
+
+	public IndexOutOfBoundsException(long index) {
+		super("Index out of range: " + index);
+	}
 }
