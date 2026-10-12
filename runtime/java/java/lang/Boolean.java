@@ -28,6 +28,18 @@ public final class Boolean implements java.io.Serializable, Comparable<Boolean> 
 		return b ? "true" : "false";
 	}
 
+	public static boolean logicalAnd(boolean a, boolean b) {
+		return a && b;
+	}
+
+	public static boolean logicalOr(boolean a, boolean b) {
+		return a || b;
+	}
+
+	public static boolean logicalXor(boolean a, boolean b) {
+		return a ^ b;
+	}
+
 	public static int compare(boolean x, boolean y) {
 		return x == y ? 0 : (x ? 1 : -1);
 	}

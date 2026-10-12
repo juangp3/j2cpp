@@ -6,11 +6,56 @@ public final class Double extends Number implements Comparable<Double> {
 	public static final double NaN = 0.0d / 0.0;
 	public static final double MAX_VALUE = 0x1.fffffffffffffP+1023;
 	public static final double MIN_VALUE = 0x0.0000000000001P-1022;
+	public static final double MIN_NORMAL = 0x1.0p-1022;
+	public static final int MAX_EXPONENT = 1023;
+	public static final int MIN_EXPONENT = -1022;
+	public static final int SIZE = 64;
+	public static final int BYTES = 8;
 
 	private final double value;
 
 	public Double(double value) {
 		this.value = value;
+	}
+
+	public Double(String s) {
+		this.value = parseDouble(s);
+	}
+
+	/** Java's hexadecimal form, such as 0x1.8p1: hex fraction digits, binary exponent */
+	public static String toHexString(double d) {
+		if (isNaN(d)) {
+			return "NaN";
+		}
+		if (isInfinite(d)) {
+			return d > 0 ? "Infinity" : "-Infinity";
+		}
+		long bits = doubleToRawLongBits(d);
+		String sign = bits < 0 ? "-" : "";
+		long fraction = bits & 0x000fffffffffffffL;
+		int exponent = (int) ((bits >>> 52) & 0x7ff);
+		if (exponent == 0 && fraction == 0) {
+			return sign + "0x0.0p0";
+		}
+		if (exponent == 0) {
+			return sign + "0x0." + hexFraction(fraction, 13) + "p-1022";
+		}
+		return sign + "0x1." + hexFraction(fraction, 13) + "p" + (exponent - 1023);
+	}
+
+	/** The low 4 * count bits as count hex digits, without trailing zeros but one */
+	static String hexFraction(long fraction, int count) {
+		char[] digits = new char[count];
+		int length = 1;
+		for (int i = count - 1; i >= 0; i--) {
+			int digit = (int) (fraction & 0xf);
+			fraction >>>= 4;
+			digits[i] = Character.forDigit(digit, 16);
+			if (digit != 0 && length == 1) {
+				length = i + 1;
+			}
+		}
+		return new String(digits, 0, length);
 	}
 
 	public static Double valueOf(double d) {
@@ -40,8 +85,11 @@ public final class Double extends Number implements Comparable<Double> {
 			i++;
 		}
 		String rest = in.substring(i);
-		if (rest.equals("NaN") || rest.equals("Infinity")) {
-			return convert(in, toFloat);
+		if (rest.equals("NaN")) {
+			return NaN;
+		}
+		if (rest.equals("Infinity")) {
+			return i > 0 && in.charAt(0) == '-' ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
 		}
 		boolean hex = rest.startsWith("0x") || rest.startsWith("0X");
 		int j = hex ? i + 2 : i;
@@ -55,6 +103,10 @@ public final class Double extends Number implements Comparable<Double> {
 			while (j < n && isDigit(in.charAt(j), hex)) {
 				j++;
 				digits++;
+			}
+			if (!hex && j < n && in.charAt(j) == '.') {
+				// Java reports a second point in the decimal digits specially
+				throw new NumberFormatException("multiple points");
 			}
 		}
 		boolean valid = digits > 0;
@@ -78,7 +130,8 @@ public final class Double extends Number implements Comparable<Double> {
 			j++;
 		}
 		if (!valid || j != n) {
-			throw new NumberFormatException(n == 0 ? "empty String" : "For input string: \"" + s + "\"");
+			// The message quotes the text without its surrounding white space
+			throw new NumberFormatException(n == 0 ? "empty String" : "For input string: \"" + in + "\"");
 		}
 		// The type suffix is Java syntax that strtod does not accept
 		return convert(in.substring(0, end), toFloat);
@@ -144,6 +197,9 @@ public final class Double extends Number implements Comparable<Double> {
 		return isNaN(value);
 	}
 
+	public boolean isInfinite() {
+		return isInfinite(value);
+	}
 	public int compareTo(Double anotherDouble) {
 		return compare(value, anotherDouble.value);
 	}
