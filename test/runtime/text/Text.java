@@ -76,9 +76,8 @@ public class Text {
 		print("lastIndexOf String", s.lastIndexOf("bc") + " " + s.lastIndexOf("bc", 3) + " " + s.lastIndexOf("bc", 0) + " "
 				+ s.lastIndexOf("") + " " + s.lastIndexOf("", 2) + " " + s.lastIndexOf("", -1) + " " + s.lastIndexOf("abc", 99)
 				+ " " + s.lastIndexOf("x"));
-		// "z" follows the surrogates, not "b": J2C writes surrogates as \\x
-		// escapes, which absorb a following hex digit (a translator bug)
-		String pair = "a\ud83d\ude00z";
+		// A hex digit ("b") right after a surrogate escape (G44)
+		String pair = "a\ud83d\ude00b";
 		print("supplementary", pair.indexOf(0x1f600) + " " + pair.lastIndexOf(0x1f600) + " " + pair.indexOf(0x1f601) + " "
 				+ pair.indexOf(0x110000) + " " + pair.indexOf(-1) + " " + pair.codePointAt(1) + " " + pair.codePointAt(2) + " "
 				+ pair.codePointAt(0) + " " + "\ud83d".codePointAt(0));

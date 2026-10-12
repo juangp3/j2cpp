@@ -189,6 +189,17 @@ try {
 	assert.strictEqual(notRuntime.status, 2);
 	assert(notRuntime.stderr.includes("Not a J2C runtime"), notRuntime.stderr);
 
+	// A surrogate escape followed by a hex digit splits the C++ literal (G44)
+	const textSource = fs.readFileSync(path.join(repositoryRoot, "test", "runtime", "text", "Text.java"), "utf8");
+	assert(textSource.includes("\"a\\ud83d\\ude00b\""), "Text.java keeps the G44 case");
+	const textOutput = path.join(tempDirectory, "text output");
+	fs.mkdirSync(textOutput);
+	const textRun = runCli(["--runtime", runtimeDirectory, "--output", textOutput,
+		path.join(repositoryRoot, "test", "runtime", "text")]);
+	assert.strictEqual(textRun.status, 0, textRun.stderr || textRun.stdout);
+	const textCpp = fs.readFileSync(path.join(textOutput, "src", "Text.cpp"), "utf8");
+	assert(textCpp.includes("u\"a\\xd83d\\xde00\" u\"b\"_j"), "surrogate escape must not absorb the following hex digit");
+
 	// A String switch alone must define the npc helper it calls (jsoup)
 	const switchRoot = path.join(tempDirectory, "string switch");
 	fs.mkdirSync(path.join(switchRoot, "sw"), { recursive: true });

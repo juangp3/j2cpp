@@ -374,10 +374,23 @@ public final class TransformUtil {
 	 *
 	 * In java, it is valid to have lone UTF-16 surrogates - in C++, not.
 	 */
+	/**
+	 * A Java string literal as the body of a C++ u"" literal. Surrogates
+	 * cannot be universal character names, so they become \x escapes; a \x
+	 * escape reads every following hex digit, so the literal is split when a
+	 * hex digit follows ("\xde00" u"b"), and adjacent literals concatenate.
+	 */
 	public static String stringLiteral(String escaped) {
-		Pattern p = Pattern.compile("\\\\u([dD][89abcdefABCDEF]..)");
+		Pattern p = Pattern.compile("\\\\u([dD][89abcdefABCDEF][0-9a-fA-F]{2})([0-9a-fA-F]?)");
 		Matcher m = p.matcher(escaped);
-		return m.replaceAll("\\\\x$1");
+		StringBuffer sb = new StringBuffer();
+		while (m.find()) {
+			String split = m.group(2).isEmpty() ? "" : "\" u\"" + m.group(2);
+			m.appendReplacement(sb, Matcher.quoteReplacement("\\x" + m.group(1)
+					+ split));
+		}
+		m.appendTail(sb);
+		return sb.toString();
 	}
 
 	public static String fieldModifiers(ITypeBinding type, int modifiers,
