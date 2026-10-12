@@ -692,6 +692,29 @@ out-of-range index is undefined behavior in C++, where Java throws
 needs a decision: always, a build option (`J2C_BOUNDS_CHECKS`), or only in
 debug builds (ASan finds the errors meanwhile).
 
+#### G44–G47 — Found while writing the runtime (R2)
+
+- **G44, surrogate escapes in string literals** (fixed 2026-10-12): a
+  surrogate became a C++ `\x` escape, which absorbed a following hex digit,
+  so a smiley followed by `b` ended in U+E00B. The literal is now split after
+  the escape (`u"\xde00" u"b"_j`). Tested by `test/runtime/text` and
+  `test-cli.js`.
+- **G45, try-with-resources when `close()` throws** (open): `close()` runs in
+  a `finally_` destructor, which is implicitly `noexcept`, so a throwing
+  `close()` calls `std::terminate`, and `addSuppressed` is never used.
+  Needs an explicit try/catch translation of JLS 14.20.3.
+- **G46, rethrowing a caught exception** (open): `catch (Throwable t) {
+  throw t; }` throws the static type `Throwable*`, so an outer handler for
+  the subclass does not match. Needs polymorphic throwing, for example a
+  generated virtual `j2c_throw()` in every `Throwable` subclass.
+- **G47, nested class names** (open): `getClass().getName()` returns
+  `Outer.Inner` instead of the binary name `Outer$Inner`; `class_` should
+  receive the binary name.
+
+Known runtime difference: `Double.toString` and `Float.toString` print the
+shortest round-trip digits (the JDK 19+ algorithm), so a few values differ
+from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
