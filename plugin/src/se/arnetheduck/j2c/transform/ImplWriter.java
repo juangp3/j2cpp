@@ -1924,21 +1924,47 @@ public class ImplWriter extends TransformWriter {
 		ITypeBinding rt = right.resolveTypeBinding();
 
 		if (TransformUtil.same(tb, String.class)) {
+			List<Expression> operands = new ArrayList<Expression>();
+			operands.add(left);
+			operands.add(right);
+			operands.addAll(extendedOperands);
+
+			// Java evaluates left to right: operands before the first String
+			// are added as numbers (1 + 2 + "x" is "3x")
+			int first = 0;
+			while (first < operands.size() - 1
+					&& !isString(operands.get(first).resolveTypeBinding())) {
+				first++;
+			}
+
 			print("::java::lang::StringBuilder().append(");
-
-			castNull(left);
-
-			print(")->append(");
-
-			castNull(right);
+			if (first <= 1) {
+				castNull(left);
+			} else {
+				// C++ promotes the operands as Java does, and -fwrapv wraps
+				print("(");
+				for (int i = 0; i < first; ++i) {
+					print(i == 0 ? "" : " + ");
+					operands.get(i).accept(this);
+				}
+				print(")");
+			}
 
 			print(")");
 
+			int next = Math.max(first, 1);
+			if (next == 1) {
+				print("->append(");
+				castNull(right);
+				print(")");
+				next++;
+			}
+
 			indent++;
-			for (Expression e : extendedOperands) {
+			for (int i = next; i < operands.size(); ++i) {
 				println();
 				printi("->append(");
-				castNull(e);
+				castNull(operands.get(i));
 				print(")");
 			}
 			indent--;

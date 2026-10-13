@@ -737,6 +737,11 @@ debug builds (ASan finds the errors meanwhile).
   and `AbstractList<E>` as equal, so adding one replaced the other in a
   dependency set. `TransformUtil.addDep` now also compares binding keys.
   Tested by `test-cli.js` and the corpus.
+- **G49, numbers before the first string in a concatenation** (fixed
+  2026-10-13): `i + j + " ints"` appended each operand, printing `12 ints`.
+  Operands before the first `String` are now added as one C++ expression,
+  whose promotions match Java's (`-fwrapv` wraps), and appended once.
+  Tested by `test/runtime/concat`, `Java17Arithmetic` and `test-cli.js`.
 
 #### G33–G35 — Found by the java.base experiment (Phase 10)
 

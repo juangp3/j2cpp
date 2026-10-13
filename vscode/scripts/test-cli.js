@@ -787,6 +787,11 @@ try {
 		assert(arithmeticArrays.includes('::class_(u"[I", 2)'));
 		assert(fs.readFileSync(path.join(arithmeticOutput, "src", "ObjectArray.hpp"), "utf8")
 			.includes('::class_(u"[Ljava.lang.Object;", 19)'));
+		// Operands before the first String are added as numbers (G49)
+		const concatSource = arithmeticSource.replace(/\s*\r?\n\s*/g, "");
+		assert(concatSource.includes("return ::java::lang::StringBuilder().append((i + j))->append(u\" ints \"_j)->append(c)->append(i)"),
+			arithmeticSource);
+		assert(concatSource.includes("(::java::lang::StringBuilder().append((c + i))->append(u\"char\"_j)"));
 		// A varargs constructor called with no arguments gets an empty array
 		assert(arithmeticSource.includes("(new Java17Arithmetic_VarargCount(new ::int32_tArray()))->count"));
 	} else {

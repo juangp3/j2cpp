@@ -150,4 +150,10 @@ public class Java17Arithmetic {
 	public static int varargNone() {
 		return new VarargCount().count;
 	}
+
+	// Operands before the first String are added as numbers: 1 + 2 + "x"
+	// is "3x", and "x" + 1 + 2 is "x12" (G49)
+	public static String concatNumbersFirst(int i, int j, char c) {
+		return i + j + " ints " + c + i + " " + (c + i + "char") + 1.5 + i;
+	}
 }

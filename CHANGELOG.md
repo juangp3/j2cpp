@@ -141,6 +141,8 @@ C++20-targeted output.
 - A local class created from an anonymous class, a lambda or another local
   class, or extended by one, gets the variables it captures; generic local
   classes get their outer instance.
+- Numbers before the first string in a concatenation are added, as in Java:
+  `1 + 2 + " ints"` is `3 ints`, not `12 ints`.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 
