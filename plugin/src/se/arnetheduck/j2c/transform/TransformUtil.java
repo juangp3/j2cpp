@@ -555,9 +555,10 @@ public final class TransformUtil {
 
 		boolean found = false;
 		// This ensures that the new dep is always added last (useful when
-		// ordering bases)
+		// ordering bases). isEqualTo alone can match unrelated generic types
+		// (TypeDescriptor.OfField<F> and AbstractList<E>), so keys must match
 		for (ITypeBinding d : deps) {
-			if (d.isEqualTo(dep)) {
+			if (d.isEqualTo(dep) && d.getKey().equals(dep.getKey())) {
 				deps.remove(d);
 				found = true;
 				break;
@@ -1151,6 +1152,16 @@ public final class TransformUtil {
 
 	public static boolean same(ITypeBinding type, Class<?> klazz) {
 		return type.getErasure().getQualifiedName().equals(klazz.getName());
+	}
+
+	/** True for java.lang.Throwable and its subclasses */
+	public static boolean isThrowable(ITypeBinding tb) {
+		for (ITypeBinding t = tb; t != null; t = t.getSuperclass()) {
+			if (same(t, Throwable.class)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public static boolean variableErased(IVariableBinding b) {

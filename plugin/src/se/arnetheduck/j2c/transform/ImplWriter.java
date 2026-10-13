@@ -3494,10 +3494,20 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public boolean visit(ThrowStatement node) {
-		printi("throw ");
-		node.getExpression().accept(this);
-		hardDep(node.getExpression().resolveTypeBinding());
-		println(";");
+		Expression expr = node.getExpression();
+		hardDep(expr.resolveTypeBinding());
+		if (expr instanceof ClassInstanceCreation) {
+			// The static type of a new object is its dynamic type
+			printi("throw ");
+			expr.accept(this);
+			println(";");
+		} else {
+			// Throw the dynamic type, and NullPointerException for null
+			printi();
+			npc();
+			expr.accept(this);
+			println(")->" + CName.THROW + "();");
+		}
 
 		return false;
 	}
@@ -3546,39 +3556,80 @@ public class ImplWriter extends TransformWriter {
 
 	/**
 	 * Java closes resources in reverse order after the body and before any
-	 * catch or finally clause runs. Scoped finally guards declared in
-	 * resource order give the same order, and the enclosing block ends before
-	 * the surrounding try's handlers run.
+	 * catch or finally clause runs, adding exceptions from close() to the
+	 * suppressed list of an exception already thrown (JLS 14.20.3.1). Each
+	 * resource gets a block, nested in the order of declaration: a guard
+	 * closes it on a normal exit, and a handler closes it and rethrows on an
+	 * exceptional one. The enclosing block ends before the surrounding try's
+	 * handlers run.
 	 */
 	private void resourceBlock(TryStatement node) {
 		deps.setNeedsFinally();
 		println("{");
 		indent++;
-		for (Expression resource : (List<Expression>) node.resources()) {
-			Expression ref = resource;
-			if (resource instanceof VariableDeclarationExpression) {
-				VariableDeclarationExpression vde = (VariableDeclarationExpression) resource;
-				printi();
-				vde.accept(this);
-				println(";");
-				ref = ((VariableDeclarationFragment) vde.fragments().get(0))
-						.getName();
-			}
-
-			hardDep(ref.resolveTypeBinding());
-			printi("auto finally" + fc + " = finally([&] { if (");
-			ref.accept(this);
-			print(" != nullptr) { ");
-			ref.accept(this);
-			println("->close(); } });");
-			fc++;
-		}
-
-		printi();
-		node.getBody().accept(this);
-		println();
+		resource(node, 0);
 		indent--;
 		printi("}");
+	}
+
+	private void resource(TryStatement node, int i) {
+		if (i == node.resources().size()) {
+			printi();
+			node.getBody().accept(this);
+			println();
+			return;
+		}
+
+		Expression resource = (Expression) node.resources().get(i);
+		Expression ref = resource;
+		if (resource instanceof VariableDeclarationExpression) {
+			VariableDeclarationExpression vde = (VariableDeclarationExpression) resource;
+			printi();
+			vde.accept(this);
+			println(";");
+			ref = ((VariableDeclarationFragment) vde.fragments().get(0))
+					.getName();
+		}
+
+		hardDep(ref.resolveTypeBinding());
+		ITypeBinding throwable = node.getAST().resolveWellKnownType(
+				"java.lang.Throwable");
+		hardDep(throwable);
+		String throwableRef = TransformUtil.relativeRef(throwable, type, true);
+		int n = fc++;
+
+		printi("auto finally" + n + " = on_normal_exit([&] { if (");
+		ref.accept(this);
+		print(" != nullptr) { ");
+		ref.accept(this);
+		println("->close(); } });");
+
+		printlni("try {");
+		indent++;
+		resource(node, i + 1);
+		indent--;
+		printlni("} catch (" + throwableRef + " primary" + n + ") {");
+		indent++;
+		printi("if (");
+		ref.accept(this);
+		println(" != nullptr) {");
+		indent++;
+		printlni("try {");
+		indent++;
+		printi();
+		ref.accept(this);
+		println("->close();");
+		indent--;
+		printlni("} catch (" + throwableRef + " suppressed" + n + ") {");
+		indent++;
+		printlni("primary" + n + "->addSuppressed(suppressed" + n + ");");
+		indent--;
+		printlni("}");
+		indent--;
+		printlni("}");
+		printlni("throw;");
+		indent--;
+		printlni("}");
 	}
 
 	@Override

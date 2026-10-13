@@ -107,6 +107,14 @@ C++20-targeted output.
   interface, so programs using `java.util` collections compile and link.
 - `Cloneable` and `Serializable` headers needed by `ObjectArray.hpp` are
   always generated.
+- Rethrowing a caught exception (`throw t`) throws its dynamic type, so outer
+  handlers for its class match, and `throw null` raises
+  `NullPointerException`.
+- A `close()` that throws in try-with-resources no longer terminates the
+  program: its exception propagates, or is added to the suppressed list of
+  the body's exception. A `finally` block may throw on a normal exit.
+- Dependency headers are no longer dropped when two unrelated generic types
+  compare equal in JDT (`TypeDescriptor.OfField` and `AbstractList`).
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

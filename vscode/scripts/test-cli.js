@@ -200,6 +200,19 @@ try {
 	const textCpp = fs.readFileSync(path.join(textOutput, "src", "Text.cpp"), "utf8");
 	assert(textCpp.includes("u\"a\\xd83d\\xde00\" u\"b\"_j"), "surrogate escape must not absorb the following hex digit");
 
+	// JDT's isEqualTo matches TypeDescriptor.OfField<F> with AbstractList<E>,
+	// which dropped the base header that Class.hpp includes (hashids-java)
+	const depsRoot = path.join(tempDirectory, "base deps");
+	fs.mkdirSync(depsRoot);
+	fs.writeFileSync(path.join(depsRoot, "Deps.java"),
+		"import java.util.ArrayList;\npublic class Deps {\n\tpublic static int size() {\n\t\treturn new ArrayList<String>().size();\n\t}\n}\n");
+	const depsOutput = path.join(tempDirectory, "base deps output");
+	fs.mkdirSync(depsOutput);
+	const depsRun = runCli(["--output", depsOutput, depsRoot]);
+	assert.strictEqual(depsRun.status, 0, depsRun.stderr || depsRun.stdout);
+	assert(fs.existsSync(path.join(depsOutput, "ext", "src", "java", "lang", "invoke", "TypeDescriptor_OfField.hpp")),
+		"every base of a generated header is generated");
+
 	// A String switch alone must define the npc helper it calls (jsoup)
 	const switchRoot = path.join(tempDirectory, "string switch");
 	fs.mkdirSync(path.join(switchRoot, "sw"), { recursive: true });
@@ -547,7 +560,15 @@ try {
 		assert.match(featureSource, /\(v == Java17Features_Shape::CIRCLE\)/);
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"sat"_j)) || (npc(v)->equals(u"sun"_j))`));
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"go"_j)) || (npc(v)->equals(u"run"_j))`));
-		assert(featureSource.includes("finally([&] { if (reader != nullptr) { reader->close(); } })"));
+		// Resources close on a normal exit, or close and suppress, then rethrow (G45)
+		assert(featureSource.includes("auto finally0 = on_normal_exit([&] { if (reader != nullptr) { reader->close(); } });"));
+		assert(featureSource.includes("primary0->addSuppressed(suppressed0);"));
+		assert(featureSource.includes("throw;"));
+		// throw uses the dynamic type unless the operand is a new object (G46)
+		assert(featureSource.includes("npc(e)->j2c_throw();"));
+		assert(featureSource.includes("throw new ::java::lang::IllegalArgumentException(static_cast< ::java::lang::Throwable* >(s));"));
+		assert(fs.readFileSync(path.join(featuresOutput, "ext", "src", "java", "lang", "Throwable.hpp"), "utf8")
+			.includes("[[noreturn]] virtual void j2c_throw() { throw this; }"));
 		assert(!featureSource.includes("try ("), "try-with-resources must not be emitted verbatim");
 		// Boxed compound assignments, increments and decrements make new boxes
 		assert(featureSource.includes("a = ::java::lang::Integer::valueOf(static_cast<int32_t>((npc(a))->intValue() + 2))"));

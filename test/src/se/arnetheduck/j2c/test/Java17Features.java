@@ -87,6 +87,15 @@ public class Java17Features {
 		}
 	}
 
+	// A rethrow keeps the dynamic type (G46)
+	public static void rethrow(Exception e) throws Exception {
+		try {
+			throw e;
+		} catch (IllegalStateException s) {
+			throw new IllegalArgumentException(s);
+		}
+	}
+
 	// Updating a box makes a new box (found in semver4j)
 	private Integer boxedCount = 1;
 

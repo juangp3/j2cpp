@@ -56,6 +56,12 @@ public class CName {
 	 */
 	public static final String NPC = "npc";
 
+	/**
+	 * Virtual method of every Throwable that throws the object as its dynamic
+	 * type, so that handlers for subclasses match a rethrown exception
+	 */
+	public static final String THROW = "j2c_throw";
+
 	/** C++ keywords + special method names - java keywords */
 	public static Collection<String> keywords = Arrays.asList("alignas",
 			"alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
@@ -67,7 +73,7 @@ public class CName {
 			"static_assert", "static_cast", "struct", "template",
 			"thread_local", "typedef", "typeid", "typename", "union",
 			"unsigned", "using", "virtual", "wchar_t", "xor", "xor_eq", CTOR,
-			INSTANCE_INIT, STATIC_INIT, GET_CLASS, DEFAULT_INIT_TAG, JAVA_CAST,
+			INSTANCE_INIT, STATIC_INIT, GET_CLASS, THROW, DEFAULT_INIT_TAG, JAVA_CAST,
 			"int8_t", "int16_t", "int32_t", "int64_t", "char16_t", "NULL",
 			"npc", "EOF", "LITTLE_ENDIAN", "BIG_ENDIAN",
 			// C++20

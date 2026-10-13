@@ -45,9 +45,10 @@ function normalize(text) {
 	return text.replace(/\r\n/g, "\n");
 }
 
-// The JVM prints "\tat ..." frames and "\t... n more"; J2C records none
+// The JVM prints "\tat ..." frames and "\t... n more", indented further under
+// suppressed exceptions; J2C records none
 function withoutFrames(text) {
-	return normalize(text).split("\n").filter((line) => !/^\t(at |\.\.\. )/.test(line)).join("\n");
+	return normalize(text).split("\n").filter((line) => !/^\t+(at |\.\.\. )/.test(line)).join("\n");
 }
 
 function check(name) {

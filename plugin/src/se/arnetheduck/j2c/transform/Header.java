@@ -362,6 +362,7 @@ public class Header {
 		printEnumMethods();
 		printDtor();
 		printGetClass();
+		printThrow();
 
 		printStringOperator();
 
@@ -417,6 +418,21 @@ public class Header {
 		access = printAccess(out, Modifier.PRIVATE, access);
 
 		println(i1 + "virtual ::java::lang::Class* " + CName.GET_CLASS + "();");
+	}
+
+	/**
+	 * A C++ throw uses the static type of its operand, so Java's throw goes
+	 * through this method to throw the dynamic type instead
+	 */
+	private void printThrow() {
+		if (type.isInterface() || !TransformUtil.isThrowable(type)) {
+			return;
+		}
+
+		access = printAccess(out, Modifier.PUBLIC, access);
+
+		println(i1 + "[[noreturn]] virtual void " + CName.THROW
+				+ "() { throw this; }");
 	}
 
 	private void printDtor() {
