@@ -742,6 +742,12 @@ debug builds (ASan finds the errors meanwhile).
   Operands before the first `String` are now added as one C++ expression,
   whose promotions match Java's (`-fwrapv` wraps), and appended once.
   Tested by `test/runtime/concat`, `Java17Arithmetic` and `test-cli.js`.
+- **G50, a default overriding a default** (fixed 2026-10-14): an interface
+  default that overrode a super-interface's default was commented out as
+  "already declared", so `Upper.level()` ran `Level.level()`'s body.
+  `TransformUtil.baseDeclared` now declares every default method. Tested by
+  `test/runtime/defaults`, `Java17Lambdas`, its smoke harness and
+  `test-cli.js`.
 
 #### G33–G35 — Found by the java.base experiment (Phase 10)
 

@@ -658,6 +658,12 @@ try {
 		assert(lambdaSources.includes("return new Java17Lambdas_localFromOtherClasses_Offset_1(base);"));
 		assert(lambdaSources.includes("(new Java17Lambdas_localFromOtherClasses_Twice_1(base))->twice(1)"));
 		assert(lambdaSources.includes(": super(base, ::default_init_tag())"));
+		// A default overriding another default is declared, not skipped (G50)
+		const upperHeader = fs.readFileSync(path.join(
+			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_Upper.hpp"
+		), "utf8");
+		assert(upperHeader.includes("int32_t level() override;"), upperHeader);
+		assert(!upperHeader.includes("already declared"));
 		// toString() in a lambda means the enclosing object's toString()
 		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
 		// A reassigned bound receiver is passed in, not captured

@@ -304,6 +304,28 @@ public class Java17Lambdas {
 		}
 	}
 
+	// A default overriding another default replaces it (G50)
+	public interface Level {
+		default int level() {
+			return 1;
+		}
+	}
+
+	public interface Upper extends Level {
+		@Override
+		default int level() {
+			return 2;
+		}
+	}
+
+	public static class UpperLevel implements Upper {
+	}
+
+	public static int defaultOverridesDefault() {
+		Level level = new UpperLevel();
+		return level.level();
+	}
+
 	public static int defaultOverridesAbstract(int value) {
 		Source<Tally> source = new TallyHolder();
 		source.get().add(value);

@@ -53,5 +53,7 @@ int main() {
 	if (Java17Lambdas::defaultOverridesAbstract(7) != 7) return 30;
 	// Box's implicit size() accessor overrides Sized::size()
 	if (Java17Lambdas::recordAccessorOverride(9) != 9) return 31;
+	// Upper's default level() replaces Level's (G50)
+	if (Java17Lambdas::defaultOverridesDefault() != 2) return 32;
 	return 0;
 }
