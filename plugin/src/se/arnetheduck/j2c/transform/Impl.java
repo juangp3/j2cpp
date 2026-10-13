@@ -315,6 +315,26 @@ public class Impl {
 		}
 	}
 
+	/**
+	 * Does impl's class have, or inherit, another method with impl's name and
+	 * arity but other erased parameters?
+	 */
+	private static boolean hasOverload(IMethodBinding impl) {
+		ITypeBinding declaring = impl.getDeclaringClass().getErasure();
+		List<ITypeBinding> types = TypeUtil.allBases(declaring, null);
+		types.add(declaring);
+		for (IMethodBinding mb : TypeUtil.methods(types)) {
+			if (mb.getName().equals(impl.getName())
+					&& mb.getParameterTypes().length == impl
+							.getParameterTypes().length
+					&& !TransformUtil.sameParameters(mb, impl, true)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private void printSuperCall(IMethodBinding decl, IMethodBinding impl) {
 		IMethodBinding md = decl.getMethodDeclaration();
 		TransformUtil.printSignature(ctx, out, type, md, impl.getReturnType(),
@@ -354,17 +374,27 @@ public class Impl {
 			print(sep);
 			sep = ", ";
 
+			ITypeBinding implErasure = impl.getMethodDeclaration()
+					.getParameterTypes()[i].getErasure();
 			boolean cast = !md.getParameterTypes()[i].getErasure()
 					.isAssignmentCompatible(
 							impl.getParameterTypes()[i].getErasure());
 			if (cast) {
 				javaCast(md.getParameterTypes()[i], impl.getParameterTypes()[i]);
 			} else if (!md.getParameterTypes()[i].getErasure().isEqualTo(
-					impl.getMethodDeclaration().getParameterTypes()[i]
-							.getErasure())) {
+					implErasure)) {
 				// The base method takes an erased (wider) type, so the
 				// argument is upcast, which needs its full declaration
 				hardDep(md.getParameterTypes()[i]);
+				if (hasOverload(impl)) {
+					// Without the upcast, C++ would pick an overload that
+					// matches better, such as EmptyNode's pure
+					// copyInto(ObjectArray*) over copyInto(Object*)
+					cast = true;
+					print("static_cast< "
+							+ TransformUtil.relativeRef(implErasure, type, true)
+							+ " >(");
+				}
 			}
 			print(ctx.paramName(md, i));
 			if (cast) {

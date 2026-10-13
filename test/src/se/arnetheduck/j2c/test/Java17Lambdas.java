@@ -326,6 +326,86 @@ public class Java17Lambdas {
 		return level.level();
 	}
 
+	// A generic superclass implements an interface method that a primitive
+	// specialization redeclares with another erasure, as
+	// StreamSpliterators.SliceSpliterator.OfInt does (G35)
+	public interface IntScale {
+		int accept(int value);
+	}
+
+	public interface Advancer<C> {
+		boolean advance(C action);
+	}
+
+	public interface IntAdvancer extends Advancer<IntScale> {
+		@Override
+		boolean advance(IntScale action);
+	}
+
+	public abstract static class Ticker<C> implements Advancer<C> {
+		int left;
+		int total;
+
+		Ticker(int left) {
+			this.left = left;
+		}
+
+		abstract int emit(C action, int value);
+
+		@Override
+		public boolean advance(C action) {
+			if (left == 0) {
+				return false;
+			}
+			total += emit(action, left--);
+			return true;
+		}
+	}
+
+	public static final class IntTicker extends Ticker<IntScale>
+			implements IntAdvancer {
+		IntTicker(int left) {
+			super(left);
+		}
+
+		@Override
+		int emit(IntScale action, int value) {
+			return action.accept(value);
+		}
+	}
+
+	// The superclass's methods implement the interface's only once the
+	// subclass gives its type arguments, as in Nodes.EmptyNode.OfRef (G35)
+	public interface Store<T> {
+		int fill(T[] array);
+	}
+
+	public abstract static class EmptyStore<T, A> implements Store<T> {
+		public int fill(A array) {
+			return 4;
+		}
+	}
+
+	public static final class EmptyRefStore<T> extends EmptyStore<T, T[]> {
+	}
+
+	public static int primitiveSpecialization() {
+		IntTicker ticker = new IntTicker(3);
+		IntAdvancer advancer = ticker;
+		Advancer<IntScale> generic = ticker;
+		IntScale twice = new IntScale() {
+			@Override
+			public int accept(int value) {
+				return value * 2;
+			}
+		};
+		advancer.advance(twice);
+		generic.advance(twice);
+		ticker.advance(twice);
+		Store<Integer> store = new EmptyRefStore<Integer>();
+		return ticker.total + store.fill(null);
+	}
+
 	public static int defaultOverridesAbstract(int value) {
 		Source<Tally> source = new TallyHolder();
 		source.get().add(value);

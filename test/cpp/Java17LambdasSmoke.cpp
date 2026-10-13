@@ -55,5 +55,8 @@ int main() {
 	if (Java17Lambdas::recordAccessorOverride(9) != 9) return 31;
 	// Upper's default level() replaces Level's (G50)
 	if (Java17Lambdas::defaultOverridesDefault() != 2) return 32;
+	// IntTicker forwards both erasures of advance() to Ticker, and
+	// EmptyRefStore forwards Store::fill to EmptyStore (G35): 6 + 4 + 2 + 4
+	if (Java17Lambdas::primitiveSpecialization() != 16) return 33;
 	return 0;
 }

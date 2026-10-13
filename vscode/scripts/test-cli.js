@@ -664,6 +664,18 @@ try {
 		), "utf8");
 		assert(upperHeader.includes("int32_t level() override;"), upperHeader);
 		assert(!upperHeader.includes("already declared"));
+		// Each erasure of advance() is forwarded to the generic superclass,
+		// and a superclass's interface method once its type arguments are
+		// known, with an upcast past the pure overload (G35)
+		const tickerHeader = fs.readFileSync(path.join(
+			lambdasOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Lambdas_IntTicker.hpp"
+		), "utf8");
+		assert(tickerHeader.includes("virtual bool advance(::java::lang::Object* action);"), tickerHeader);
+		assert(tickerHeader.includes("virtual bool advance(Java17Lambdas_IntScale* action);"), tickerHeader);
+		assert(lambdaSources.includes("return Java17Lambdas_Ticker::advance(action);"));
+		assert(lambdaSources.includes(
+			"return Java17Lambdas_EmptyStore::fill(static_cast< ::java::lang::Object* >(array));"
+		));
 		// toString() in a lambda means the enclosing object's toString()
 		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
 		// A reassigned bound receiver is passed in, not captured

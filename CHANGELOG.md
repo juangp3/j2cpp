@@ -145,6 +145,9 @@ C++20-targeted output.
   `1 + 2 + " ints"` is `3 ints`, not `12 ints`.
 - A default method overriding another default replaces it: it was left out
   of the header as "already declared", so callers ran the base's body.
+- A class whose generic superclass implements an interface method with
+  another erasure is no longer abstract in C++, as in `Spliterator.OfInt`
+  implementations that extend a generic `OfPrimitive` class.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

@@ -774,6 +774,23 @@ debug builds (ASan finds the errors meanwhile).
   Creating a generic local class (`new Box<String>(...)`) passed neither
   the captured variables nor the outer instance; it now passes both.
   Tested by `test/runtime/locals`, `Java17Lambdas` and `test-cli.js`.
+- **G35, interface diamonds with primitive specializations** (fixed
+  2026-10-14): a class whose generic superclass implements an interface
+  method stayed abstract in C++ when the method's erasure differs (65
+  errors in java.base, all in `Spliterators` and `java.util.stream`).
+  `Header.baseCallMethods` now forwards to the superclass:
+  - Both erasures of an interface method that a primitive specialization
+    redeclares (`Spliterator.OfInt.tryAdvance(IntConsumer)` and
+    `OfPrimitive.tryAdvance(T_CONS)`); only methods with the same erased
+    parameters are merged. Super calls declare no bridge.
+  - A superclass's interface method that no superclass declares with the
+    same erasure, implemented once the subclass gives the type arguments
+    (`EmptyNode.OfRef extends EmptyNode<T, T[], ...>`). The argument is
+    upcast to the superclass method's parameter type, so C++ does not pick
+    the pure overload.
+
+  Tested by `test/runtime/diamonds`, `Java17Lambdas`, its smoke harness
+  and `test-cli.js`; java.base itself was not rebuilt.
 
 #### G49–G50 — Found while writing the runtime (R4)
 
@@ -936,7 +953,8 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
   captured variables or outer instance (54 errors, 27 files). Fixed
   (2026-10-13; see Phase 9).
 - **G35, interface diamonds with primitive specializations**: missing
-  final overriders or bridges, so classes stay abstract (65 errors).
+  final overriders or bridges, so classes stayed abstract (65 errors).
+  Fixed (2026-10-14; see Phase 9).
 - **G36, unboxing a type-variable value to a primitive** emits
   unbalanced parentheses (12 errors).
 - **G37, indexing an array whose type is a type variable** (3 errors).

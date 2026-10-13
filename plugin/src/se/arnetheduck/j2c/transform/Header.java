@@ -35,6 +35,8 @@ public class Header {
 
 	private final List<IMethodBinding> constructors = new ArrayList<IMethodBinding>();
 	private final Map<String, List<IMethodBinding>> methods = new TreeMap<String, List<IMethodBinding>>();
+	// Interface methods forwarded to a superclass's implementation
+	private final List<IMethodBinding> superCalls = new ArrayList<IMethodBinding>();
 	private final List<IVariableBinding> fields = new ArrayList<IVariableBinding>();
 	private List<IVariableBinding> recordComponents;
 	private boolean sealed;
@@ -322,6 +324,21 @@ public class Header {
 
 		im.addAll(TypeUtil.methods(TypeUtil.interfaces(tb), null));
 
+		// A superclass's interface method that no superclass declares with
+		// the same erasure stays pure in C++, although the superclass's
+		// methods implement it once tb gives the type arguments
+		// (EmptyNode.OfRef extends EmptyNode<T, T[], ...> implements Node<T>)
+		List<ITypeBinding> superClasses = TypeUtil.superClasses(tb);
+		for (ITypeBinding sc : superClasses) {
+			for (IMethodBinding imb : TypeUtil.methods(TypeUtil.interfaces(sc),
+					null)) {
+				if (Modifier.isAbstract(imb.getModifiers())
+						&& !erasureDeclared(superClasses, imb)) {
+					im.add(imb);
+				}
+			}
+		}
+
 		List<IMethodBinding> missing = new ArrayList<IMethodBinding>(im);
 
 		for (IMethodBinding imb : im) {
@@ -332,15 +349,41 @@ public class Header {
 				}
 			}
 
-			// Same method in two interfaces
+			// Same method in two interfaces, with the same C++ signature:
+			// Spliterator.OfInt.tryAdvance(IntConsumer) and
+			// Spliterator.OfPrimitive<..., IntConsumer, ...>.tryAdvance(T_CONS)
+			// erase differently, so both need forwarding
 			for (IMethodBinding mb : missing) {
-				if (!mb.isEqualTo(imb) && TransformUtil.isSubsignature(mb, imb)) {
+				if (!mb.isEqualTo(imb) && mb.getName().equals(imb.getName())
+						&& TransformUtil.sameParameters(mb, imb, true)) {
 					missing.remove(imb);
 					break;
 				}
 			}
 		}
 		return missing;
+	}
+
+	/**
+	 * Does one of the classes declare mb with the same erased parameters, or
+	 * a method overriding it in the class's own declaration, which gets a
+	 * bridge with mb's erasure there (Enum.compareTo(E) for
+	 * Comparable.compareTo(T))?
+	 */
+	private static boolean erasureDeclared(List<ITypeBinding> classes,
+			IMethodBinding mb) {
+		IMethodBinding md = mb.getMethodDeclaration();
+		for (ITypeBinding tb : classes) {
+			for (IMethodBinding mb2 : tb.getDeclaredMethods()) {
+				if (mb2.getName().equals(mb.getName())
+						&& (TransformUtil.sameParameters(mb2, mb, true) || mb2
+								.getMethodDeclaration().overrides(md))) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	private String getExtras(Collection<IVariableBinding> closures,
@@ -615,6 +658,12 @@ public class Header {
 	private void printMethods() {
 		for (List<IMethodBinding> e : methods.values()) {
 			for (IMethodBinding mb : e) {
+				// Each erasure of an interface method gets its own super
+				// call (see baseCallMethods), so super calls need no bridge
+				if (superCalls.contains(mb)) {
+					continue;
+				}
+
 				// Interfaces bridge only default methods, which have a body
 				// to forward to (Predicate<Version>.test(Object) to a default
 				// test(Version))
@@ -757,6 +806,7 @@ public class Header {
 		println(";");
 
 		method(decl);
+		superCalls.add(decl);
 		ITypeBinding irte = irt.getErasure();
 
 		if (!irte.isEqualTo(decl.getMethodDeclaration().getReturnType()
