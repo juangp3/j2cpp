@@ -3,6 +3,7 @@ package java.util;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /** OptionalInt, written from the Java SE specification. */
 public final class OptionalInt {
@@ -51,6 +52,10 @@ public final class OptionalInt {
 		} else {
 			emptyAction.run();
 		}
+	}
+
+	public IntStream stream() {
+		return isPresent ? IntStream.of(value) : IntStream.empty();
 	}
 
 	public int orElse(int other) {

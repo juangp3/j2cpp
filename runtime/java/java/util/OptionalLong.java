@@ -3,6 +3,7 @@ package java.util;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import java.util.stream.LongStream;
 
 /** OptionalLong, written from the Java SE specification. */
 public final class OptionalLong {
@@ -51,6 +52,10 @@ public final class OptionalLong {
 		} else {
 			emptyAction.run();
 		}
+	}
+
+	public LongStream stream() {
+		return isPresent ? LongStream.of(value) : LongStream.empty();
 	}
 
 	public long orElse(long other) {

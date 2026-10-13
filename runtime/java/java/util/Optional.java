@@ -4,6 +4,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 /** Optional, written from the Java SE specification. */
 public final class Optional<T> {
@@ -91,6 +92,13 @@ public final class Optional<T> {
 		}
 		Optional<T> result = (Optional<T>) supplier.get();
 		return Objects.requireNonNull(result);
+	}
+
+	public Stream<T> stream() {
+		if (value == null) {
+			return Stream.<T>empty();
+		}
+		return Stream.<T>of(value);
 	}
 
 	public T orElse(T other) {

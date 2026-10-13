@@ -1,5 +1,11 @@
 package java.util;
 
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
 /**
  * Arrays, written from the Java SE specification. Object arrays sort with a
  * stable merge sort, as the specification requires; primitive arrays use the
@@ -1365,5 +1371,41 @@ public final class Arrays {
 			}
 		}
 		return -(low + 1);
+	}
+
+	public static <T> Stream<T> stream(T[] array) {
+		return stream(array, 0, array.length);
+	}
+
+	public static <T> Stream<T> stream(T[] array, int startInclusive, int endExclusive) {
+		return StreamSupport.stream(Spliterators.<T>spliterator(array, startInclusive, endExclusive,
+				Spliterator.ORDERED | Spliterator.IMMUTABLE), false);
+	}
+
+	public static IntStream stream(int[] array) {
+		return stream(array, 0, array.length);
+	}
+
+	public static IntStream stream(int[] array, int startInclusive, int endExclusive) {
+		Spliterators.checkFromToBounds(array.length, startInclusive, endExclusive);
+		return IntStream.of(array).skip(startInclusive).limit(endExclusive - startInclusive);
+	}
+
+	public static LongStream stream(long[] array) {
+		return stream(array, 0, array.length);
+	}
+
+	public static LongStream stream(long[] array, int startInclusive, int endExclusive) {
+		Spliterators.checkFromToBounds(array.length, startInclusive, endExclusive);
+		return LongStream.of(array).skip(startInclusive).limit(endExclusive - startInclusive);
+	}
+
+	public static DoubleStream stream(double[] array) {
+		return stream(array, 0, array.length);
+	}
+
+	public static DoubleStream stream(double[] array, int startInclusive, int endExclusive) {
+		Spliterators.checkFromToBounds(array.length, startInclusive, endExclusive);
+		return DoubleStream.of(array).skip(startInclusive).limit(endExclusive - startInclusive);
 	}
 }

@@ -3,6 +3,7 @@ package java.util;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
+import java.util.stream.DoubleStream;
 
 /** OptionalDouble, written from the Java SE specification. */
 public final class OptionalDouble {
@@ -51,6 +52,10 @@ public final class OptionalDouble {
 		} else {
 			emptyAction.run();
 		}
+	}
+
+	public DoubleStream stream() {
+		return isPresent ? DoubleStream.of(value) : DoubleStream.empty();
 	}
 
 	public double orElse(double other) {

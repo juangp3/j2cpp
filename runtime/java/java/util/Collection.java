@@ -1,6 +1,8 @@
 package java.util;
 
 import java.util.function.Predicate;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 public interface Collection<E> extends Iterable<E> {
 	int size();
@@ -44,5 +46,13 @@ public interface Collection<E> extends Iterable<E> {
 			}
 		}
 		return removed;
+	}
+
+	default Stream<E> stream() {
+		return StreamSupport.stream(spliterator(), false);
+	}
+
+	default Stream<E> parallelStream() {
+		return StreamSupport.stream(spliterator(), true);
 	}
 }

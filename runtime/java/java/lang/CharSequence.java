@@ -1,5 +1,7 @@
 package java.lang;
 
+import java.util.stream.IntStream;
+
 public interface CharSequence {
 	int length();
 
@@ -11,6 +13,35 @@ public interface CharSequence {
 
 	default boolean isEmpty() {
 		return length() == 0;
+	}
+
+	/**
+	 * The char values. They are read when chars() is called; the JVM reads a
+	 * mutable sequence (StringBuilder) when the stream runs.
+	 */
+	default IntStream chars() {
+		int[] values = new int[length()];
+		for (int i = 0; i < values.length; i++) {
+			values[i] = charAt(i);
+		}
+		return IntStream.of(values);
+	}
+
+	/** The code points, read when codePoints() is called (see chars()) */
+	default IntStream codePoints() {
+		int length = length();
+		int[] values = new int[length];
+		int count = 0;
+		for (int i = 0; i < length; i++) {
+			char c = charAt(i);
+			if (Character.isHighSurrogate(c) && i + 1 < length && Character.isLowSurrogate(charAt(i + 1))) {
+				values[count++] = Character.toCodePoint(c, charAt(i + 1));
+				i++;
+			} else {
+				values[count++] = c;
+			}
+		}
+		return IntStream.of(java.util.Arrays.copyOf(values, count));
 	}
 
 	/** Compares lexicographically by char value, then by length */
