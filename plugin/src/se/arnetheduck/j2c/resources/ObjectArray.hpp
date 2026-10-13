@@ -98,6 +98,8 @@ public:
     virtual ~ObjectArray() { delete p; }
 
     ObjectArray* clone() override { return new ObjectArray(*this); }
+    // A new array of n nulls with this array's runtime type (toArray(T[]))
+    virtual ObjectArray* newInstance0(int n) { return new ObjectArray(n); }
 
     value_type operator[](size_type i) const { return get(i); }
     value_type get(size_type i) const { return p[i]; }

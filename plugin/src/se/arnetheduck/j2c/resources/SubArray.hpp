@@ -73,6 +73,7 @@ struct SubArray : public virtual Bases... {
     }
 
     SubArray* clone() override { return new SubArray(*this); }
+    SubArray* newInstance0(int n) override { return new SubArray(n); }
 
     value_type operator[](size_type i) const { return get(i); }
     value_type get(size_type i) const { return dynamic_cast<value_type>(this->p[i]); }

@@ -29,13 +29,24 @@ C++20-targeted output.
   not create (its contents would be moved to a backup) unless `--force` is
   given; the extension asks first.
 
-### Runtime (first milestone)
+### Runtime (preview)
 
 - `--runtime <directory>` translates against a J2C runtime instead of the
   running JDK: its Java sources replace `java.*`, its C++ natives replace
-  the generated stubs, and the Makefile builds its hooks. The repository's
-  `runtime/` covers `System.out.println` and `main`'s arguments; CI runs a
-  translated Hello World and compares its output with `java`.
+  the generated stubs, and the Makefile builds its hooks.
+- The repository's `runtime/` is written from the Java SE specification and
+  covers:
+  - `String`, `StringBuilder`, the boxed types, `Math` and `Objects`;
+  - the exception classes, with Java's uncaught-exception printout and exit
+    status;
+  - the collections: `ArrayList`, `LinkedList`, `ArrayDeque`,
+    `PriorityQueue`, `HashMap`, `LinkedHashMap`, `TreeMap`, their sets,
+    `Collections`, `Arrays`, `Comparator` and `java.util.function`.
+
+  `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
+- CI translates each program in `test/runtime`, builds it under
+  UndefinedBehaviorSanitizer, and compares its output and exit status with
+  `java`.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.

@@ -15,6 +15,14 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 	private final char[] value;
 	private int hash;
 
+	public static final java.util.Comparator<String> CASE_INSENSITIVE_ORDER = new CaseInsensitiveComparator();
+
+	private static final class CaseInsensitiveComparator implements java.util.Comparator<String>, java.io.Serializable {
+		public int compare(String s1, String s2) {
+			return s1.compareToIgnoreCase(s2);
+		}
+	}
+
 	public String() {
 		this.value = new char[0];
 	}

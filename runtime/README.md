@@ -1,10 +1,37 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. Today it is the first milestone (R1 in
-`docs/PUBLISHING_PLAN.md`, Phase 10): enough for `System.out.println` and
-`main`'s arguments. Everything else still gets J2C's generated stubs, which
-abort with "call to an unimplemented Java library method".
+used with `j2c --runtime runtime`. It covers milestones R1 to R3 in
+`docs/PUBLISHING_PLAN.md` (Phase 10):
+
+- **`java.lang`:**
+  - `String`, `StringBuilder` and the boxed types;
+  - `Math`, `StrictMath` and `System` (`out`, `err`, `arraycopy`, time);
+  - `Throwable` and the exception classes, with Java's uncaught-exception
+    printout;
+  - `Iterable`, `Record` and the common annotations.
+- **`java.util`:**
+  - lists: `ArrayList`, `LinkedList`, and `Arrays.asList`;
+  - queues: `ArrayDeque` and `PriorityQueue`;
+  - maps: `HashMap`, `LinkedHashMap` and `TreeMap`, with their sets;
+  - `List.of`, `Set.of` and `Map.of`;
+  - the helpers `Collections`, `Arrays`, `Objects` and `Comparator`.
+- **`java.util.function`:** the common functional interfaces.
+
+Everything else still gets J2C's generated stubs, which abort with "call to
+an unimplemented Java library method".
+
+Iteration order matches the JVM where programs can see it:
+- `HashMap` uses the same table sizes, hash spreading and bin order, so
+  printed maps and sets match.
+- `PriorityQueue` uses the textbook heap moves, so a printed queue shows
+  the same array.
+
+Two differences remain:
+- The JVM turns bins of 8 or more colliding keys into trees, which can
+  reorder them; this runtime keeps lists.
+- `Set.of` and `Map.of` with several elements iterate in insertion order,
+  where the JVM's order is randomized per run.
 
 ## How it works
 

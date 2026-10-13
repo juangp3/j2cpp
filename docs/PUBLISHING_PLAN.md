@@ -906,8 +906,20 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
    the exception family, and the uncaught-exception printout with exit
    status 1; `npm run runtime` compares each `test/runtime` program with
    `java` in CI.
-3. **R3:** collections and `Collections.sort` with comparators; needs
-   G33–G35. About 2–3 weeks **(estimate)**.
+3. **R3:** collections and `Collections.sort` with comparators.
+   **Done (2026-10-13):**
+   - Collections: `ArrayList`, `LinkedList`, `ArrayDeque`,
+     `PriorityQueue`, `HashMap`, `LinkedHashMap`, `TreeMap` (a red-black
+     tree with sub-map views), and the hash, linked and tree sets.
+   - Helpers: `Collections`, `Arrays` (stable merge sort), `Comparator` and
+     its combinators, `List`/`Set`/`Map.of`, and `java.util.function`.
+   - `HashMap` iterates in the JVM's order, including the head insertion
+     of `computeIfAbsent`, `compute` and `merge`.
+   - `toArray(T[])` and `Arrays.copyOf` keep the array's runtime type
+     through a new virtual `ObjectArray::newInstance0`.
+   - The runtime was written to avoid G33–G35, which stay open.
+   - Tested by `test/runtime/collections` and `test/runtime/queues`,
+     including 20,000 pseudo-random operations checked against the JVM.
 4. **R4:** streams and a simplified `String.format`. About 3–5 weeks
    **(estimate)**.
 5. **R5:** optional Boehm GC (G8), unchanged.
