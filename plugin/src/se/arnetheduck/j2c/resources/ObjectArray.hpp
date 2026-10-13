@@ -24,7 +24,7 @@ class java::lang::ObjectArray
 {
 public:
     static ::java::lang::Class *class_() {
-        static ::java::lang::Class* c = ::class_(u"java.lang.Object[]", 31);
+        static ::java::lang::Class* c = ::class_(u"[Ljava.lang.Object;", 19);
         return c;
     }
 

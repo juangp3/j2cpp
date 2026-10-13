@@ -131,6 +131,10 @@ C++20-targeted output.
   the body's exception. A `finally` block may throw on a normal exit.
 - Dependency headers are no longer dropped when two unrelated generic types
   compare equal in JDT (`TypeDescriptor.OfField` and `AbstractList`).
+- `getClass().getName()` returns binary names, as on the JVM: `Outer$Inner`,
+  `Outer$1` for anonymous and `Outer$1Local` for local classes, and `[I` or
+  `[LOuter$Inner;` for arrays, which were all `TODO[]`. The
+  uncaught-exception printout names nested exceptions the same way.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

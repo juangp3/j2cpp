@@ -89,6 +89,16 @@ public final class TransformUtil {
 				.of(pkg) + "." + CName.of(tb));
 	}
 
+	/**
+	 * The name Class.getName() returns: "p.Outer$Inner", "p.Outer$1",
+	 * "p.Outer$1Local", "[Lp.Outer$Inner;", "[I"
+	 */
+	public static String binaryName(ITypeBinding tb) {
+		tb = tb.getErasure();
+		String ret = tb.getBinaryName();
+		return ret == null ? tb.getQualifiedName() : ret;
+	}
+
 	/** The type of a variable, taking volatile into account */
 	public static String varTypeCName(int modifiers, ITypeBinding tb,
 			ITypeBinding type, DepInfo deps) {

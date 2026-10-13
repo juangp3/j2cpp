@@ -216,13 +216,22 @@ public class DepInfo {
 		}
 
 		if (done.isEmpty()) {
-			out.print("template<typename ComponentType, typename... Bases> struct SubArray;");
+			// Matches SubArray.hpp; the name is the array's binary name
+			out.println("#ifndef J2C_ARRAY_NAME");
+			out.println("#define J2C_ARRAY_NAME");
+			out.println("template<int N> struct j2c_array_name {");
+			out.println("    char16_t s[N];");
+			out.println("    constexpr j2c_array_name(const char16_t (&p)[N]) { for (int i = 0; i < N; ++i) s[i] = p[i]; }");
+			out.println("};");
+			out.println("#endif");
+			out.print("template<j2c_array_name Name, typename ComponentType, typename... Bases> struct SubArray;");
 		}
 
 		TransformUtil.setNs(out,
 				Arrays.asList(CName.packageOf(ct).split("\\.")), cur);
 
-		out.print("typedef ::SubArray< " + CName.qualified(ct, true));
+		out.print("typedef ::SubArray< u\"" + TransformUtil.binaryName(dep)
+				+ "\", " + CName.qualified(ct, true));
 
 		for (ITypeBinding base : bases) {
 			out.print(", " + CName.relative(base, ct, true));

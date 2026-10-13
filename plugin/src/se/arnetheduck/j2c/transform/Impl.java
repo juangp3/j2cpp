@@ -195,9 +195,9 @@ public class Impl {
 		}
 		println("java::lang::Class* " + qcname + "::class_()");
 		println("{");
-		println("    static ::java::lang::Class* c = ::class_(u\""
-				+ type.getQualifiedName() + "\", "
-				+ type.getQualifiedName().length() + ");");
+		String name = TransformUtil.binaryName(type);
+		println("    static ::java::lang::Class* c = ::class_(u\"" + name
+				+ "\", " + name.length() + ");");
 		println("    return c;");
 
 		println("}");

@@ -6,10 +6,20 @@
 #include <ObjectArray.hpp>
 #include <java/lang/ArrayStoreException.hpp>
 
-template<typename ComponentType, typename... Bases>
+#ifndef J2C_ARRAY_NAME
+#define J2C_ARRAY_NAME
+// The binary name of an array class ("[Lp.Outer$Inner;"), as a template
+// argument, so every header's typedef of an array names the same type
+template<int N> struct j2c_array_name {
+    char16_t s[N];
+    constexpr j2c_array_name(const char16_t (&p)[N]) { for (int i = 0; i < N; ++i) s[i] = p[i]; }
+};
+#endif
+
+template<j2c_array_name Name, typename ComponentType, typename... Bases>
 struct SubArray : public virtual Bases... {
     static ::java::lang::Class *class_() {
-        static ::java::lang::Class* c = ::class_(u"TODO[]", 31);
+        static ::java::lang::Class* c = ::class_(Name.s, sizeof(Name.s) / sizeof(char16_t) - 1);
         return c;
     }
 

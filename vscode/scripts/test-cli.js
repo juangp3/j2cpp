@@ -158,6 +158,7 @@ try {
 		["J2C-LAMBDA-NON-DENOTABLE-TYPE@7"], JSON.stringify(capture.problems));
 	assert(capture.problems[0].message.includes("captured wildcard"));
 
+
 	// A module declaration is skipped: it has nothing to translate, and
 	// checking it against packages compiled as sources fails
 	const moduleRoot = path.join(tempDirectory, "module source");
@@ -544,6 +545,15 @@ try {
 			);
 		}
 
+		// Anonymous and local classes are named Outer$1 and Outer$1Local (G47)
+		const corpusTest = path.join(corpusOutput, "src", "se", "arnetheduck", "j2c", "test");
+		assert(fs.readFileSync(path.join(corpusTest, "LocalClassTest_1.cpp"), "utf8")
+			.includes('::class_(u"se.arnetheduck.j2c.test.LocalClassTest$1", 40);'));
+		assert(fs.readFileSync(path.join(corpusTest, "LocalClassTest_localVar_C_1.cpp"), "utf8")
+			.includes('::class_(u"se.arnetheduck.j2c.test.LocalClassTest$1C", 41);'));
+		assert(!corpusSources.some((file) => fs.readFileSync(file, "utf8").includes('::class_(u"", 0)')),
+			"every class has a name");
+
 		const corpusCheck = runCli(["--check", "--sourcepath", sourceRoot, sourceRoot]);
 		assert.strictEqual(corpusCheck.status, 0, corpusCheck.stdout);
 		assert.match(corpusCheck.stdout, /J2C check: no problems found in \d+ file\(s\)/);
@@ -734,8 +744,16 @@ try {
 		), "utf8");
 		// Arrays are covariant in every dimension: Sub[][] derives from Base[][]
 		assert(arithmeticSource.includes(
-			"typedef ::SubArray< ::se::arnetheduck::j2c::test::Java17Arithmetic_VarargSubArray, Java17Arithmetic_VarargBaseArrayArray > Java17Arithmetic_VarargSubArrayArray;"
+			"typedef ::SubArray< u\"[[Lse.arnetheduck.j2c.test.Java17Arithmetic$VarargSub;\", ::se::arnetheduck::j2c::test::Java17Arithmetic_VarargSubArray, Java17Arithmetic_VarargBaseArrayArray > Java17Arithmetic_VarargSubArrayArray;"
 		));
+		// Class names are binary names, as Class.getName() returns them (G47)
+		assert(fs.readFileSync(path.join(
+			arithmeticOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Arithmetic_VarargSub.cpp"
+		), "utf8").includes('::class_(u"se.arnetheduck.j2c.test.Java17Arithmetic$VarargSub", 50);'));
+		const arithmeticArrays = fs.readFileSync(path.join(arithmeticOutput, "src", "Array.hpp"), "utf8");
+		assert(arithmeticArrays.includes('::class_(u"[I", 2)'));
+		assert(fs.readFileSync(path.join(arithmeticOutput, "src", "ObjectArray.hpp"), "utf8")
+			.includes('::class_(u"[Ljava.lang.Object;", 19)'));
 		// A varargs constructor called with no arguments gets an empty array
 		assert(arithmeticSource.includes("(new Java17Arithmetic_VarargCount(new ::int32_tArray()))->count"));
 	} else {

@@ -117,41 +117,41 @@ typedef Array<float> floatArray;
 
 template<>
 inline java::lang::Class* boolArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"boolean[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[Z", 2);
     return c;
 }
 template<>
 inline java::lang::Class* char16_tArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"char[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[C", 2);
     return c;
 }
 template<>
 inline java::lang::Class* int8_tArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"byte[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[B", 2);
     return c;
 }
 template<>
 inline java::lang::Class* int16_tArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"short[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[S", 2);
     return c;
 }
 template<>
 inline java::lang::Class* int32_tArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"int[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[I", 2);
     return c;
 }
 template<>
 inline java::lang::Class* int64_tArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"long[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[J", 2);
     return c;
 }
 template<>
 inline java::lang::Class* doubleArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"double[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[D", 2);
     return c;
 }
 template<>
 inline java::lang::Class* floatArray::class_() {
-    static ::java::lang::Class* c = ::class_(u"float[]", 9);
+    static ::java::lang::Class* c = ::class_(u"[F", 2);
     return c;
 }

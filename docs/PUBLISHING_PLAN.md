@@ -718,9 +718,17 @@ debug builds (ASan finds the errors meanwhile).
   `NullPointerException`. `throw new X(...)` keeps the plain `throw`, since
   its static type is exact. Tested by `test/runtime/rethrow` and
   `test-cli.js`.
-- **G47, nested class names** (open): `getClass().getName()` returns
-  `Outer.Inner` instead of the binary name `Outer$Inner`; `class_` should
-  receive the binary name.
+- **G47, nested class names** (fixed 2026-10-13): `getClass().getName()`
+  returned `Outer.Inner`, an empty name for anonymous and local classes, and
+  `TODO[]` for every array of references (with a length of 31, reading past
+  the end of the literal; `char[]` and others had wrong lengths too).
+  `class_` now receives the binary name (`Outer$Inner`, `Outer$1`,
+  `Outer$1Local`), primitive arrays are `[I` and the like, and an array's
+  binary name (`[LOuter$Inner;`) is the first template argument of
+  `SubArray`, a string literal (a C++20 class-type template argument), so
+  every header's typedef of it names the same type. The runtime's
+  `Class.getSimpleName` follows: `Local`, `""` for anonymous classes,
+  `Inner[]`. Tested by `test/runtime/names` and `test-cli.js`.
 
 - **G48, a base header that was never generated** (fixed 2026-10-12):
   hashids-java dropped to "checks" because `Class.hpp` included
