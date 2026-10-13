@@ -643,6 +643,15 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 		return sb.toString();
 	}
 
+	/** See java.util.Formatter for the supported syntax */
+	public static String format(String format, Object... args) {
+		return new java.util.Formatter().format(format, args).toString();
+	}
+
+	public String formatted(Object... args) {
+		return new java.util.Formatter().format(this, args).toString();
+	}
+
 	public String toString() {
 		return this;
 	}

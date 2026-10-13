@@ -77,7 +77,10 @@ function check(name) {
 		return { name, ok: false, detail: `build failed: ${errors.slice(0, 3).join(" | ")}` };
 	}
 	const cpp = native(`./bin/${className}`, args, output);
-	const java = run("java", [path.join(directory, main), ...args], { cwd: directory });
+	// The runtime formats numbers like Locale.US (String.format, printf), so
+	// the JVM gets that locale whatever the machine's settings are
+	const locale = ["-Duser.language=en", "-Duser.country=US", "-Duser.language.format=en", "-Duser.country.format=US"];
+	const java = run("java", [...locale, path.join(directory, main), ...args], { cwd: directory });
 
 	const problems = [];
 	if (normalize(cpp.stdout) !== normalize(java.stdout)) {

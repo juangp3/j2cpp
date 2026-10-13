@@ -128,6 +128,21 @@ public class PrintStream {
 		println(String.valueOf(d));
 	}
 
+	public PrintStream printf(String format, Object... args) {
+		return format(format, args);
+	}
+
+	/** Like the JVM, prints the text formatted before a failing specifier */
+	public PrintStream format(String format, Object... args) {
+		java.util.Formatter formatter = new java.util.Formatter();
+		try {
+			formatter.format(format, args);
+		} finally {
+			print(formatter.toString());
+		}
+		return this;
+	}
+
 	public void flush() {
 	}
 }
