@@ -323,4 +323,28 @@ public class Java17Lambdas {
 		Sized sized = new Box(size);
 		return sized.size();
 	}
+
+	// A local class created from a lambda, an anonymous class or another
+	// local class, or extended by one, gets its captured variables from
+	// that class, which captures them too (G34)
+	public static int localFromOtherClasses(final int base) {
+		class Offset {
+			int add(int x) {
+				return x + base;
+			}
+		}
+		class Twice extends Offset {
+			int twice(int x) {
+				return add(add(x));
+			}
+		}
+		Supplier<Offset> fromLambda = () -> new Offset();
+		Supplier<Integer> fromAnonymous = new Supplier<Integer>() {
+			@Override
+			public Integer get() {
+				return new Twice().twice(1);
+			}
+		};
+		return fromLambda.get().add(10) + fromAnonymous.get();
+	}
 }

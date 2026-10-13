@@ -652,6 +652,12 @@ try {
 			.filter((file) => file.endsWith(".cpp"))
 			.map((file) => fs.readFileSync(file, "utf8"))
 			.join("\n");
+		// A local class created from a lambda's or an anonymous class gets the
+		// variables it captured from that class; a local subclass passes
+		// them to its local superclass (G34)
+		assert(lambdaSources.includes("return new Java17Lambdas_localFromOtherClasses_Offset_1(base);"));
+		assert(lambdaSources.includes("(new Java17Lambdas_localFromOtherClasses_Twice_1(base))->twice(1)"));
+		assert(lambdaSources.includes(": super(base, ::default_init_tag())"));
 		// toString() in a lambda means the enclosing object's toString()
 		assert(lambdaSources.includes("append(Java17Lambdas_this->toString())"));
 		// A reassigned bound receiver is passed in, not captured

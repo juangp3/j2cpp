@@ -774,6 +774,17 @@ public class ImplWriter extends TransformWriter {
 				print(", ");
 			}
 
+			// A local superclass takes its captured variables, which this
+			// class captured too
+			TypeInfo superInfo = sb.isLocal() ? unitInfo.types.get(sb
+					.getErasure()) : null;
+			if (superInfo != null) {
+				for (IVariableBinding closure : superInfo.closures()) {
+					print(TransformUtil.ctorClosureName(ctx, closure, type,
+							ctor) + ", ");
+				}
+			}
+
 			println(TransformUtil.makeDefaultInitTag() + ")");
 			sep = ", ";
 		}
@@ -1520,10 +1531,13 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		if (tb.isLocal()) {
-			TypeInfo localTypeInfo = unitInfo.types.get(tb);
+			TypeInfo localTypeInfo = unitInfo.types.get(tb.getErasure());
 			if (localTypeInfo != null) {
 				for (IVariableBinding closure : localTypeInfo.closures()) {
-					print(sep + CName.of(closure));
+					// Created from a class that captured the variable too
+					print(sep
+							+ (typeInfo.isClosure(closure) ? CName.of(closure,
+									type) : CName.of(closure)));
 					sep = ", ";
 				}
 			}

@@ -138,6 +138,9 @@ C++20-targeted output.
 - `Iface.super.m()` calls the named interface's default method instead of
   the superclass's `m`. Inside a lambda or method reference it is reported
   as `J2C-LAMBDA-INTERFACE-SUPER`.
+- A local class created from an anonymous class, a lambda or another local
+  class, or extended by one, gets the variables it captures; generic local
+  classes get their outer instance.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

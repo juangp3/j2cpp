@@ -1,10 +1,14 @@
 package se.arnetheduck.j2c.transform;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
+import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.EnumDeclaration;
 import org.eclipse.jdt.core.dom.IBinding;
@@ -22,6 +26,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 public class TypeInfoVisitor extends ASTVisitor {
 	private UnitInfo unitInfo;
 	private TypeInfo typeInfo;
+	private final List<Capture> captures = new ArrayList<Capture>();
 
 	public TypeInfoVisitor(UnitInfo unitInfo) {
 		this.unitInfo = unitInfo;
@@ -43,7 +48,19 @@ public class TypeInfoVisitor extends ASTVisitor {
 	public boolean visit(AnonymousClassDeclaration node) {
 		typeInfo = new TypeInfo(typeInfo, node.resolveBinding());
 		unitInfo.types.put(typeInfo.type(), typeInfo);
+		captureSuperclass(node);
 		return true;
+	}
+
+	/**
+	 * A class extending a local class passes the variables that class
+	 * captured to its constructor, so it captures them too
+	 */
+	private void captureSuperclass(ASTNode node) {
+		ITypeBinding superclass = typeInfo.type().getSuperclass();
+		if (superclass != null && superclass.isLocal()) {
+			capture(new Capture(typeInfo, superclass.getErasure(), node));
+		}
 	}
 
 	@Override
@@ -51,16 +68,77 @@ public class TypeInfoVisitor extends ASTVisitor {
 		TypeInfo anonType = typeInfo;
 		typeInfo = typeInfo.parent();
 
-		if (typeInfo.closures() != null && anonType.closures() != null) {
-			for (IVariableBinding vb : anonType.closures()) {
+		// The enclosing class creates the anonymous class, so it must have
+		// the variables to pass
+		capture(new Capture(typeInfo, anonType.type(),
+				enclosingTypeBody(node.getParent())));
+	}
+
+	/** Applies a capture now, which keeps closures in source order, and again later */
+	private void capture(Capture capture) {
+		capture.apply();
+		captures.add(capture);
+	}
+
+	@Override
+	public boolean visit(ClassInstanceCreation node) {
+		// A local class created from another class (an anonymous class, a
+		// lambda's class, another local class) gets its captured variables
+		// from that class, which must capture them too, as javac does
+		ITypeBinding created = node.getType().resolveBinding();
+		if (node.getAnonymousClassDeclaration() == null && created != null
+				&& created.isLocal()) {
+			capture(new Capture(typeInfo, created.getErasure(),
+					enclosingTypeBody(node)));
+		}
+		return true;
+	}
+
+	@Override
+	public void endVisit(CompilationUnit node) {
+		// Captures chain (a class creating a class creating a local class),
+		// so repeat until nothing changes
+		boolean changed = true;
+		while (changed) {
+			changed = false;
+			for (Capture capture : captures) {
+				changed |= capture.apply();
+			}
+		}
+	}
+
+	/** A class (creator) that creates a local class and passes its closures */
+	private final class Capture {
+		private final TypeInfo creator;
+		private final ITypeBinding created;
+		/** The class body the creation is in */
+		private final ASTNode scope;
+
+		Capture(TypeInfo creator, ITypeBinding created, ASTNode scope) {
+			this.creator = creator;
+			this.created = created;
+			this.scope = scope;
+		}
+
+		boolean apply() {
+			TypeInfo createdInfo = unitInfo.types.get(created);
+			if (creator.closures() == null || createdInfo == null
+					|| createdInfo.closures() == null) {
+				return false;
+			}
+
+			boolean changed = false;
+			for (IVariableBinding vb : new ArrayList<IVariableBinding>(
+					createdInfo.closures())) {
 				boolean outer = vb.getDeclaringMethod() == null ? !declaredWithin(
-						enclosingTypeBody(node.getParent()), vb)
-						: !vb.getDeclaringMethod().getDeclaringClass()
-								.isEqualTo(typeInfo.type());
-				if (outer) {
-					typeInfo.addClosure(vb);
+						scope, vb) : !vb.getDeclaringMethod().getDeclaringClass()
+						.isEqualTo(creator.type());
+				if (outer && !creator.isClosure(vb)) {
+					creator.addClosure(vb);
+					changed = true;
 				}
 			}
+			return changed;
 		}
 	}
 
@@ -122,6 +200,7 @@ public class TypeInfoVisitor extends ASTVisitor {
 	public boolean visit(TypeDeclaration node) {
 		typeInfo = new TypeInfo(typeInfo, node.resolveBinding());
 		unitInfo.types.put(typeInfo.type(), typeInfo);
+		captureSuperclass(node);
 		return true;
 	}
 

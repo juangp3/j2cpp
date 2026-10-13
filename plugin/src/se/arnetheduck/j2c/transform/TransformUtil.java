@@ -665,6 +665,8 @@ public final class TransformUtil {
 		}
 
 		if (tb.isLocal()) {
+			// Box<String> has no declaring method, the generic Box has
+			tb = tb.getErasure();
 			IMethodBinding mb = tb.getDeclaringMethod();
 			if (mb == null) {
 				// A field initializer; the Java model below only exists in an

@@ -751,6 +751,18 @@ debug builds (ASan finds the errors meanwhile).
   it, so it is reported as the new `J2C-LAMBDA-INTERFACE-SUPER` instead of
   a compile error. Tested by `test/runtime/supers`, `Java17Features` and
   `test-cli.js`.
+- **G34, a local class created from another class** (fixed 2026-10-13): a
+  local class's constructor takes the variables it captures, and a
+  creation site passed them by their local names, which do not exist in an
+  anonymous class, a lambda's class or another local class (54 errors in
+  java.base). `TypeInfoVisitor` now makes such a class capture the
+  variables too, as javac does, repeating until every chain of creations
+  is covered, and the creation passes its own copies. A class extending a
+  local class (a local subclass or an anonymous `new Local() { ... }`) also
+  captures the superclass's variables and passes them to its constructor.
+  Creating a generic local class (`new Box<String>(...)`) passed neither
+  the captured variables nor the outer instance; it now passes both.
+  Tested by `test/runtime/locals`, `Java17Lambdas` and `test-cli.js`.
 
 #### G49–G50 — Found while writing the runtime (R4)
 
@@ -909,8 +921,9 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
   new problem ID, or lower `VarHandle` access modes to `std::atomic`.
 - **G33, `Iface.super.m()`** emitted `super::m` (66 errors, 25 files).
   Fixed (2026-10-13; see Phase 9).
-- **G34, a local class created from another class** does not pass its
-  captured variables or outer instance (54 errors, 27 files).
+- **G34, a local class created from another class** did not pass its
+  captured variables or outer instance (54 errors, 27 files). Fixed
+  (2026-10-13; see Phase 9).
 - **G35, interface diamonds with primitive specializations**: missing
   final overriders or bridges, so classes stay abstract (65 errors).
 - **G36, unboxing a type-variable value to a primitive** emits
