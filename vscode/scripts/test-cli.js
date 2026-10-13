@@ -210,8 +210,12 @@ try {
 	fs.mkdirSync(depsOutput);
 	const depsRun = runCli(["--output", depsOutput, depsRoot]);
 	assert.strictEqual(depsRun.status, 0, depsRun.stderr || depsRun.stdout);
-	assert(fs.existsSync(path.join(depsOutput, "ext", "src", "java", "lang", "invoke", "TypeDescriptor_OfField.hpp")),
-		"every base of a generated header is generated");
+	// Class's bases depend on the JDK (TypeDescriptor.OfField is JDK 12+)
+	const classHeader = fs.readFileSync(path.join(depsOutput, "ext", "src", "java", "lang", "Class.hpp"), "utf8");
+	for (const [, include] of classHeader.matchAll(/#include <([^>]+\.hpp)>/g)) {
+		assert(["src", path.join("ext", "src")].some((root) => fs.existsSync(path.join(depsOutput, root, include))),
+			`Class.hpp includes ${include}, which was not generated`);
+	}
 
 	// A String switch alone must define the npc helper it calls (jsoup)
 	const switchRoot = path.join(tempDirectory, "string switch");
