@@ -158,6 +158,25 @@ try {
 		["J2C-LAMBDA-NON-DENOTABLE-TYPE@7"], JSON.stringify(capture.problems));
 	assert(capture.problems[0].message.includes("captured wildcard"));
 
+	// A lambda becomes a separate class, where Iface.super.m() cannot be
+	// named; it is reported (G33)
+	const interfaceSuperSource = path.join(scratchPackage, "InterfaceSuper.java");
+	fs.writeFileSync(interfaceSuperSource, [
+		"package scratch;",
+		"import java.util.function.Supplier;",
+		"interface Greeter { default String greet() { return \"hi\"; } }",
+		"public class InterfaceSuper implements Greeter {",
+		"\tpublic String greet() {",
+		"\t\tSupplier<String> lambda = () -> Greeter.super.greet();",
+		"\t\tSupplier<String> reference = Greeter.super::greet;",
+		"\t\treturn lambda.get() + reference.get();",
+		"\t}",
+		"}",
+		""
+	].join("\n"));
+	const interfaceSuper = JSON.parse(runCli(["--check", "--format", "json", interfaceSuperSource]).stdout);
+	assert.deepStrictEqual(interfaceSuper.problems.map((problem) => `${problem.id}@${problem.line}`),
+		["J2C-LAMBDA-INTERFACE-SUPER@6", "J2C-LAMBDA-INTERFACE-SUPER@7"], JSON.stringify(interfaceSuper.problems));
 
 	// A module declaration is skipped: it has nothing to translate, and
 	// checking it against packages compiled as sources fails
@@ -612,6 +631,14 @@ try {
 		), "utf8");
 		assert(localDateTimeHeader.includes("::java::time::chrono::ChronoLocalDate* toLocalDate() override;"));
 		assert(featureSource.includes("java_cast< ::java::time::LocalDateTime* >(npc(::java::time::LocalDate::now())->atTime("));
+		// Iface.super.m() calls that interface's implementation (G33)
+		const greetingSource = fs.readFileSync(path.join(
+			featuresOutput, "src", "se", "arnetheduck", "j2c", "test", "Java17Features_Greeting.cpp"
+		), "utf8");
+		assert(greetingSource.includes("append(Java17Features_Polite::greet(name))"), greetingSource);
+		assert(greetingSource.includes("java_cast< ::java::lang::String* >(Java17Features_Echo::echo(value))"));
+		assert(greetingSource.includes("::java::util::Comparator::reversed()"));
+		assert(!greetingSource.includes("super::"));
 
 		const lambdasOutput = path.join(tempDirectory, "lambdas output");
 		fs.mkdirSync(lambdasOutput);

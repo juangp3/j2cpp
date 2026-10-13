@@ -198,6 +198,11 @@ final class LambdaDesugarer {
 	}
 
 	private String methodReference(MethodReference node) throws Unsupported {
+		if (node instanceof SuperMethodReference
+				&& ((SuperMethodReference) node).getQualifier() != null
+				&& isInterface(((SuperMethodReference) node).getQualifier())) {
+			throw interfaceSuper();
+		}
 		ITypeBinding target = node.resolveTypeBinding();
 		IMethodBinding referenced = node.resolveMethodBinding();
 		// Array constructor references have no method binding
@@ -484,6 +489,8 @@ final class LambdaDesugarer {
 			public void endVisit(SuperMethodInvocation node) {
 				if (node.getQualifier() == null) {
 					qualify(node, ".");
+				} else if (isInterface(node.getQualifier())) {
+					failure[0] = interfaceSuper();
 				}
 			}
 
@@ -550,6 +557,20 @@ final class LambdaDesugarer {
 		for (ITypeBinding parent : type.getInterfaces()) {
 			collectMethodNames(parent.getErasure(), names);
 		}
+	}
+
+	private static boolean isInterface(Name name) {
+		ITypeBinding type = name.resolveTypeBinding();
+		return type != null && type.isInterface();
+	}
+
+	/**
+	 * Iface.super.m() names a default method of the enclosing class's
+	 * interface, which Java cannot name from the generated class
+	 */
+	private static Unsupported interfaceSuper() {
+		return new Unsupported(ProblemCatalog.LAMBDA_INTERFACE_SUPER,
+				"it calls Iface.super.m(), which the generated class cannot name");
 	}
 
 	/** The innermost named class around node, for "Name.this" */

@@ -135,6 +135,9 @@ C++20-targeted output.
   `Outer$1` for anonymous and `Outer$1Local` for local classes, and `[I` or
   `[LOuter$Inner;` for arrays, which were all `TODO[]`. The
   uncaught-exception printout names nested exceptions the same way.
+- `Iface.super.m()` calls the named interface's default method instead of
+  the superclass's `m`. Inside a lambda or method reference it is reported
+  as `J2C-LAMBDA-INTERFACE-SUPER`.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

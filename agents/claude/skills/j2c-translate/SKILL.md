@@ -48,6 +48,7 @@ JSON object with the same fields.
 | `J2C-LAMBDA-ANONYMOUS-THIS` | Inside the anonymous class, before the lambda, add a local typed as the implemented interface (for example `Runnable self = this;`) and use `self` in the lambda, or make the anonymous class a named nested class. |
 | `J2C-PATTERN-OUTSIDE-METHOD` | Move the field initializer that uses `instanceof` with a pattern into a constructor, an initializer block, or a static helper method. |
 | `J2C-LAMBDA-NON-DENOTABLE-TYPE` | Give the lambda parameters explicit types, or assign the lambda to a variable with an explicit functional interface type. |
+| `J2C-LAMBDA-INTERFACE-SUPER` | Move the `Iface.super.m()` call into a private method of the enclosing class and call that method from the lambda. |
 | `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` | Cast to a single functional interface, or use concrete types in the intersection. |
 | `J2C-COMPILE-ERROR` | Fix the Java error; add missing source roots (`sourcePaths`) or JARs (`classPath`). |
 

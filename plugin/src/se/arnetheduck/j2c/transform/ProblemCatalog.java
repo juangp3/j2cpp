@@ -13,6 +13,7 @@ import java.util.Map;
 public final class ProblemCatalog {
 	public static final String COMPILE_ERROR = "J2C-COMPILE-ERROR";
 	public static final String LAMBDA_ANONYMOUS_THIS = "J2C-LAMBDA-ANONYMOUS-THIS";
+	public static final String LAMBDA_INTERFACE_SUPER = "J2C-LAMBDA-INTERFACE-SUPER";
 	public static final String LAMBDA_INTERSECTION_TYPE_VARIABLE = "J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE";
 	public static final String LAMBDA_NON_DENOTABLE_TYPE = "J2C-LAMBDA-NON-DENOTABLE-TYPE";
 	public static final String LAMBDA_UNRESOLVED = "J2C-LAMBDA-UNRESOLVED";
@@ -58,6 +59,12 @@ public final class ProblemCatalog {
 						+ "object by its class name, and an anonymous class has no name.",
 				"Assign this to a local variable before the lambda (Runnable self = this;) and "
 						+ "use the variable, or turn the anonymous class into a named nested or local class.");
+		add(LAMBDA_INTERFACE_SUPER,
+				"Lambda calls a default method through Iface.super",
+				"Lambdas are translated into generated classes, and Java can name "
+						+ "Iface.super.m() only in the class that implements Iface.",
+				"Move the Iface.super.m() call into a private method of the enclosing class "
+						+ "and call that method from the lambda.");
 		add(LAMBDA_INTERSECTION_TYPE_VARIABLE,
 				"Intersection cast mentions a type variable",
 				"An intersection-cast lambda implements a generated member interface, which "

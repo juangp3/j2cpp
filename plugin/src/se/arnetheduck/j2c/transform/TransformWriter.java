@@ -465,7 +465,15 @@ public abstract class TransformWriter extends ASTVisitor {
 			}
 
 			if (node.getParent() instanceof SuperMethodInvocation) {
-				print("super::");
+				ITypeBinding iface = superInterface((SuperMethodInvocation) node
+						.getParent());
+				if (iface != null) {
+					// Iface.super.m() calls Iface's own implementation
+					hardDep(iface);
+					print(CName.relative(iface, type, true) + "::");
+				} else {
+					print("super::");
+				}
 			}
 
 			print(CName.of(mb));
@@ -575,6 +583,14 @@ public abstract class TransformWriter extends ASTVisitor {
 				}
 			}
 		}
+	}
+
+	/** The interface of Iface.super.m(), or null for super.m() and Outer.super.m() */
+	protected static ITypeBinding superInterface(SuperMethodInvocation node) {
+		Name qualifier = node.getQualifier();
+		ITypeBinding tb = qualifier == null ? null : qualifier
+				.resolveTypeBinding();
+		return tb != null && tb.isInterface() ? tb.getErasure() : null;
 	}
 
 	protected boolean needsQualification(Name node, ITypeBinding declaringClass) {

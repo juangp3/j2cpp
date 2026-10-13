@@ -738,6 +738,20 @@ debug builds (ASan finds the errors meanwhile).
   dependency set. `TransformUtil.addDep` now also compares binding keys.
   Tested by `test-cli.js` and the corpus.
 
+#### G33–G35 — Found by the java.base experiment (Phase 10)
+
+- **G33, `Iface.super.m()`** (fixed 2026-10-13): emitted `super::m`, which
+  names the superclass, so it did not compile when the class's superclass
+  lacks `m` (66 errors in java.base) and would call the wrong method when
+  it has one. It now calls the named interface's implementation,
+  `Iface::m(args)`, with the erased-return cast as before, for generic and
+  nested interfaces, defaults inherited through another interface, and JDK
+  interfaces (`Comparator.super.reversed()`). A lambda or method reference
+  that uses `Iface.super` becomes a separate class, where Java cannot name
+  it, so it is reported as the new `J2C-LAMBDA-INTERFACE-SUPER` instead of
+  a compile error. Tested by `test/runtime/supers`, `Java17Features` and
+  `test-cli.js`.
+
 #### G49–G50 — Found while writing the runtime (R4)
 
 - **G49, numeric operands before a string in a concatenation** (open):
@@ -893,7 +907,8 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
 - **G32, signature-polymorphic calls** (`MethodHandle.invoke*`,
   `VarHandle.*`) are emitted as `Object...` varargs (465 errors). Report a
   new problem ID, or lower `VarHandle` access modes to `std::atomic`.
-- **G33, `Iface.super.m()`** emits `super::m` (66 errors, 25 files).
+- **G33, `Iface.super.m()`** emitted `super::m` (66 errors, 25 files).
+  Fixed (2026-10-13; see Phase 9).
 - **G34, a local class created from another class** does not pass its
   captured variables or outer instance (54 errors, 27 files).
 - **G35, interface diamonds with primitive specializations**: missing

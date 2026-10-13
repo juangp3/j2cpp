@@ -149,4 +149,44 @@ public class Java17Features {
 				.toLocalDateTime();
 		return noon.toString() + today + local;
 	}
+
+	// Iface.super.m() calls that interface's default method (G33), also when
+	// it is generic, inherited through another interface, or a JDK interface
+	public interface Greeter {
+		default String greet(String name) {
+			return "hello " + name;
+		}
+	}
+
+	public interface Polite extends Greeter {
+	}
+
+	public interface Echo<T> {
+		default T echo(T value) {
+			return value;
+		}
+	}
+
+	public static class Greeting implements Polite, Echo<String>,
+			java.util.Comparator<String> {
+		@Override
+		public String greet(String name) {
+			return Polite.super.greet(name) + "!";
+		}
+
+		@Override
+		public String echo(String value) {
+			return Echo.super.echo(value) + value;
+		}
+
+		@Override
+		public int compare(String a, String b) {
+			return a.length() - b.length();
+		}
+
+		@Override
+		public java.util.Comparator<String> reversed() {
+			return java.util.Comparator.super.reversed();
+		}
+	}
 }
