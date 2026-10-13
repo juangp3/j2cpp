@@ -1,22 +1,32 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. It covers milestones R1 to R3 in
+used with `j2c --runtime runtime`. It covers milestones R1 to R4 in
 `docs/PUBLISHING_PLAN.md` (Phase 10):
 
 - **`java.lang`:**
-  - `String`, `StringBuilder` and the boxed types;
+  - `String` (with `format` and `formatted`), `StringBuilder` and the boxed
+    types;
   - `Math`, `StrictMath` and `System` (`out`, `err`, `arraycopy`, time);
   - `Throwable` and the exception classes, with Java's uncaught-exception
     printout;
-  - `Iterable`, `Record` and the common annotations.
+  - `Iterable`, `Enum`, `Record` and the common annotations.
+- **`java.io`:** `PrintStream`, with `printf` and `format`.
 - **`java.util`:**
   - lists: `ArrayList`, `LinkedList`, and `Arrays.asList`;
   - queues: `ArrayDeque` and `PriorityQueue`;
   - maps: `HashMap`, `LinkedHashMap` and `TreeMap`, with their sets;
   - `List.of`, `Set.of` and `Map.of`;
+  - `Optional`, `OptionalInt`, `OptionalLong` and `OptionalDouble`;
+  - `Formatter` and the `IllegalFormatException` family;
+  - `IntSummaryStatistics`, `LongSummaryStatistics`,
+    `DoubleSummaryStatistics`, `StringJoiner`, `Spliterator(s)` and
+    `PrimitiveIterator`;
   - the helpers `Collections`, `Arrays`, `Objects` and `Comparator`.
-- **`java.util.function`:** the common functional interfaces.
+- **`java.util.function`:** every functional interface, with their default
+  and static methods.
+- **`java.util.stream`:** `Stream`, `IntStream`, `LongStream`,
+  `DoubleStream`, `Collectors`, `Collector` and `StreamSupport`.
 
 Everything else still gets J2C's generated stubs, which abort with "call to
 an unimplemented Java library method".
@@ -26,12 +36,39 @@ Iteration order matches the JVM where programs can see it:
   printed maps and sets match.
 - `PriorityQueue` uses the textbook heap moves, so a printed queue shows
   the same array.
+- Collectors build the same maps and sets as the JDK (`groupingBy` a
+  `HashMap`, `toSet` a `HashSet`) with the same calls, so their results
+  print the same.
 
-Two differences remain:
+Streams run sequentially and pull elements one at a time through the
+pipeline, so `peek` and `map` actions run in the JVM's order, short-circuit
+operations (`findFirst`, `anyMatch`, `limit`, `takeWhile`) end infinite
+streams, and `count()` skips the pipeline when the size is known, as the JVM
+does. `parallel()` only sets the flag `isParallel()` reports.
+
+`String.format` and `printf` format numbers like `Locale.US` (`1,234.50`);
+there is no `Locale` class. Floating-point conversions round half up from
+the digits of `Double.toString`, as the JDK does, so `%.2f` of `0.125` is
+`0.13`. `npm run runtime` runs `java` with that locale.
+
+Differences that remain:
 - The JVM turns bins of 8 or more colliding keys into trees, which can
   reorder them; this runtime keeps lists.
 - `Set.of` and `Map.of` with several elements iterate in insertion order,
-  where the JVM's order is randomized per run.
+  where the JVM's order is randomized per run. `Collectors.toUnmodifiableSet`
+  and `toUnmodifiableMap` use them.
+- `Double.toString` prints the shortest digits that round-trip (the JDK 19+
+  algorithm), so a few values print differently from JDK 17, and `%e`, `%f`
+  and `%g` of them too: `Double.MIN_VALUE` is `4.9E-324` and
+  `4.900000e-324` on JDK 17, `5.0E-324` and `5.000000e-324` here.
+- Not supported, and failing loudly: the date and time conversions (`%t`)
+  and `%a` with a precision (`UnsupportedOperationException`), `Formattable`,
+  `Stream.mapMulti`, `BaseStream.spliterator()`, the primitive spliterators,
+  `groupingByConcurrent`, `toConcurrentMap`, `Enum.valueOf(Class, String)`
+  and `Enum.getDeclaringClass()` (absent, so a program using them does not
+  compile).
+- `chars()` and `codePoints()` read a `StringBuilder` when they are called;
+  the JVM reads it when the stream runs.
 
 ## How it works
 

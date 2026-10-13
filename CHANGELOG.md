@@ -41,7 +41,12 @@ C++20-targeted output.
     status;
   - the collections: `ArrayList`, `LinkedList`, `ArrayDeque`,
     `PriorityQueue`, `HashMap`, `LinkedHashMap`, `TreeMap`, their sets,
-    `Collections`, `Arrays`, `Comparator` and `java.util.function`.
+    `Collections`, `Arrays`, `Comparator` and `java.util.function`;
+  - streams: `Stream`, `IntStream`, `LongStream`, `DoubleStream` and
+    `Collectors`, sequential and lazy in the JVM's order, with `Optional`
+    and its primitive forms and the summary statistics;
+  - `String.format`, `formatted`, `printf` and `Formatter`, with Java's
+    rounding and exception messages (no `%t` date conversions).
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
 - CI translates each program in `test/runtime`, builds it under

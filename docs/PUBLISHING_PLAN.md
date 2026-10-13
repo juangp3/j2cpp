@@ -730,6 +730,21 @@ debug builds (ASan finds the errors meanwhile).
   dependency set. `TransformUtil.addDep` now also compares binding keys.
   Tested by `test-cli.js` and the corpus.
 
+#### G49–G50 — Found while writing the runtime (R4)
+
+- **G49, numeric operands before a string in a concatenation** (open):
+  `i + j + " s"` with `int i = 1, j = 2` prints `12 s` instead of `3 s`.
+  JDT gives `a + b + c` as one infix expression with extended operands,
+  and J2C converts every operand to a string when the expression's type is
+  `String`; Java adds the leading numeric operands first. Also `c + i + ""`
+  with a `char`, and `1.5 + i + ""`.
+- **G50, an interface default method overriding another** (open): with
+  `interface A { default String m() { return "A"; } }`,
+  `interface B extends A { default String m() { return "B"; } }` and
+  `class C implements B {}`, `new C().m()` returns `"A"`. `B.hpp` comments
+  `m()` out as "already declared" and its body is never used. The runtime's
+  `Collection` therefore leaves `spliterator()` to `Iterable`'s default.
+
 Known runtime difference: `Double.toString` and `Float.toString` print the
 shortest round-trip digits (the JDK 19+ algorithm), so a few values differ
 from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
@@ -920,8 +935,26 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
    - The runtime was written to avoid G33–G35, which stay open.
    - Tested by `test/runtime/collections` and `test/runtime/queues`,
      including 20,000 pseudo-random operations checked against the JVM.
-4. **R4:** streams and a simplified `String.format`. About 3–5 weeks
-   **(estimate)**.
+4. **R4:** streams and a simplified `String.format`.
+   **Done (2026-10-13):**
+   - `java.util.stream`: `Stream`, `IntStream`, `LongStream`,
+     `DoubleStream`, `Collectors`, `Collector` and `StreamSupport`, as
+     sequential pull-based pipelines. Side effects run in the JVM's order,
+     short-circuit operations end infinite streams, `count()` skips the
+     pipeline when the size is known, and reusing a stream throws the
+     JVM's `IllegalStateException`. Double sums use Kahan summation like
+     the JDK.
+   - `Optional` and its primitive forms, the summary statistics,
+     `StringJoiner`, `Spliterator(s)`, `PrimitiveIterator`, `Enum`, and
+     every `java.util.function` interface with its default methods.
+   - `String.format`, `formatted`, `PrintStream.printf` and `Formatter`:
+     every conversion but `%t` and `%a` with a precision, with flags,
+     width, precision, argument indexes and the `IllegalFormatException`
+     family with Java's messages.
+     Rounding is half up from `Double.toString`'s digits, as in the JDK.
+   - Tested by `test/runtime/optional`, `streams` and `format`;
+     `runtime-programs.js` now runs `java` with `Locale.US` formatting.
+   - Found G49 and G50 (Phase 9); the runtime avoids both.
 5. **R5:** optional Boehm GC (G8), unchanged.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
