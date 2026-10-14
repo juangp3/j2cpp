@@ -227,8 +227,15 @@ classes (`String`, collections, `System.out`, and so on) are generated as
 stubs that call `unimplemented_()`, so a runtime implementation of the Java
 classes you use must be provided. `--runtime runtime` uses the repository's
 own runtime ([runtime/README.md](runtime/README.md)); it is in its first
-milestone and covers `System.out.println` and `main`'s arguments. Generated
-objects are never freed unless you link a garbage collector.
+milestone and covers `System.out.println` and `main`'s arguments.
+
+Generated objects are never freed by default. `make J2C_GC=boehm` links the
+programs with the Boehm garbage collector (`libgc-dev` on Debian and Ubuntu,
+found with `pkg-config bdw-gc`, or set `GC_CFLAGS` and `GC_LIBS`), which then
+serves every allocation, so memory is reclaimed as in Java. Run `make clean`
+when switching it on or off. It needs GNU ld (`--wrap`), covers `make mains`
+but not `make test`, and the program must be single-threaded; finalizers
+never run.
 
 The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:

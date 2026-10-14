@@ -26,6 +26,7 @@
     "probe": "node scripts/probe.js",
     "corpus": "node scripts/corpus.js",
     "runtime": "node scripts/runtime-programs.js",
+    "runtime:gc": "node scripts/runtime-programs.js --gc boehm",
     "package": "vsce package"
   },
   "devDependencies": {

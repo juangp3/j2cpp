@@ -205,6 +205,18 @@ try {
 	const runtimeMakefile = fs.readFileSync(path.join(runtimeOutput, "Makefile"), "utf8");
 	assert(runtimeMakefile.includes("\truntime/j2c_runtime.cpp \\"), runtimeMakefile);
 	assert(fs.existsSync(path.join(runtimeOutput, "runtime", "j2c_runtime.cpp")));
+	// make J2C_GC=boehm links the Boehm collector, which then serves every
+	// allocation through the main file's operator new (G8)
+	assert(runtimeMakefile.includes("ifeq ($(J2C_GC),boehm)"), runtimeMakefile);
+	assert(runtimeMakefile.includes("-DJ2C_GC_BOEHM"), runtimeMakefile);
+	assert(runtimeMakefile.includes("GC_LDLIBS = -Wl,--wrap=__cxa_throw $(GC_LIBS)"), runtimeMakefile);
+	assert(runtimeMakefile.includes("$(LINK_LIBS) $(GC_LDLIBS)"), runtimeMakefile);
+	const runtimeMain = fs.readFileSync(path.join(runtimeOutput, "src", "Hello-main.cpp"), "utf8");
+	assert(runtimeMain.includes("#ifdef J2C_GC_BOEHM"), runtimeMain);
+	assert(runtimeMain.includes("void* operator new(std::size_t n) { return gc_allocate(n, 0, false); }"), runtimeMain);
+	assert(runtimeMain.includes("__wrap___cxa_throw"), runtimeMain);
+	assert(runtimeMain.includes("GC_INIT();"), runtimeMain);
+	assert(runtimeMain.includes("% (sizeof(j2c_gc_thrown)"), "the template's %% is formatted");
 	const notRuntime = runCli(["--runtime", tempDirectory, "--check", path.join(repositoryRoot, "test", "runtime", "hello")]);
 	assert.strictEqual(notRuntime.status, 2);
 	assert(notRuntime.stderr.includes("Not a J2C runtime"), notRuntime.stderr);

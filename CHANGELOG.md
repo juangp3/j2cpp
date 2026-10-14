@@ -49,9 +49,16 @@ C++20-targeted output.
     rounding and exception messages (no `%t` date conversions).
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
+- `make J2C_GC=boehm` links a program with the Boehm garbage collector,
+  which then serves every allocation (Java objects and the runtime's C++
+  containers), so memory is reclaimed. Exceptions in flight stay reachable
+  while `finally` blocks run. Programs must be single-threaded, and
+  `make test` binaries are not covered.
 - CI translates each program in `test/runtime`, builds it under
   UndefinedBehaviorSanitizer, and compares its output and exit status with
-  `java`.
+  `java`, then does the same with `J2C_GC=boehm`, collecting every 1000
+  allocations. `test/runtime/allocation` allocates about 1 GB and must stay
+  under 100 MB of resident memory with the collector.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.
@@ -170,7 +177,8 @@ C++20-targeted output.
 This preview is not a complete Java 17 translator. Generated programs need a
 C++ implementation of the Java classes they use: JDK classes are generated as
 stubs, so output compiles and links but does not run until a runtime is
-provided. Objects are never freed without a garbage collector. Lambdas that
+provided. Objects are never freed unless the program is built with
+`make J2C_GC=boehm`. Lambdas that
 use `this` inside an anonymous class, and `instanceof` patterns in field
 initializers, are reported instead of translated. Sealed restrictions are not
 enforced by C++. The smoke tests cover the listed fixtures and do not

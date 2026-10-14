@@ -539,15 +539,29 @@ The gaps below remain. They fall into three groups:
 
 #### G8 — Memory management
 
-**Status (2026-10-10):** Planned as Phase 10, step 2, milestone 3.
+**Status (2026-10-14):** Done, as Phase 10 milestone R5.
 
 - **Symptom:** objects are allocated with `new` and never freed.
-- **Implement:** add an optional Makefile switch (`J2C_GC=boehm`) that links
-  the Boehm conservative collector and routes allocation through
-  `GC_MALLOC`. Finalizers stay unsupported.
-- **Test:** an allocation loop whose resident memory must stay bounded,
-  run in CI with the switch on.
-- **Effort:** small to medium, once G7 makes long-running programs possible.
+- **Fix:** `make J2C_GC=boehm` links the Boehm conservative collector
+  (`-lgc`, `-DJ2C_GC_BOEHM`), and the generated main file replaces every
+  global `operator new` with `GC_MALLOC` (scanned, so standard containers'
+  buffers keep what they point to alive) and `operator delete` with
+  `GC_FREE`. C++ exception objects are `malloc`'d, so a Throwable in flight
+  could be freed while a `finally` block allocates; the Makefile links with
+  `-Wl,--wrap=__cxa_throw`, and the wrapper keeps the last 256 thrown
+  pointers in static data. Finalizers stay unsupported.
+- **Test:** `test/runtime/allocation` allocates about 1 GB in a loop with a
+  bounded live set, keeps objects in static fields, collections, locals and
+  exceptions in flight, and checks them at the end. `runtime-programs.js
+  --gc boehm` (CI, `npm run runtime:gc`) builds every runtime program at
+  `-O2` with UBSan, collecting every 1000 allocations (`J2C_GC_STRESS`),
+  compares the output with `java`, and requires the allocation program's
+  peak RSS to stay under 100 MB (16 MB measured; 910 MB without the
+  collector, which the non-GC run requires to exceed the bound). Without
+  the `__cxa_throw` wrapper, the program prints corrupt exception messages
+  at `-O2`.
+- **Limits:** single-threaded programs only; GNU ld; `make mains` but not
+  `make test`; primitive arrays are scanned conservatively; no ASan.
 
 #### G9 — Smaller semantic differences (documentation only)
 
@@ -1017,7 +1031,16 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
      `runtime-programs.js` now runs `java` with `Locale.US` formatting.
    - Found G49 and G50 (Phase 9), since fixed; the runtime was written
      around both.
-5. **R5:** optional Boehm GC (G8), unchanged.
+5. **R5:** optional Boehm GC (G8).
+   **Done (2026-10-14):**
+   - `make J2C_GC=boehm` links `-lgc`; the generated main file routes every
+     `operator new` to `GC_MALLOC` and `operator delete` to `GC_FREE`, and
+     a `--wrap=__cxa_throw` wrapper keeps Throwables in flight reachable.
+   - `test/runtime/allocation` allocates about 1 GB with a bounded live set:
+     16 MB peak RSS with the collector, 910 MB without; the bound is
+     100 MB.
+   - CI runs every runtime program again with the collector, at `-O2`
+     under UBSan, collecting every 1000 allocations.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
@@ -1105,7 +1128,8 @@ Milestones, each finished only when its differential tests pass:
      `Comparator.comparing`.
 3. **Milestone 3 — Memory (G8).** A `J2C_GC=boehm` build option that routes
    runtime and generated allocation through the Boehm collector. An
-   allocation-loop test must keep resident memory bounded.
+   allocation-loop test must keep resident memory bounded. Done
+   (2026-10-14) as R5.
 4. **Later, driven by probes and real programs:** streams, `String.format`,
    regular expressions, threads and `synchronized`, and file I/O.
 

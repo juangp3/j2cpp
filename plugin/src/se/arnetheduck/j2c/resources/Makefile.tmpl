@@ -8,6 +8,19 @@ CFLAGS := $(CFLAGS) -g -pipe -MMD -MP
 # Java integer arithmetic wraps on overflow
 CXXFLAGS := $(CFLAGS) -std=c++20 -fwrapv
 
+# make J2C_GC=boehm links the programs (mains) with the Boehm garbage
+# collector (libgc), which then serves every allocation; override GC_CFLAGS
+# and GC_LIBS when bdw-gc is not known to pkg-config
+J2C_GC ?=
+ifeq ($(J2C_GC),boehm)
+GC_CFLAGS ?= $(shell pkg-config --cflags bdw-gc 2>/dev/null)
+GC_LIBS ?= $(shell pkg-config --libs bdw-gc 2>/dev/null || echo -lgc)
+CPPFLAGS := $(CPPFLAGS) -DJ2C_GC_BOEHM $(GC_CFLAGS)
+GC_LDLIBS = -Wl,--wrap=__cxa_throw $(GC_LIBS)
+else ifneq ($(J2C_GC),)
+$(error J2C_GC must be empty or boehm, not $(J2C_GC))
+endif
+
 BIN := bin
 OBJ := obj
 
@@ -113,7 +126,7 @@ $(BIN)/$(EXT_LIB): $(EXT_OBJS) $(EXT_STUB_OBJS) $(EXT_NATIVE_OBJS) $(RUNTIME_OBJ
 
 $(MAINS):$(BIN)/%%:$(SRC)/%%-main.cpp $(LIBS)
 	@mkdir -p $(dir $@); 
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -L$(BIN) -o $@ $< $(LINK_LIBS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -L$(BIN) -o $@ $< $(LINK_LIBS) $(GC_LDLIBS)
 
 mains: $(MAINS)
 

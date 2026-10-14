@@ -443,7 +443,8 @@ final class J2cService {
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",
-				"Generated objects are never freed unless a garbage collector is linked",
+				"Generated objects are never freed unless the program is built with "
+						+ "make J2C_GC=boehm, which links the Boehm garbage collector",
 				"Lambdas that use this inside an anonymous class are not translated",
 				"instanceof patterns in field initializers are not translated",
 				"Exceptions from close() during exception unwinding terminate the program",

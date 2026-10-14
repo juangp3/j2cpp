@@ -6,8 +6,88 @@ extern java::lang::StringArray* make_args(int args, char** argv);
 // Prints 'Exception in thread "main" ...' for an uncaught exception
 extern void j2c_uncaught(java::lang::Throwable* t);
 
+#ifdef J2C_GC_BOEHM
+// make J2C_GC=boehm: every C++ allocation, Java objects and the buffers of
+// standard containers alike, comes from the Boehm collector's scanned heap,
+// so anything reachable from the stack, static data or another allocation
+// stays alive. The program must be single-threaded.
+#include <cstddef>
+#include <new>
+#include <typeinfo>
+
+#include <gc.h>
+
+namespace
+{
+void* gc_allocate(std::size_t size, std::size_t alignment, bool nothrow)
+{
+#ifdef J2C_GC_STRESS
+    // Testing: collect every J2C_GC_STRESS allocations
+    static long allocations = 0;
+    if (++allocations %% J2C_GC_STRESS == 0) {
+        GC_gcollect();
+    }
+#endif
+    void* p = alignment <= alignof(std::max_align_t)
+        ? GC_MALLOC(size == 0 ? 1 : size)
+        : GC_memalign(alignment, size == 0 ? 1 : size);
+    if (p == nullptr && !nothrow) {
+        throw std::bad_alloc();
+    }
+    return p;
+}
+
+unsigned thrownNext = 0;
+}
+
+// The exception object of a C++ throw is malloc'd, where the collector does
+// not look, so a Throwable could be freed while finally blocks run during
+// unwinding. The most recently thrown ones are kept here, in static data
+// (external, so the compiler keeps the stores).
+void* j2c_gc_thrown[256];
+
+void* operator new(std::size_t n) { return gc_allocate(n, 0, false); }
+void* operator new[](std::size_t n) { return gc_allocate(n, 0, false); }
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept { return gc_allocate(n, 0, true); }
+void* operator new[](std::size_t n, const std::nothrow_t&) noexcept { return gc_allocate(n, 0, true); }
+void* operator new(std::size_t n, std::align_val_t a) { return gc_allocate(n, static_cast<std::size_t>(a), false); }
+void* operator new[](std::size_t n, std::align_val_t a) { return gc_allocate(n, static_cast<std::size_t>(a), false); }
+void* operator new(std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept { return gc_allocate(n, static_cast<std::size_t>(a), true); }
+void* operator new[](std::size_t n, std::align_val_t a, const std::nothrow_t&) noexcept { return gc_allocate(n, static_cast<std::size_t>(a), true); }
+
+// Explicit deletes (by standard containers; generated code has none) free
+// at once; everything else is left to the collector
+void operator delete(void* p) noexcept { GC_FREE(p); }
+void operator delete[](void* p) noexcept { GC_FREE(p); }
+void operator delete(void* p, std::size_t) noexcept { GC_FREE(p); }
+void operator delete[](void* p, std::size_t) noexcept { GC_FREE(p); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { GC_FREE(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { GC_FREE(p); }
+// GC_memalign may return an interior pointer, which GC_FREE does not take
+void operator delete(void*, std::align_val_t) noexcept { }
+void operator delete[](void*, std::align_val_t) noexcept { }
+void operator delete(void*, std::size_t, std::align_val_t) noexcept { }
+void operator delete[](void*, std::size_t, std::align_val_t) noexcept { }
+void operator delete(void*, std::align_val_t, const std::nothrow_t&) noexcept { }
+void operator delete[](void*, std::align_val_t, const std::nothrow_t&) noexcept { }
+
+// The Makefile links with -Wl,--wrap=__cxa_throw, so every throw passes here
+extern "C" [[noreturn]] void __real___cxa_throw(void* object, std::type_info* type, void (*destroy)(void*));
+
+extern "C" [[noreturn]] void __wrap___cxa_throw(void* object, std::type_info* type, void (*destroy)(void*))
+{
+    if (type->__is_pointer_p()) {
+        j2c_gc_thrown[thrownNext++ %% (sizeof(j2c_gc_thrown) / sizeof(j2c_gc_thrown[0]))] = *static_cast<void**>(object);
+    }
+    __real___cxa_throw(object, type, destroy);
+}
+#endif
+
 int main(int argc, char** argv)
 {
+#ifdef J2C_GC_BOEHM
+    GC_INIT();
+#endif
     init_jvm();
 
     try {

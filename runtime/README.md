@@ -1,7 +1,7 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. It covers milestones R1 to R4 in
+used with `j2c --runtime runtime`. It covers milestones R1 to R5 in
 `docs/PUBLISHING_PLAN.md` (Phase 10):
 
 - **`java.lang`:**
@@ -96,6 +96,47 @@ java -jar target/j2c-cli.jar --runtime runtime --output out test/runtime/hello
 make -C out all mains
 out/bin/Hello one two
 ```
+
+## Garbage collection
+
+Objects are never freed unless the program is built with the Boehm
+collector (`libgc-dev` on Debian and Ubuntu):
+
+```sh
+make -C out J2C_GC=boehm all mains
+```
+
+The Makefile then defines `J2C_GC_BOEHM` and links `-lgc` (from
+`pkg-config bdw-gc` when it knows it; `GC_CFLAGS` and `GC_LIBS` override).
+The program's main file (`Main.cpp.tmpl`) replaces every global
+`operator new` and `operator delete`:
+
+- All C++ allocations, the program's objects, the runtime's and the buffers
+  of standard containers alike, come from the collector's scanned heap. An
+  object stays alive while the stack, registers, static data (static
+  fields, the `class_` and string literal caches) or another allocation
+  points to it, including at a base class or interface subobject.
+- `delete` (only standard containers call it) frees at once; everything
+  else is reclaimed by collections. Finalizers never run.
+- The exception object of a C++ `throw` is `malloc`'d, where the collector
+  does not look, so a Throwable could be freed while `finally` blocks run
+  during unwinding. The Makefile links with `-Wl,--wrap=__cxa_throw`, and
+  the wrapper keeps the last 256 thrown pointers in static data.
+- `J2C_GC_STRESS=n` (a macro, in `CFLAGS`) collects every `n` allocations,
+  for tests.
+
+Limits: the program must be single-threaded (threads are not registered
+with the collector), it needs GNU ld for `--wrap`, only `make mains`
+programs get the collector (not `make test`), and run `make clean` when
+switching `J2C_GC`. Primitive arrays are scanned too, so an `int` that
+happens to look like an address can keep an object alive (the collector is
+conservative). AddressSanitizer cannot be combined with it.
+
+`npm run runtime:gc` runs every program in `test/runtime` with
+`J2C_GC=boehm` at `-O2`, collecting every 1000 allocations.
+`test/runtime/allocation` allocates about 1 GB in a loop; its peak resident
+memory must stay under `max-rss-mb.txt` (100 MB) with the collector and
+exceed it without (16 MB and 910 MB when this was written).
 
 ## Rules for runtime classes
 

@@ -4,7 +4,15 @@
 // records none), and the exit status. Arguments come from args.txt, one per
 // line. CFLAGS is passed to make, so CI can build with sanitizers.
 //
-// Usage: node scripts/runtime-programs.js [--program a,b]
+// --gc boehm builds with make J2C_GC=boehm, optimized (-O2, where the
+// compiler keeps fewer stale pointers on the stack), and collects every
+// J2C_GC_STRESS allocations (default 1000), so an object the collector
+// cannot see is freed while still in use and the output differs. A program
+// with max-rss-mb.txt has its peak resident memory measured with
+// /usr/bin/time: it must stay under that many MB with the collector and
+// exceed it without, which shows the bound means something.
+//
+// Usage: node scripts/runtime-programs.js [--program a,b] [--gc boehm]
 const childProcess = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -14,7 +22,20 @@ const repositoryRoot = path.resolve(extensionDirectory, "..");
 const cliJar = process.env.J2C_CLI_JAR || path.join(repositoryRoot, "target", "j2c-cli.jar");
 const programsRoot = path.join(repositoryRoot, "test", "runtime");
 const runtimeDirectory = path.join(repositoryRoot, "runtime");
-const workRoot = path.join(repositoryRoot, "target", "runtime-programs");
+
+function option(name) {
+	const index = process.argv.indexOf(name);
+	return index >= 0 ? process.argv[index + 1] : null;
+}
+
+const gc = option("--gc");
+if (gc !== null && gc !== "boehm") {
+	console.error(`--gc must be boehm, not ${gc}`);
+	process.exit(2);
+}
+const gcStress = process.env.J2C_GC_STRESS || "1000";
+const cflags = [process.env.CFLAGS, gc ? `-O2 -DJ2C_GC_STRESS=${gcStress}` : null].filter(Boolean).join(" ");
+const workRoot = path.join(repositoryRoot, "target", gc ? "runtime-programs-gc" : "runtime-programs");
 
 function run(command, args, options = {}) {
 	return childProcess.spawnSync(command, args, { encoding: "utf8", maxBuffer: 1 << 28, ...options });
@@ -34,9 +55,9 @@ function shellQuote(text) {
 
 function native(command, args, cwd) {
 	if (!useWsl) {
-		return run(command, args, { cwd });
+		return run(command, args, { cwd, env: { ...process.env, CFLAGS: cflags } });
 	}
-	const env = process.env.CFLAGS ? `CFLAGS=${shellQuote(process.env.CFLAGS)} ` : "";
+	const env = cflags ? `CFLAGS=${shellQuote(cflags)} ` : "";
 	const line = `cd ${shellQuote(wslPath(cwd))} && ${env}${[command, ...args].map(shellQuote).join(" ")}`;
 	return run("wsl", ["-d", wslDistribution, "bash", "-c", line]);
 }
@@ -71,12 +92,17 @@ function check(name) {
 	if (translate.status !== 0) {
 		return { name, ok: false, detail: `translation failed: ${(translate.stdout + translate.stderr).trim().split("\n").slice(-3).join(" | ")}` };
 	}
-	const make = native("make", ["-s", "-j8", "all", "mains"], output);
+	const make = native("make", ["-s", "-j8", ...(gc ? [`J2C_GC=${gc}`] : []), "all", "mains"], output);
 	if (make.status !== 0) {
 		const errors = `${make.stdout}\n${make.stderr}`.split("\n").filter((line) => /error/.test(line));
 		return { name, ok: false, detail: `build failed: ${errors.slice(0, 3).join(" | ")}` };
 	}
-	const cpp = native(`./bin/${className}`, args, output);
+	const rssFile = path.join(directory, "max-rss-mb.txt");
+	const maxRss = fs.existsSync(rssFile) ? Number(fs.readFileSync(rssFile, "utf8").trim()) : null;
+	// GNU time writes the peak resident set size in KB to rss.txt
+	const cpp = maxRss === null
+		? native(`./bin/${className}`, args, output)
+		: native("/usr/bin/time", ["-f", "%M", "-o", "rss.txt", `./bin/${className}`, ...args], output);
 	// The runtime formats numbers like Locale.US (String.format, printf), so
 	// the JVM gets that locale whatever the machine's settings are
 	const locale = ["-Duser.language=en", "-Duser.country=US", "-Duser.language.format=en", "-Duser.country.format=US"];
@@ -92,12 +118,21 @@ function check(name) {
 	if (cpp.status !== java.status) {
 		problems.push(`exit status ${cpp.status}, java ${java.status}`);
 	}
-	return { name, ok: problems.length === 0, detail: problems.join("\n") };
+	let note = "";
+	if (maxRss !== null) {
+		const lines = normalize(fs.readFileSync(path.join(output, "rss.txt"), "utf8")).trim().split("\n");
+		const rss = Math.round(Number(lines[lines.length - 1]) / 1024);
+		note = ` (peak RSS ${rss} MB, bound ${maxRss} MB)`;
+		if (gc && !(rss < maxRss)) {
+			problems.push(`peak RSS ${rss} MB with the collector, bound ${maxRss} MB`);
+		} else if (!gc && !(rss >= maxRss)) {
+			problems.push(`peak RSS ${rss} MB without the collector is under the bound of ${maxRss} MB`);
+		}
+	}
+	return { name, ok: problems.length === 0, note, detail: problems.join("\n") };
 }
 
-const selection = process.argv.indexOf("--program") >= 0
-	? process.argv[process.argv.indexOf("--program") + 1].split(",")
-	: null;
+const selection = option("--program") ? option("--program").split(",") : null;
 const programs = fs.readdirSync(programsRoot)
 	.filter((name) => fs.statSync(path.join(programsRoot, name)).isDirectory())
 	.filter((name) => !selection || selection.includes(name))
@@ -109,7 +144,7 @@ for (const name of programs) {
 	if (!result.ok) {
 		failures++;
 	}
-	console.log(`${result.ok ? "ok  " : "FAIL"} ${name}${result.detail ? `\n${result.detail}` : ""}`);
+	console.log(`${result.ok ? "ok  " : "FAIL"} ${name}${result.note || ""}${result.detail ? `\n${result.detail}` : ""}`);
 }
-console.log(`${programs.length} program(s), ${failures} failure(s)`);
+console.log(`${programs.length} program(s)${gc ? ` with J2C_GC=${gc}` : ""}, ${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;
