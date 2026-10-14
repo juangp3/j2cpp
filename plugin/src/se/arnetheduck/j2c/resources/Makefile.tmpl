@@ -2,6 +2,8 @@ INCLUDES := $(INCLUDES) -Isrc -Iext/src -Iruntime
 EXTRA_LIBS ?= -l$(NAME)-ext
 
 CPPFLAGS := $(CPPFLAGS) $(INCLUDES)
+# Array indices are checked as in Java; CFLAGS=-DJ2C_NO_BOUNDS_CHECKS in the
+# environment removes the checks (an index out of range is then undefined)
 CFLAGS := $(CFLAGS) -g -pipe -MMD -MP
 # Java integer arithmetic wraps on overflow
 CXXFLAGS := $(CFLAGS) -std=c++20 -fwrapv

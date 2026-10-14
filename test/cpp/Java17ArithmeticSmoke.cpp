@@ -4,8 +4,12 @@
 
 #include <Array.hpp>
 #include <java/lang/ArithmeticException.hpp>
+#include <java/lang/ArrayIndexOutOfBoundsException.hpp>
+#include <java/lang/NegativeArraySizeException.hpp>
 #include <java/lang/String.hpp>
+#include <SubArray.hpp>
 #include <se/arnetheduck/j2c/test/Java17Arithmetic.hpp>
+#include <se/arnetheduck/j2c/test/Java17Arithmetic_VarargBase.hpp>
 
 using se::arnetheduck::j2c::test::Java17Arithmetic;
 
@@ -30,6 +34,37 @@ static bool divisionByZeroThrows(int which) {
 		default: Java17Arithmetic::divAssign(1, 0); break;
 		}
 	} catch (::java::lang::ArithmeticException*) {
+		return true;
+	}
+	return false;
+}
+
+// Array accesses throw ArrayIndexOutOfBoundsException (G43)
+static bool indexThrows(int which) {
+	auto values = new ::int32_tArray(3);
+	auto objects = new se::arnetheduck::j2c::test::Java17Arithmetic_VarargBaseArray(2);
+	try {
+		switch (which) {
+		case 0: Java17Arithmetic::element(values, 3); break;
+		case 1: Java17Arithmetic::element(values, -1); break;
+		case 2: Java17Arithmetic::addToElement(values, 5, 1); break;
+		case 3: Java17Arithmetic::storeElement(objects, 2, nullptr); break;
+		default: Java17Arithmetic::element(new ::int32_tArray(), 0); break;
+		}
+	} catch (::java::lang::ArrayIndexOutOfBoundsException*) {
+		return true;
+	}
+	return false;
+}
+
+static bool sizeThrows(int which) {
+	try {
+		switch (which) {
+		case 0: Java17Arithmetic::newLength(-1); break;
+		case 1: Java17Arithmetic::newGridLength(2, -1); break;
+		default: Java17Arithmetic::newGridLength(0, -1); break;
+		}
+	} catch (::java::lang::NegativeArraySizeException*) {
 		return true;
 	}
 	return false;
@@ -82,5 +117,16 @@ int main() {
 	if (Java17Arithmetic::varargRows(grid) != 6) return 40;
 	if (Java17Arithmetic::covariantRows(grid) != 2) return 41;
 	if (Java17Arithmetic::varargNone() != 0) return 42;
+
+	for (int which = 0; which < 5; ++which) {
+		if (!indexThrows(which)) return 50 + which;
+	}
+	for (int which = 0; which < 3; ++which) {
+		if (!sizeThrows(which)) return 60 + which;
+	}
+	if (Java17Arithmetic::element(values, 1) != 0) return 63;
+	Java17Arithmetic::addToElement(values, 1, 4);
+	if ((*values)[1] != 4) return 64;
+	if (Java17Arithmetic::newLength(0) != 0 || Java17Arithmetic::newGridLength(2, 0) != 2) return 65;
 	return 0;
 }

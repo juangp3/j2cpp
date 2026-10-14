@@ -805,6 +805,23 @@ try {
 		assert(arithmeticArrays.includes('::class_(u"[I", 2)'));
 		assert(fs.readFileSync(path.join(arithmeticOutput, "src", "ObjectArray.hpp"), "utf8")
 			.includes('::class_(u"[Ljava.lang.Object;", 19)'));
+		// Array accesses are checked unless J2C_NO_BOUNDS_CHECKS is defined,
+		// and j2c_array.cpp throws the exceptions with the JVM's messages (G43)
+		assert(arithmeticArrays.includes("value_type &operator[](size_type i) { return p[j2c_check_index(i, length)]; }"));
+		assert(arithmeticArrays.includes("#ifndef J2C_NO_BOUNDS_CHECKS"));
+		assert(arithmeticArrays.includes("Array(int n) : length(j2c_check_size(n))"));
+		const objectArrays = fs.readFileSync(path.join(arithmeticOutput, "src", "ObjectArray.hpp"), "utf8");
+		assert(objectArrays.includes("T set(size_type i, T x) { set0(j2c_check_index(i, length), x); return x; }"));
+		assert(fs.readFileSync(path.join(arithmeticOutput, "src", "SubArray.hpp"), "utf8")
+			.includes("this->p[j2c_check_index(i, this->length)]"));
+		const arrayChecks = fs.readFileSync(path.join(arithmeticOutput, "src", "j2c_array.cpp"), "utf8");
+		assert(arrayChecks.includes('u" out of bounds for length "'));
+		assert(arrayChecks.includes("#include <java/lang/ArrayIndexOutOfBoundsException.hpp>"));
+		assert(arrayChecks.includes("#include <java/lang/NegativeArraySizeException.hpp>"));
+		assert(fs.existsSync(path.join(arithmeticOutput, "ext", "src", "java", "lang", "ArrayIndexOutOfBoundsException.hpp")));
+		assert(fs.existsSync(path.join(arithmeticOutput, "ext", "src", "java", "lang", "NegativeArraySizeException.hpp")));
+		assert.match(fs.readFileSync(path.join(arithmeticOutput, "Makefile"), "utf8"), /^\tsrc\/j2c_array\.cpp \\$/m);
+		assert(arithmeticSource.includes("return (*values)[i];"));
 		// Operands before the first String are added as numbers (G49)
 		const concatSource = arithmeticSource.replace(/\s*\r?\n\s*/g, "");
 		assert(concatSource.includes("return ::java::lang::StringBuilder().append((i + j))->append(u\" ints \"_j)->append(c)->append(i)"),

@@ -45,6 +45,7 @@ public class Transformer {
 	private static final String ARRAY_HPP = "/se/arnetheduck/j2c/resources/Array.hpp";
 	private static final String OBJECT_ARRAY_HPP = "/se/arnetheduck/j2c/resources/ObjectArray.hpp";
 	private static final String SUB_ARRAY_HPP = "/se/arnetheduck/j2c/resources/SubArray.hpp";
+	private static final String ARRAY_CPP = "/se/arnetheduck/j2c/resources/j2c_array.cpp";
 
 	private final SourceProject project;
 
@@ -152,6 +153,10 @@ public class Transformer {
 		// throws ArrayStoreException; a runtime must provide both
 		hardDep(resolve(Class.class));
 		hardDep(resolve(ArrayStoreException.class));
+		// j2c_array.cpp throws these for Array.hpp's checks, with a message
+		hardDep(resolve(ArrayIndexOutOfBoundsException.class));
+		hardDep(resolve(NegativeArraySizeException.class));
+		hardDep(resolve(String.class));
 		// Classes a runtime's hooks call, which the program may never reach
 		if (runtimeCpp != null) {
 			File required = new File(runtimeCpp.getParentFile(),
@@ -239,6 +244,9 @@ public class Transformer {
 				TransformUtil.headerPath(root, "ObjectArray.hpp").toFile());
 		FileUtil.writeResource(SUB_ARRAY_HPP,
 				TransformUtil.headerPath(root, "SubArray.hpp").toFile());
+		FileUtil.writeResource(ARRAY_CPP,
+				TransformUtil.headerPath(root, "j2c_array.cpp").toFile());
+		sel.impls.add("src/j2c_array.cpp");
 	}
 
 	/** Copies a runtime's C++ into the output (see setRuntimeCpp) */

@@ -86,7 +86,7 @@ struct SubArray : public virtual Bases... {
     SubArray* newInstance0(int n) override { return new SubArray(n); }
 
     value_type operator[](size_type i) const { return get(i); }
-    value_type get(size_type i) const { return dynamic_cast<value_type>(this->p[i]); }
+    value_type get(size_type i) const { return dynamic_cast<value_type>(this->p[j2c_check_index(i, this->length)]); }
 
     iterator   begin() { return iterator(this->p); }
     iterator   end() { return iterator(this->p + this->length); }

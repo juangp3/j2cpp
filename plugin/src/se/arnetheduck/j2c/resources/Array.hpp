@@ -9,6 +9,36 @@
 
 extern java::lang::Class *class_(const char16_t *c, int n);
 
+#ifndef J2C_ARRAY_CHECKS
+#define J2C_ARRAY_CHECKS
+// Java's array checks. The throwing helpers are defined in j2c_array.cpp,
+// so these headers need no exception class. Compile with
+// -DJ2C_NO_BOUNDS_CHECKS to index without checking (C++ undefined behavior
+// instead of ArrayIndexOutOfBoundsException); negative sizes are always
+// checked, since allocation is never a hot path.
+[[noreturn, gnu::cold]] void j2c_throw_array_index(int index, int length);
+[[noreturn, gnu::cold]] void j2c_throw_negative_array_size(int size);
+
+inline int j2c_check_index(int index, int length)
+{
+#ifndef J2C_NO_BOUNDS_CHECKS
+    // One unsigned compare also catches negative indices
+    if(static_cast<unsigned>(index) >= static_cast<unsigned>(length)) [[unlikely]] {
+        j2c_throw_array_index(index, length);
+    }
+#endif
+    return index;
+}
+
+inline int j2c_check_size(int size)
+{
+    if(size < 0) [[unlikely]] {
+        j2c_throw_negative_array_size(size);
+    }
+    return size;
+}
+#endif
+
 template<typename T>
 class Array
     : public virtual ::java::lang::Object
@@ -27,7 +57,7 @@ public:
     typedef int size_type;
 
     Array() : length(0), p(nullptr) { }
-    Array(int n) : length(n), p(n == 0 ? nullptr : new value_type[n])
+    Array(int n) : length(j2c_check_size(n)), p(n == 0 ? nullptr : new value_type[n])
     {
     	for(auto x = p; x != p + length; ++x) *x = value_type();
     }
@@ -85,11 +115,11 @@ public:
 
     Array* clone() override { return new Array(*this); }
 
-    value_type operator[](size_type i) const { return p[i]; }
-    value_type &operator[](size_type i) { return p[i]; }
+    value_type operator[](size_type i) const { return p[j2c_check_index(i, length)]; }
+    value_type &operator[](size_type i) { return p[j2c_check_index(i, length)]; }
 
-    value_type get(size_type i) const { return p[i]; }
-    value_type &set(size_type i, value_type x) { return (p[i] = x); }
+    value_type get(size_type i) const { return p[j2c_check_index(i, length)]; }
+    value_type &set(size_type i, value_type x) { return (p[j2c_check_index(i, length)] = x); }
 
     iterator        begin() { return p; }
     const_iterator  begin() const { return p; }

@@ -91,6 +91,28 @@ public class Java17Arithmetic {
 		return i;
 	}
 
+	// Array accesses are checked: ArrayIndexOutOfBoundsException, and
+	// NegativeArraySizeException for a negative size (G43)
+	public static int element(int[] values, int i) {
+		return values[i];
+	}
+
+	public static void addToElement(int[] values, int i, int b) {
+		values[i] += b;
+	}
+
+	public static void storeElement(VarargBase[] values, int i, VarargBase value) {
+		values[i] = value;
+	}
+
+	public static int newLength(int n) {
+		return new int[n].length;
+	}
+
+	public static int newGridLength(int rows, int columns) {
+		return new int[rows][columns].length;
+	}
+
 	public static double fmodAssign(double a, double b) {
 		a %= b;
 		return a;

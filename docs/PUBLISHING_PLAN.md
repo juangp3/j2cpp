@@ -684,13 +684,21 @@ engine); G28–G31 by four parallel fixer agents:
   abstract method was treated as already declared, and record accessors
   were `const` and did not override.
 
-#### G43 — No array bounds checks
+#### G43 — Array bounds checks
 
-**Status (2026-10-12):** Open. `Array.hpp` indexes without checking, so an
-out-of-range index is undefined behavior in C++, where Java throws
-`ArrayIndexOutOfBoundsException`. Checking every access costs speed, so it
-needs a decision: always, a build option (`J2C_BOUNDS_CHECKS`), or only in
-debug builds (ASan finds the errors meanwhile).
+**Status (2026-10-14):** Done. `Array.hpp`, `ObjectArray.hpp` and
+`SubArray.hpp` check every element access (`[]`, `get`, `set`) with one
+unsigned compare and throw `ArrayIndexOutOfBoundsException` with the JVM's
+message (`Index 5 out of bounds for length 3`), before `ArrayStoreException`
+as Java does. A negative size, in any dimension of `new int[a][b]`, throws
+`NegativeArraySizeException` (`-1`) instead of C++'s `bad_array_new_length`.
+The throwing helpers live in a generated `src/j2c_array.cpp`, so the headers
+include no exception class; both exceptions are always dependencies. Checks
+are on by default (Java semantics); `-DJ2C_NO_BOUNDS_CHECKS` in `CFLAGS`
+removes the index checks for speed (size checks stay). Not covered: in
+`a[i] += f()`, C++ evaluates `f()` before the check, where Java checks first.
+Tested by `test/runtime/bounds`, `Java17Arithmetic`, its smoke harness and
+`test-cli.js`.
 
 #### G44–G48 — Found while writing the runtime (R2)
 

@@ -105,6 +105,10 @@ C++20-targeted output.
 - Integer division and remainder by zero throw `ArithmeticException`,
   `MIN_VALUE / -1` wraps, shift counts are masked, floating-point to integer
   casts saturate, and generated Makefiles build with `-fwrapv`.
+- Array accesses throw `ArrayIndexOutOfBoundsException` with the JVM's
+  message, and negative array sizes `NegativeArraySizeException`. Define
+  `J2C_NO_BOUNDS_CHECKS` (`CFLAGS=-DJ2C_NO_BOUNDS_CHECKS make`) to index
+  without checks.
 - Generated constructors no longer bind a reference through a null pointer.
 - Effectively final variables are captured by anonymous classes and lambdas,
   not only explicitly `final` ones.

@@ -214,6 +214,12 @@ masked to the type width, and floating-point to integer casts saturate
 (NaN becomes 0). Generated Makefiles compile with `-fwrapv` so overflow wraps;
 keep that flag if you build the output another way.
 
+Array accesses are checked as in Java: an index out of range throws
+`ArrayIndexOutOfBoundsException` (`Index 5 out of bounds for length 3`), and
+a negative size throws `NegativeArraySizeException`. To trade the index
+checks for speed, build with `CFLAGS=-DJ2C_NO_BOUNDS_CHECKS make`; a bad
+index is then undefined behavior, as in C++.
+
 Review the generated C++ for each project. In particular, record component
 assignment, array identity hashing, and reference stringification can differ
 from JVM behavior. **The generated program does not run on its own:** JDK
