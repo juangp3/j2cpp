@@ -737,17 +737,6 @@ debug builds (ASan finds the errors meanwhile).
   and `AbstractList<E>` as equal, so adding one replaced the other in a
   dependency set. `TransformUtil.addDep` now also compares binding keys.
   Tested by `test-cli.js` and the corpus.
-- **G49, numbers before the first string in a concatenation** (fixed
-  2026-10-13): `i + j + " ints"` appended each operand, printing `12 ints`.
-  Operands before the first `String` are now added as one C++ expression,
-  whose promotions match Java's (`-fwrapv` wraps), and appended once.
-  Tested by `test/runtime/concat`, `Java17Arithmetic` and `test-cli.js`.
-- **G50, a default overriding a default** (fixed 2026-10-14): an interface
-  default that overrode a super-interface's default was commented out as
-  "already declared", so `Upper.level()` ran `Level.level()`'s body.
-  `TransformUtil.baseDeclared` now declares every default method. Tested by
-  `test/runtime/defaults`, `Java17Lambdas`, its smoke harness and
-  `test-cli.js`.
 
 #### G33–G35 — Found by the java.base experiment (Phase 10)
 
@@ -794,18 +783,17 @@ debug builds (ASan finds the errors meanwhile).
 
 #### G49–G50 — Found while writing the runtime (R4)
 
-- **G49, numeric operands before a string in a concatenation** (open):
-  `i + j + " s"` with `int i = 1, j = 2` prints `12 s` instead of `3 s`.
-  JDT gives `a + b + c` as one infix expression with extended operands,
-  and J2C converts every operand to a string when the expression's type is
-  `String`; Java adds the leading numeric operands first. Also `c + i + ""`
-  with a `char`, and `1.5 + i + ""`.
-- **G50, an interface default method overriding another** (open): with
-  `interface A { default String m() { return "A"; } }`,
-  `interface B extends A { default String m() { return "B"; } }` and
-  `class C implements B {}`, `new C().m()` returns `"A"`. `B.hpp` comments
-  `m()` out as "already declared" and its body is never used. The runtime's
-  `Collection` therefore leaves `spliterator()` to `Iterable`'s default.
+- **G49, numbers before the first string in a concatenation** (fixed
+  2026-10-13): `i + j + " ints"` appended each operand, printing `12 ints`.
+  Operands before the first `String` are now added as one C++ expression,
+  whose promotions match Java's (`-fwrapv` wraps), and appended once.
+  Tested by `test/runtime/concat`, `Java17Arithmetic` and `test-cli.js`.
+- **G50, a default overriding a default** (fixed 2026-10-14): an interface
+  default that overrode a super-interface's default was commented out as
+  "already declared", so `Upper.level()` ran `Level.level()`'s body.
+  `TransformUtil.baseDeclared` now declares every default method. Tested by
+  `test/runtime/defaults`, `Java17Lambdas`, its smoke harness and
+  `test-cli.js`.
 
 Known runtime difference: `Double.toString` and `Float.toString` print the
 shortest round-trip digits (the JDK 19+ algorithm), so a few values differ
@@ -1019,7 +1007,8 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
      Rounding is half up from `Double.toString`'s digits, as in the JDK.
    - Tested by `test/runtime/optional`, `streams` and `format`;
      `runtime-programs.js` now runs `java` with `Locale.US` formatting.
-   - Found G49 and G50 (Phase 9); the runtime avoids both.
+   - Found G49 and G50 (Phase 9), since fixed; the runtime was written
+     around both.
 5. **R5:** optional Boehm GC (G8), unchanged.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
