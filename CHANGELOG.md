@@ -78,6 +78,22 @@ C++20-targeted output.
   translated into helpers that follow JUnit's rules and messages without a
   Java runtime. Other assertion forms are reported. Comparing JDK objects
   and showing custom messages need the runtime.
+- With `--runtime`, translated tests compare JDK objects (strings, boxed
+  numbers, lists, maps) with Java's `equals`, and failure messages match
+  JUnit's: values shown with `toString`, JUnit 5's `message ==>` prefix,
+  `Supplier<String>` messages called only on failure, and JUnit 4's own
+  forms (`expected:<a> but was:<b>`, strings compacted as
+  `ComparisonFailure` does, its `assertNull`, `assertSame`, `assertNotEquals`
+  and array messages). The `AssertionError` carries the message, and
+  GoogleTest reports every exception's message. JUnit 4's assertions now
+  translate into `j2c::junit::junit4` helpers.
+- JUnit 4's `@Test(expected = ...)` failures use JUnit's messages
+  (`Expected exception: X`, `Unexpected exception, expected<X> but was<Y>`).
+- The JUnit fixtures run with real JUnit 5.10 and 4.13 on the JVM
+  (`npm run junit:jvm`) and, translated, with GoogleTest against stubs and
+  against the runtime; CI checks that all three give the outcomes in
+  `expected-results.json`, and that the JVM and the runtime give its
+  failure messages (73 tests, 44 messages).
 
 ### AI agents
 

@@ -30,7 +30,7 @@ Last rechecked on 2026-10-11 against local `modern-release`.
   `--format json`, the output guard, problem IDs with `j2c explain`,
   `j2c capabilities`, the Problems panel, lambdas and method references,
   Phase 9 gaps G1–G6, the `j2c mcp` server with VS Code registration
-  (Phase 11), and `--tests` with JUnit assertions (Phase 13 T1–T3a).
+  (Phase 11), and `--tests` with JUnit assertions (Phase 13 T1–T3b).
   `CHANGELOG.md`'s `0.6.0 — Preview` section lists it all and is the
   release notes.
 - **Versions.** Maven and the VS Code extension are both `0.6.0`. The
@@ -48,8 +48,10 @@ Last rechecked on 2026-10-11 against local `modern-release`.
   translation gaps.
 - **CI.** `ci.yml` builds and tests on Java 11 and 17. On Java 17 it also
   builds the generated C++20 fixtures and runs the smoke harnesses under
-  UBSan, runs the translated JUnit fixtures with GoogleTest and compares all
-  34 outcomes, and runs the probes. Last verified locally on 2026-10-11
+  UBSan, runs the translated JUnit fixtures with GoogleTest, against stubs
+  (34 outcomes) and against the runtime (73 outcomes and 44 failure
+  messages), runs the same fixtures with real JUnit on the JVM, and runs the
+  probes. Last verified locally on 2026-10-11
   (`fc01cae`); the CI run on the pushed commit is recorded in Phase 8.
 - **Release automation.** `release.yml` runs on `v*` tags: the full CI
   matrix, a tag/version/changelog agreement check, a rebuild from the tag
@@ -1300,7 +1302,7 @@ mapped to `EXPECT_*` macros (Java equality, exceptions on failure, lambdas in
 | T1 | With `--tests`, report test features the wrappers cannot run: `J2C-TEST-*` problem IDs for mocking libraries, runners, rules and extensions, parameterized, repeated and dynamic tests, `@Nested`, timeouts, `@TestInstance`, private methods, and methods with parameters | — | Done (2026-10-11) |
 | T2 | `--tests` generates a GoogleTest wrapper per runnable JUnit 4 or 5 class: a fresh instance per test; `@BeforeAll`, `@BeforeEach`, `@AfterEach` and `@AfterAll` in JUnit's order, including inherited and overridden methods; disabled tests skipped with their reason; `@Test(expected = ...)` checked with subclasses allowed; `j2c_gtest.hpp`; and Makefile `tests` and `test` targets (`GTEST_CFLAGS`, `GTEST_LIBS`, `TEST_LDLIBS`). Also exposed through MCP (`tests`, `testFiles`) and the `j2c.tests` setting. | — | Done (2026-10-11) |
 | T3a | JUnit assertions and assumptions (JUnit 4 and 5) translated into `j2c_junit.hpp` helpers with JUnit's rules and messages, needing no runtime: a failed assertion throws a Java `AssertionError`; `assertThrows` uses the class literal's type; assumptions skip. Unsupported forms (`assertAll`, `assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth, non-literal `assertThrows` classes) are reported as `J2C-TEST-UNSUPPORTED-ASSERTION`. | — | Done (2026-10-11) |
-| T3b | Runtime-backed parts: `equals` on JDK objects such as `String` and boxed numbers, and custom assertion and exception messages; then run the fixtures with real JUnit on the JVM and compare outcomes | Phase 10 milestone 1 | Planned |
+| T3b | With `--runtime`, assertions compare JDK objects (`String`, boxed numbers, lists, maps) with Java's `equals` and give JUnit's messages: values shown with `toString`, JUnit 5's `message ==>` prefix, `Supplier<String>` messages called only on failure, and JUnit 4's own forms (in `j2c::junit::junit4`), including `ComparisonFailure`'s compacted strings; the `AssertionError` carries the message. JUnit 4's expected-exception failures use JUnit's messages. The fixtures run with real JUnit 5.10 and 4.13 on the JVM (`junit-jvm.js`), and every outcome and recorded message is compared with `expected-results.json`, as are the GoogleTest runs against stubs and against the runtime (`junit-gtest.js`) | Phase 10 milestone 1 | Done (2026-10-15) |
 | T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Planned |
 | T5 | Optional gMock classes generated from Java interfaces, for new C++ tests | T2 | Planned |
 
@@ -1318,7 +1320,8 @@ Tests for T1 and T2:
     `--tests`.
 - CI installs `libgtest-dev`, translates the fixtures with `--tests`, builds
   and runs them under UBSan, and compares every outcome with
-  `vscode/scripts/check-gtest.js`. There are 34 tests, including 20 for
+  `vscode/scripts/check-gtest.js` (through `junit-gtest.js` since T3b).
+  There are 34 tests, including 20 for
   assertions: 19 pass, 11 fail on purpose, and 4 are skipped. Verified
   locally with GoogleTest 1.15.2.
 - The assertion fixtures (`Java17AssertionsTest`, `Java17Assert4Test`) cover
@@ -1336,8 +1339,39 @@ Tests for T1 and T2:
   The CLI suite checks the translated calls and that each unsupported form
   is reported.
 
-Not yet covered: running the same fixtures with real JUnit on the JVM and
-comparing outcomes. That needs the JUnit JARs, so it is part of T3b.
+Tests for T3b:
+
+- `test/junit-runtime/` has a JUnit 5 and a JUnit 4 fixture of assertions on
+  JDK objects (39 tests): strings, boxed numbers, lists and maps that are
+  equal and that differ, custom and `Supplier<String>` messages (and a
+  supplier that must not be called), blank messages, Java's `double` and
+  `char` text, `assertNull`, `assertNotEquals`, `assertSame`, arrays of
+  strings, JUnit 4's compacted strings and array lengths, an exception's
+  own message, and Java code reading `AssertionError.getMessage()`. They
+  need the runtime, so only the runtime and JVM runs include them.
+- `expected-results.json` entries can be `{ "outcome": "fail", "message":
+  "..." }`; 44 failures record JUnit's message, including the T3a ones.
+- `vscode/scripts/junit-jvm.js` downloads
+  `junit-platform-console-standalone` 1.10.5, `junit` 4.13.2 and
+  `hamcrest-core` 1.3 with Maven into `target/junit-jvm/lib` (never into
+  the shipped JAR), compiles both fixture directories against them (not
+  `test/junit-api`), runs the console launcher with XML reports, and
+  compares. Real JUnit agreed with every T3a expectation as written; the
+  messages it reports are now recorded and checked.
+- `vscode/scripts/junit-gtest.js` replaces CI's inline GoogleTest step:
+  without `--runtime` it translates `test/junit` against stubs and compares
+  outcomes only; with `--runtime` it translates both directories against
+  `runtime/` and also compares messages. CI runs both under UBSan, then the
+  JVM run. Verified locally with GoogleTest 1.14.0 and GCC 13.3.
+- The CLI suite checks the `junit4::` calls, a `Supplier<String>` message
+  passed as a lambda object, JUnit 4's wrapper messages, and a clean
+  `--check --tests --runtime` of both directories.
+
+Not yet covered: `assertIterableEquals`, `assertLinesMatch`, nested-array
+`assertArrayEquals`, JUnit 4's `assertThrows` (`ThrowingRunnable`) and the
+remaining forms listed under `J2C-TEST-UNSUPPORTED-ASSERTION`. When two
+values print alike, JUnit 5 adds their identity hashes, which differ from
+the JVM's.
 
 ## Go/no-go checklist
 

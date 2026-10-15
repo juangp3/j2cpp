@@ -113,16 +113,42 @@ JUnit's rules, so they work without a Java runtime:
 - `assumeTrue` and `assumeFalse`, which skip the test.
 
 These work from both JUnit 5's `Assertions` and JUnit 4's `Assert`. A failed
-assertion throws a Java `AssertionError` with JUnit's message, such as
-`expected: <4> but was: <5>`. Object equality calls the translated
-`equals()`, so it works for the project's own classes, but comparing JDK
-objects such as strings or boxed numbers needs a runtime, and so does
-showing custom messages. Other forms (`assertAll`, `assertTimeout`, lazy
-conditions, Hamcrest, AssertJ, Truth) are reported by `--check --tests`.
+assertion throws a Java `AssertionError` with the message that version of
+JUnit gives, such as `expected: <4> but was: <5>` (JUnit 5) or
+`expected:<4> but was:<5>` (JUnit 4). Object equality calls the translated
+`equals()`, so it works for the project's own classes.
+
+Translated with the J2C runtime (`--tests --runtime runtime`), assertions
+also compare JDK objects with Java's `equals` (strings, boxed numbers,
+lists, maps) and show values and messages as JUnit does:
+
+- values print with their Java `toString`, so `expected: <[1, 2]> but was:
+  <[1, 3]>` and `expected: <0.3> but was: <0.30000000000000004>`;
+- JUnit 5's custom message comes first, as in `names ==> expected: <a> but
+  was: <b>`, and a `Supplier<String>` message is called only when the
+  assertion fails;
+- JUnit 4 compacts two strings around their difference, as in
+  `expected:<ab[c]def> but was:<ab[X]def>`, and prefixes its message, as in
+  `name expected:<[a]> but was:<[b]>`;
+- the `AssertionError` carries the message, so Java code that catches it
+  sees it, and GoogleTest shows it with any other exception's message.
+
+Without a runtime, JDK objects are stubs: messages describe objects by
+type, and custom messages are not shown. Other forms (`assertAll`,
+`assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth) are reported by
+`--check --tests`.
 
 `make test` needs GoogleTest (found with `pkg-config`, or set `GTEST_CFLAGS`
 and `GTEST_LIBS`) and, like any translated program, a C++ implementation of
-the JDK classes the tests use, passed with `TEST_LDLIBS`.
+the JDK classes the tests use: the J2C runtime, or your own passed with
+`TEST_LDLIBS`.
+
+The repository's own JUnit fixtures (`test/junit`, and `test/junit-runtime`
+for JDK objects) are run three ways, and every outcome and recorded failure
+message must equal `expected-results.json`: with real JUnit on the JVM
+(`npm run junit:jvm`, which downloads JUnit with Maven into `target/`), and
+translated, with GoogleTest, against stubs (`npm run junit:gtest`) and
+against the runtime (`npm run junit:gtest:runtime`).
 
 With `--tests`, `--check` also reports test features the wrappers cannot run:
 mocking libraries (Mockito, PowerMock, EasyMock), runners, rules and

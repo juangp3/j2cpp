@@ -58,6 +58,14 @@ Each can also be run alone (`npm run test:cli`, `test:extension`,
 `test:mcp`, `test:licenses`) once the JAR exists. `npm run probe` translates
 `test/probes` and fails when an outcome changes.
 
+The JUnit fixtures (`test/junit`, and `test/junit-runtime` for assertions on
+JDK objects) record each test's outcome and JUnit's failure message in
+`expected-results.json`. `npm run junit:jvm` checks them with real JUnit
+(downloaded with Maven into `target/`); `junit:gtest` and
+`junit:gtest:runtime` translate them with `--tests` (against stubs, or with
+`--runtime runtime`) and check the GoogleTest results, which needs GoogleTest
+(`libgtest-dev`, in WSL on Windows).
+
 `npm run corpus` checks the real projects in `test/corpus/projects.json`,
 each pinned to a commit, and fails when a problem count rises or a project
 drops a ladder step. `--project` and `--tier` select projects, `--build` also
