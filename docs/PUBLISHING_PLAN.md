@@ -553,7 +553,8 @@ The gaps below remain. They fall into three groups:
 - **Test:** `test/runtime/allocation` allocates about 1 GB in a loop with a
   bounded live set, keeps objects in static fields, collections, locals and
   exceptions in flight, and checks them at the end. `runtime-programs.js
-  --gc boehm` (CI, `npm run runtime:gc`) builds every runtime program at
+  --gc boehm` (`npm run runtime:gc`; CI runs four programs per push and
+  every one nightly) builds every runtime program at
   `-O2` with UBSan, collecting every 1000 allocations (`J2C_GC_STRESS`),
   compares the output with `java`, and requires the allocation program's
   peak RSS to stay under 100 MB (16 MB measured; 910 MB without the

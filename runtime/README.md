@@ -133,7 +133,8 @@ happens to look like an address can keep an object alive (the collector is
 conservative). AddressSanitizer cannot be combined with it.
 
 `npm run runtime:gc` runs every program in `test/runtime` with
-`J2C_GC=boehm` at `-O2`, collecting every 1000 allocations.
+`J2C_GC=boehm` at `-O2`, collecting every 1000 allocations. CI runs
+the allocation-heavy programs on each push and all of them nightly.
 `test/runtime/allocation` allocates about 1 GB in a loop; its peak resident
 memory must stay under `max-rss-mb.txt` (100 MB) with the collector and
 exceed it without (16 MB and 910 MB when this was written).

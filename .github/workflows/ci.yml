@@ -77,12 +77,14 @@ jobs:
         env:
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
         run: node vscode/scripts/runtime-programs.js
-      - name: Run test/runtime programs with the Boehm collector (J2C_GC=boehm)
+      - name: Run allocation-heavy test/runtime programs with the Boehm collector (J2C_GC=boehm)
         if: matrix.java-version == '17'
         env:
           # Replacing operator new rules out AddressSanitizer
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
-        run: node vscode/scripts/runtime-programs.js --gc boehm
+        # The allocation test and the programs that allocate most; the nightly
+        # Corpus workflow runs every program with the collector
+        run: node vscode/scripts/runtime-programs.js --gc boehm --program allocation,collections,streams,rethrow
       - name: Probe translation gaps
         if: matrix.java-version == '17'
         working-directory: vscode
