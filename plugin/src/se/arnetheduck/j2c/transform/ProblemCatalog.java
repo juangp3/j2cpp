@@ -146,7 +146,7 @@ public final class ProblemCatalog {
 						+ "assertArrayEquals, fail, assertThrows with a class literal, "
 						+ "assertDoesNotThrow and assumeTrue/False. Other forms (assertAll, "
 						+ "assertTimeout, assertIterableEquals, lazy BooleanSupplier conditions, "
-						+ "Hamcrest, AssertJ, Truth) need the Java runtime.",
+						+ "Hamcrest, AssertJ, Truth) are not translated yet.",
 				"Rewrite the assertion with a supported form, for example assertTrue(...) "
 						+ "with the condition written out, or keep this test on the JVM.");
 		add(TEST_PARAMETERS,

@@ -16,7 +16,16 @@ public class Assert {
 	public static void assertEquals(double expected, double actual, double delta) { throw new UnsupportedOperationException(); }
 	public static void assertEquals(Object expected, Object actual) { throw new UnsupportedOperationException(); }
 	public static void assertEquals(String message, Object expected, Object actual) { throw new UnsupportedOperationException(); }
+	public static void assertNotEquals(Object unexpected, Object actual) { throw new UnsupportedOperationException(); }
+	public static void assertNotEquals(String message, long unexpected, long actual) { throw new UnsupportedOperationException(); }
+	public static void assertArrayEquals(int[] expecteds, int[] actuals) { throw new UnsupportedOperationException(); }
+	public static void assertArrayEquals(String message, int[] expecteds, int[] actuals) { throw new UnsupportedOperationException(); }
+	public static void assertArrayEquals(Object[] expecteds, Object[] actuals) { throw new UnsupportedOperationException(); }
 	public static void assertNull(Object object) { throw new UnsupportedOperationException(); }
+	public static void assertNull(String message, Object object) { throw new UnsupportedOperationException(); }
+	public static void assertNotNull(Object object) { throw new UnsupportedOperationException(); }
+	public static void assertSame(String message, Object expected, Object actual) { throw new UnsupportedOperationException(); }
+	public static void assertNotSame(Object unexpected, Object actual) { throw new UnsupportedOperationException(); }
 	public static void fail() { throw new UnsupportedOperationException(); }
 	public static void fail(String message) { throw new UnsupportedOperationException(); }
 }

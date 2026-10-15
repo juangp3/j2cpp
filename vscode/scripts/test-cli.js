@@ -467,13 +467,14 @@ try {
 	], "Abstract test classes get no wrapper of their own");
 
 	// JUnit assertions become j2c_junit.hpp calls with Java's overload types;
-	// JUnit 4's leading message is passed after the values
+	// JUnit 4's leading message is passed after the values, and its helpers,
+	// whose messages differ from JUnit 5's, are in their own namespace
 	assert(junitReport.generatedFiles.includes("src/j2c_junit.hpp"));
 	const assertionSource = fs.readFileSync(path.join(junitOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17AssertionsTest.cpp"), "utf8");
 	assert(assertionSource.includes("::j2c::junit::assertEquals< int64_t >(int64_t(5LL), int32_t(5))"));
 	assert(assertionSource.includes("::j2c::junit::assertThrows< ::java::lang::IllegalArgumentException >(\"java.lang.IllegalArgumentException\""));
 	const assert4Source = fs.readFileSync(path.join(junitOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17Assert4Test.cpp"), "utf8");
-	assert(assert4Source.includes("::j2c::junit::assertEquals< int64_t >(int64_t(3LL), int64_t(3LL), u\"lengths\"_j)"));
+	assert(assert4Source.includes("::j2c::junit::junit4::assertEquals< int64_t >(int64_t(3LL), int64_t(3LL), u\"lengths\"_j)"));
 	assert(junitReport.generatedFiles.includes("test/j2c_gtest.hpp"));
 	const junitMakefile = fs.readFileSync(path.join(junitOutput, "Makefile"), "utf8");
 	assert(junitMakefile.includes(`${wrapperDirectory}/Java17JUnit5Test_test.cpp`));
@@ -484,6 +485,33 @@ try {
 	const junit4Wrapper = fs.readFileSync(path.join(junitOutput, wrapperDirectory, "Java17JUnit4Test_test.cpp"), "utf8");
 	assert(junit4Wrapper.includes("dynamic_cast< ::java::lang::IllegalArgumentException* >(outcome.thrown)"));
 	assert(junit4Wrapper.includes("{ \"ignored\", \"\" }"));
+	// JUnit 4's own messages for @Test(expected = ...)
+	assert(junit4Wrapper.includes("FAIL() << \"Expected exception: java.lang.IllegalArgumentException\";"));
+	assert(junit4Wrapper.includes("FAIL() << \"Unexpected exception, expected<java.lang.IllegalArgumentException> but was<\" << j2c::className(outcome.thrown) << \">\";"));
+
+	// Assertions on JDK objects (test/junit-runtime) translate against the
+	// J2C runtime; j2c_junit.hpp finds its j2c_runtime.hpp and then shows
+	// Java values and messages. A Supplier<String> message is passed along,
+	// to be called only when the assertion fails.
+	const junitRuntimeRoot = path.join(repositoryRoot, "test", "junit-runtime");
+	const runtimeTestsPath = [junitRoot, junitRuntimeRoot, junitApi].join(path.delimiter);
+	const runtimeTestsCheck = runCli(["--check", "--tests", "--runtime", runtimeDirectory, "--format", "json",
+		"--sourcepath", runtimeTestsPath, junitRoot, junitRuntimeRoot]);
+	assert.strictEqual(runtimeTestsCheck.status, 0, runtimeTestsCheck.stdout);
+	const runtimeTestsOutput = path.join(tempDirectory, "junit runtime output");
+	fs.mkdirSync(runtimeTestsOutput);
+	const runtimeTests = runCli(["--tests", "--runtime", runtimeDirectory, "--format", "json", "--output", runtimeTestsOutput,
+		"--sourcepath", runtimeTestsPath, junitRoot, junitRuntimeRoot]);
+	assert.strictEqual(runtimeTests.status, 0, runtimeTests.stderr);
+	assert(JSON.parse(runtimeTests.stdout).testFiles.includes(`${wrapperDirectory}/Java17RuntimeAssertionsTest_test.cpp`));
+	assert(fs.existsSync(path.join(runtimeTestsOutput, "runtime", "j2c_runtime.hpp")));
+	const runtimeTestSources = path.join(runtimeTestsOutput, "src", "se", "arnetheduck", "j2c", "test", "junit");
+	const runtimeAssertions = fs.readFileSync(path.join(runtimeTestSources, "Java17RuntimeAssertionsTest.cpp"), "utf8");
+	assert(runtimeAssertions.includes("::j2c::junit::assertEquals< int32_t >(int32_t(1), int32_t(2), new Java17RuntimeAssertionsTest_supplierMessage_1(this, answer));"));
+	assert(runtimeAssertions.includes("::j2c::junit::assertEquals< ::java::lang::Integer* >(::java::lang::Integer::valueOf(int32_t(1000)), ::java::lang::Integer::valueOf(int32_t(1000)));"));
+	assert(runtimeAssertions.includes("::j2c::junit::failTest< void >(new Java17RuntimeAssertionsTest_failWithSupplier_4(this));"));
+	const runtimeAssert4 = fs.readFileSync(path.join(runtimeTestSources, "Java17RuntimeAssert4Test.cpp"), "utf8");
+	assert(runtimeAssert4.includes("::j2c::junit::junit4::assertEquals< ::java::lang::Object* >(u\"a\"_j, u\"b\"_j, u\"name\"_j);"));
 
 	const plainOutput = path.join(tempDirectory, "junit without tests");
 	fs.mkdirSync(plainOutput);
@@ -492,7 +520,8 @@ try {
 	assert(!fs.readFileSync(path.join(plainOutput, "src", "se", "arnetheduck", "j2c", "test", "junit", "Java17AssertionsTest.cpp"), "utf8")
 		.includes("::j2c::junit::"), "Without --tests assertions are ordinary calls");
 
-	// Assertion forms that need the Java runtime are reported, not stubbed
+	// Assertion forms the helpers do not cover are reported, not stubbed;
+	// Supplier<String> messages are covered
 	const assertionScratch = path.join(tempDirectory, "assertion scratch");
 	fs.mkdirSync(path.join(assertionScratch, "scratch"), { recursive: true });
 	const unsupportedAssertions = path.join(assertionScratch, "scratch", "UnsupportedAssertions.java");
@@ -505,6 +534,7 @@ try {
 		"\t@Test void grouped() { assertAll(() -> {}); }",
 		"\t@Test void classVariable() { Class<IllegalStateException> type = IllegalStateException.class; assertThrows(type, () -> {}); }",
 		"\t@Test void supported() { assertEquals(1, 1); }",
+		"\t@Test void supplied() { assertEquals(1, 1, () -> \"lazy\"); }",
 		"}",
 		""
 	].join("\n"));

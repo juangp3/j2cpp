@@ -2254,7 +2254,8 @@ public class ImplWriter extends TransformWriter {
 		ctx.usesJUnitAssertions();
 		List<Expression> arguments = node.arguments();
 
-		print("::j2c::junit::" + assertion.helper);
+		print("::j2c::junit::" + (assertion.junit4 ? "junit4::" : "")
+				+ assertion.helper);
 		if (assertion.thrown != null) {
 			hardDep(assertion.thrown);
 			print("< " + CName.relative(assertion.thrown, type, true) + " >");

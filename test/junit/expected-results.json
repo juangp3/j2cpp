@@ -3,16 +3,16 @@
     "beforeEachRan": "pass",
     "beforeAllRanOnce": "pass",
     "freshInstancePerTest": "pass",
-    "failingCheck": "fail",
-    "unexpectedException": "fail",
+    "failingCheck": { "outcome": "fail", "message": "" },
+    "unexpectedException": { "outcome": "fail", "message": "" },
     "disabledWithReason": "skip"
   },
   "se_arnetheduck_j2c_test_junit_Java17JUnit4Test": {
     "lifecycleRan": "pass",
     "expectedThrown": "pass",
     "expectedSubclassThrown": "pass",
-    "expectedMissing": "fail",
-    "wrongException": "fail",
+    "expectedMissing": { "outcome": "fail", "message": "Expected exception: java.lang.IllegalArgumentException" },
+    "wrongException": { "outcome": "fail", "message": "Unexpected exception, expected<java.lang.IllegalArgumentException> but was<java.lang.IllegalStateException>" },
     "ignored": "skip"
   },
   "se_arnetheduck_j2c_test_junit_DerivedTest": {
@@ -21,26 +21,26 @@
   },
   "se_arnetheduck_j2c_test_junit_Java17AssertionsTest": {
     "primitivesPass": "pass",
-    "primitiveMismatchFails": "fail",
+    "primitiveMismatchFails": { "outcome": "fail", "message": "expected: <4> but was: <5>" },
     "doublesWithinDelta": "pass",
     "doubleSpecialValues": "pass",
     "nullsAndIdentity": "pass",
     "objectsUseEquals": "pass",
-    "objectMismatchFails": "fail",
+    "objectMismatchFails": { "outcome": "fail", "message": "expected: <se.arnetheduck.j2c.test.junit.Java17AssertionsTest$Point@21> but was: <se.arnetheduck.j2c.test.junit.Java17AssertionsTest$Point@40>" },
     "arraysEqual": "pass",
-    "arrayMismatchFails": "fail",
+    "arrayMismatchFails": { "outcome": "fail", "message": "array contents differ at index [1], expected: <2> but was: <3>" },
     "assertThrowsReturnsException": "pass",
-    "assertThrowsWrongTypeFails": "fail",
-    "assertThrowsNothingFails": "fail",
+    "assertThrowsWrongTypeFails": { "outcome": "fail", "message": "Unexpected exception type thrown, expected: <java.lang.IllegalArgumentException> but was: <java.lang.IllegalStateException>" },
+    "assertThrowsNothingFails": { "outcome": "fail", "message": "Expected java.lang.IllegalArgumentException to be thrown, but nothing was thrown." },
     "doesNotThrow": "pass",
-    "failFails": "fail",
+    "failFails": { "outcome": "fail", "message": "explicit failure" },
     "assumptionSkips": "skip",
     "assertionErrorIsCatchable": "pass"
   },
   "se_arnetheduck_j2c_test_junit_Java17Assert4Test": {
     "messageFirstPasses": "pass",
-    "messageFirstFails": "fail",
-    "doubleWithoutDeltaFails": "fail",
+    "messageFirstFails": { "outcome": "fail", "message": "condition" },
+    "doubleWithoutDeltaFails": { "outcome": "fail", "message": "Use assertEquals(expected, actual, delta) to compare floating-point numbers" },
     "assumptionSkips": "skip"
   }
 }

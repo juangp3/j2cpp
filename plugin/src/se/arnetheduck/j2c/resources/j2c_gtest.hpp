@@ -40,7 +40,7 @@ Outcome run(F&& code)
 /** The Java class name of an exception, such as java.lang.AssertionError */
 inline std::string className(::java::lang::Throwable* thrown)
 {
-    return junit::javaName(typeid(*thrown));
+    return junit::thrownName(thrown);
 }
 
 /** The exception's class, plus the assertion message when it has one */

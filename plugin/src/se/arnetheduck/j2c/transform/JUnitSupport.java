@@ -68,6 +68,8 @@ final class JUnitSupport {
 	static final class Assertion {
 		/** Helper function in namespace j2c::junit */
 		final String helper;
+		/** JUnit 4 (org.junit.Assert): the helper in j2c::junit::junit4 */
+		final boolean junit4;
 		/** Indexes of the arguments passed as values, in order */
 		final List<Integer> values;
 		/** Indexes of message arguments, evaluated after the values */
@@ -77,9 +79,11 @@ final class JUnitSupport {
 		/** assertThrows: the exception class literal's type */
 		final ITypeBinding thrown;
 
-		Assertion(String helper, List<Integer> values, List<Integer> messages,
-				List<ITypeBinding> typeArguments, ITypeBinding thrown) {
+		Assertion(String helper, boolean junit4, List<Integer> values,
+				List<Integer> messages, List<ITypeBinding> typeArguments,
+				ITypeBinding thrown) {
 			this.helper = helper;
+			this.junit4 = junit4;
 			this.values = values;
 			this.messages = messages;
 			this.typeArguments = typeArguments;
@@ -100,7 +104,7 @@ final class JUnitSupport {
 
 	/**
 	 * The translation of a call to a JUnit assertion or assumption, or null
-	 * when the form is not supported without the Java runtime.
+	 * when the form is not supported in translated tests.
 	 */
 	static Assertion assertion(IMethodBinding method, List<?> arguments) {
 		ITypeBinding declaring = method.getDeclaringClass().getErasure();
@@ -165,7 +169,8 @@ final class JUnitSupport {
 		default:
 			typeArguments.add(parameters[values.get(0)]);
 		}
-		return new Assertion(helper, values, messages, typeArguments, thrown);
+		return new Assertion(helper, junit4, values, messages, typeArguments,
+				thrown);
 	}
 
 	/** The helper for a call with these value parameter types, or null */

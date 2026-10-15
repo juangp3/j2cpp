@@ -133,16 +133,18 @@ final class GTestWriter {
 					out.println("        FAIL() << \"Test threw \" << j2c::describe(outcome.thrown);");
 					out.println("    }");
 				} else {
-					String expected = test.expected.getQualifiedName();
+					// JUnit 4's messages, with binary class names
+					String expected = test.expected.getBinaryName();
 					out.println("    if (outcome.thrown == nullptr) {");
-					out.println("        FAIL() << \"Expected " + expected
-							+ " to be thrown\";");
+					out.println("        FAIL() << \"Expected exception: " + expected
+							+ "\";");
 					out.println("    }");
 					out.println("    if (dynamic_cast< "
 							+ CName.qualified(test.expected, true)
 							+ "* >(outcome.thrown) == nullptr) {");
-					out.println("        FAIL() << \"Expected " + expected
-							+ " but \" << j2c::describe(outcome.thrown) << \" was thrown\";");
+					out.println("        FAIL() << \"Unexpected exception, expected<"
+							+ expected
+							+ "> but was<\" << j2c::className(outcome.thrown) << \">\";");
 					out.println("    }");
 				}
 				out.println("}");
