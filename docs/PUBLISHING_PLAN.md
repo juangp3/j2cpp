@@ -824,6 +824,17 @@ Known runtime difference: `Double.toString` and `Float.toString` print the
 shortest round-trip digits (the JDK 19+ algorithm), so a few values differ
 from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
 
+#### G61 — Found while writing the runtime (text input and files)
+
+- **G61, Java names that are `<cerrno>` macros** (fixed 2026-10-15): a
+  parameter named `errno` (`static native String errorText(int errno)`)
+  or a constant named `ENOENT` expanded as the C library's macros, which
+  every generated file sees because `<string>` includes `<cerrno>`; the
+  header then declared `errorText(int32_t* (*)())`. `CName.keywords` now
+  renames `errno` and the Linux errno codes with a trailing `_`, as it
+  does for C++ keywords. Tested by `Java17Features.errnoNames` (built in
+  CI) and `test-cli.js`.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of

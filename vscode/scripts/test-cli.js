@@ -635,6 +635,9 @@ try {
 		assert.match(featureSource, /\(v == Java17Features_Shape::CIRCLE\)/);
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"sat"_j)) || (npc(v)->equals(u"sun"_j))`));
 		assert(featureSource.includes(String.raw`(npc(v)->equals(u"go"_j)) || (npc(v)->equals(u"run"_j))`));
+		// errno and its codes are C macros, so Java names that spell them are renamed (G61)
+		assert(featureSource.includes("Java17Features::errnoNames(int32_t errno_)"), featureSource);
+		assert.match(featureSource, /auto EINTR_ = errno_ \+ (Java17Features::)?ENOENT_;/);
 		// Resources close on a normal exit, or close and suppress, then rethrow (G45)
 		assert(featureSource.includes("auto finally0 = on_normal_exit([&] { if (reader != nullptr) { reader->close(); } });"));
 		assert(featureSource.includes("primary0->addSuppressed(suppressed0);"));

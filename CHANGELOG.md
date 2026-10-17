@@ -181,6 +181,9 @@ C++20-targeted output.
 - A class whose generic superclass implements an interface method with
   another erasure is no longer abstract in C++, as in `Spliterator.OfInt`
   implementations that extend a generic `OfPrimitive` class.
+- Java names that are C library macros, `errno` and the errno codes such as
+  `ENOENT`, are renamed with a trailing `_` like C++ keywords, so they no
+  longer expand inside generated code.
 - Sources are parsed in batches with one shared compiler environment: faster,
   and dependency headers that per-file parsing omitted are generated.
 

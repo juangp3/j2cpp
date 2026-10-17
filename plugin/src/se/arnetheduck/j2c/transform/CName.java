@@ -3,6 +3,7 @@ package se.arnetheduck.j2c.transform;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -79,6 +80,38 @@ public class CName {
 			// C++20
 			"char8_t", "concept", "consteval", "constinit", "co_await",
 			"co_return", "co_yield", "requires");
+
+	/**
+	 * errno and its codes, macros of the C library that the standard C++
+	 * headers include (<string> includes <cerrno>), so a Java name such as
+	 * an "errno" parameter or an "ENOENT" constant would expand (G61)
+	 */
+	public static final Collection<String> errnoMacros = new HashSet<String>(Arrays.asList(
+			"errno", "E2BIG", "EACCES", "EADDRINUSE", "EADDRNOTAVAIL", "EADV",
+			"EAFNOSUPPORT", "EAGAIN", "EALREADY", "EBADE", "EBADF", "EBADFD",
+			"EBADMSG", "EBADR", "EBADRQC", "EBADSLT", "EBFONT", "EBUSY",
+			"ECANCELED", "ECHILD", "ECHRNG", "ECOMM", "ECONNABORTED",
+			"ECONNREFUSED", "ECONNRESET", "EDEADLK", "EDEADLOCK",
+			"EDESTADDRREQ", "EDOM", "EDOTDOT", "EDQUOT", "EEXIST", "EFAULT",
+			"EFBIG", "EHOSTDOWN", "EHOSTUNREACH", "EHWPOISON", "EIDRM",
+			"EILSEQ", "EINPROGRESS", "EINTR", "EINVAL", "EIO", "EISCONN",
+			"EISDIR", "EISNAM", "EKEYEXPIRED", "EKEYREJECTED", "EKEYREVOKED",
+			"EL2HLT", "EL2NSYNC", "EL3HLT", "EL3RST", "ELIBACC", "ELIBBAD",
+			"ELIBEXEC", "ELIBMAX", "ELIBSCN", "ELNRNG", "ELOOP", "EMEDIUMTYPE",
+			"EMFILE", "EMLINK", "EMSGSIZE", "EMULTIHOP", "ENAMETOOLONG",
+			"ENAVAIL", "ENETDOWN", "ENETRESET", "ENETUNREACH", "ENFILE",
+			"ENOANO", "ENOBUFS", "ENOCSI", "ENODATA", "ENODEV", "ENOENT",
+			"ENOEXEC", "ENOKEY", "ENOLCK", "ENOLINK", "ENOMEDIUM", "ENOMEM",
+			"ENOMSG", "ENONET", "ENOPKG", "ENOPROTOOPT", "ENOSPC", "ENOSR",
+			"ENOSTR", "ENOSYS", "ENOTBLK", "ENOTCONN", "ENOTDIR", "ENOTEMPTY",
+			"ENOTNAM", "ENOTRECOVERABLE", "ENOTSOCK", "ENOTSUP", "ENOTTY",
+			"ENOTUNIQ", "ENXIO", "EOPNOTSUPP", "EOVERFLOW", "EOWNERDEAD",
+			"EPERM", "EPFNOSUPPORT", "EPIPE", "EPROTO", "EPROTONOSUPPORT",
+			"EPROTOTYPE", "ERANGE", "EREMCHG", "EREMOTE", "EREMOTEIO",
+			"ERESTART", "ERFKILL", "EROFS", "ESHUTDOWN", "ESOCKTNOSUPPORT",
+			"ESPIPE", "ESRCH", "ESRMNT", "ESTALE", "ESTRPIPE", "ETIME",
+			"ETIMEDOUT", "ETOOMANYREFS", "ETXTBSY", "EUCLEAN", "EUNATCH",
+			"EUSERS", "EWOULDBLOCK", "EXDEV", "EXFULL"));
 
 	public static String qualified(ITypeBinding tb, boolean global) {
 		IPackageBinding pkg = TransformUtil.elementPackage(tb);
@@ -392,7 +425,7 @@ public class CName {
 			return name + suffix;
 		}
 
-		if (keywords.contains(name)) {
+		if (keywords.contains(name) || errnoMacros.contains(name)) {
 			return name + "_";
 		}
 

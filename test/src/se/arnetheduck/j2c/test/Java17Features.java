@@ -126,6 +126,15 @@ public class Java17Features {
 		}
 	}
 
+	// Names of C library macros from <cerrno> are renamed (G61, found while
+	// writing the runtime's file natives)
+	public static final int ENOENT = 2;
+
+	public static int errnoNames(int errno) {
+		int EINTR = errno + ENOENT;
+		return EINTR;
+	}
+
 	// A cast from Object to a primitive checks the box, then unboxes (found
 	// in zxing). This package declares its own Object class.
 	public static int unboxCast(java.lang.Object value) {
