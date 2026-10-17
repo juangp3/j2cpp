@@ -1,0 +1,3 @@
+# Runtime programs read input.txt byte for byte: keep its CR, CRLF and
+# malformed UTF-8 exactly as committed
+test/runtime/*/input.txt -text

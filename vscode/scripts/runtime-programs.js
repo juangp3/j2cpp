@@ -2,7 +2,15 @@
 // (runtime/), builds and runs it, runs the same program with java, and
 // compares the results: stdout exactly, stderr without stack frames (J2C
 // records none), and the exit status. Arguments come from args.txt, one per
-// line. CFLAGS is passed to make, so CI can build with sanitizers.
+// line, and standard input from input.txt (its bytes as they are). Each run
+// starts in a new, empty working directory (run-java and run-cpp under the
+// output), so programs may create files with relative paths. CFLAGS is
+// passed to make, so CI can build with sanitizers.
+//
+// On Windows without make, the C++ program builds and runs in WSL. java runs
+// there too when WSL has one (J2C_WSL_JAVA names it, otherwise `java` on
+// WSL's PATH), so file paths and error messages match Linux; otherwise the
+// Windows java runs, and programs that print OS messages may differ.
 //
 // --gc boehm builds with make J2C_GC=boehm, optimized (-O2, where the
 // compiler keeps fewer stale pointers on the stack), and collects every
@@ -53,14 +61,27 @@ function shellQuote(text) {
 	return `'${text.replace(/'/g, "'\\''")}'`;
 }
 
-function native(command, args, cwd) {
+function native(command, args, cwd, input) {
 	if (!useWsl) {
-		return run(command, args, { cwd, env: { ...process.env, CFLAGS: cflags } });
+		return run(command, args, { cwd, input, env: { ...process.env, CFLAGS: cflags } });
 	}
 	const env = cflags ? `CFLAGS=${shellQuote(cflags)} ` : "";
 	const line = `cd ${shellQuote(wslPath(cwd))} && ${env}${[command, ...args].map(shellQuote).join(" ")}`;
-	return run("wsl", ["-d", wslDistribution, "bash", "-c", line]);
+	return run("wsl", ["-d", wslDistribution, "bash", "-c", line], { input });
 }
+
+// The java that runs next to the C++ program: WSL's when the program runs there
+function findWslJava() {
+	if (!useWsl) {
+		return null;
+	}
+	if (process.env.J2C_WSL_JAVA) {
+		return process.env.J2C_WSL_JAVA;
+	}
+	const which = run("wsl", ["-d", wslDistribution, "bash", "-lc", "command -v java"]);
+	return which.status === 0 && which.stdout.trim() ? which.stdout.trim() : null;
+}
+const wslJava = findWslJava();
 
 function normalize(text) {
 	return text.replace(/\r\n/g, "\n");
@@ -99,14 +120,25 @@ function check(name) {
 	}
 	const rssFile = path.join(directory, "max-rss-mb.txt");
 	const maxRss = fs.existsSync(rssFile) ? Number(fs.readFileSync(rssFile, "utf8").trim()) : null;
+	const inputFile = path.join(directory, "input.txt");
+	const input = fs.existsSync(inputFile) ? fs.readFileSync(inputFile) : undefined;
+	// Fresh working directories, so files one run writes cannot affect the other
+	const cppRun = path.join(output, "run-cpp");
+	const javaRun = path.join(output, "run-java");
+	fs.mkdirSync(cppRun);
+	fs.mkdirSync(javaRun);
+	const binary = useWsl ? wslPath(path.join(output, "bin", className)) : path.join(output, "bin", className);
 	// GNU time writes the peak resident set size in KB to rss.txt
 	const cpp = maxRss === null
-		? native(`./bin/${className}`, args, output)
-		: native("/usr/bin/time", ["-f", "%M", "-o", "rss.txt", `./bin/${className}`, ...args], output);
+		? native(binary, args, cppRun, input)
+		: native("/usr/bin/time", ["-f", "%M", "-o", "rss.txt", binary, ...args], cppRun, input);
 	// The runtime formats numbers like Locale.US (String.format, printf), so
 	// the JVM gets that locale whatever the machine's settings are
 	const locale = ["-Duser.language=en", "-Duser.country=US", "-Duser.language.format=en", "-Duser.country.format=US"];
-	const java = run("java", [...locale, path.join(directory, main), ...args], { cwd: directory });
+	const source = path.join(directory, main);
+	const java = wslJava
+		? native(wslJava, [...locale, wslPath(source), ...args], javaRun, input)
+		: run("java", [...locale, source, ...args], { cwd: javaRun, input });
 
 	const problems = [];
 	if (normalize(cpp.stdout) !== normalize(java.stdout)) {
@@ -120,7 +152,7 @@ function check(name) {
 	}
 	let note = "";
 	if (maxRss !== null) {
-		const lines = normalize(fs.readFileSync(path.join(output, "rss.txt"), "utf8")).trim().split("\n");
+		const lines = normalize(fs.readFileSync(path.join(cppRun, "rss.txt"), "utf8")).trim().split("\n");
 		const rss = Math.round(Number(lines[lines.length - 1]) / 1024);
 		note = ` (peak RSS ${rss} MB, bound ${maxRss} MB)`;
 		if (gc && !(rss < maxRss)) {
@@ -146,5 +178,5 @@ for (const name of programs) {
 	}
 	console.log(`${result.ok ? "ok  " : "FAIL"} ${name}${result.note || ""}${result.detail ? `\n${result.detail}` : ""}`);
 }
-console.log(`${programs.length} program(s)${gc ? ` with J2C_GC=${gc}` : ""}, ${failures} failure(s)`);
+console.log(`${programs.length} program(s)${gc ? ` with J2C_GC=${gc}` : ""}, ${failures} failure(s)${wslJava ? `, java in WSL (${wslJava})` : ""}`);
 process.exitCode = failures === 0 ? 0 : 1;
