@@ -1053,8 +1053,9 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
    - `test/runtime/allocation` allocates about 1 GB with a bounded live set:
      16 MB peak RSS with the collector, 910 MB without; the bound is
      100 MB.
-   - CI runs every runtime program again with the collector, at `-O2`
-     under UBSan, collecting every 1000 allocations.
+   - CI runs the allocation-heavy runtime programs again with the
+     collector on each push, and every program nightly, at `-O2` under
+     UBSan, collecting every 1000 allocations.
 6. **R6:** regular expressions, text input and files.
    **Regular expressions done (2026-10-15):**
    - `java.util.regex`: `Pattern`, `Matcher`, `MatchResult` and
@@ -1075,6 +1076,29 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
      resets itself to its last iteration; look-behind bounds overflow).
    - Tested by `test/runtime/regex`, `regex-split`, and `regex-fuzz`
      (4,000 pseudo-random patterns compared with the JVM).
+   **Text input and files done (2026-10-15):**
+   - `java.io`: byte and character streams with the JDK's buffering
+     (`System.in`, `File*Stream`, `Buffered*`, `ByteArray*`,
+     `InputStreamReader`, `OutputStreamWriter`, `BufferedReader`,
+     `BufferedWriter`, `StringReader`, `StringWriter`, `PrintWriter`,
+     `FileReader`, `FileWriter`), `File`, and `PrintStream` over any stream;
+     `System.out` is a `PrintStream` over a 128-byte buffer with autoflush,
+     as on the JVM. One native class, `java.io.NativeIo`, makes the POSIX
+     calls and returns errno; exceptions carry the JVM's messages
+     (`name (No such file or directory)`).
+   - `java.nio.charset`: UTF-8, ISO-8859-1 and US-ASCII, with the JDK's
+     measurement of malformed input (one U+FFFD per malformed sequence, as
+     `String` and readers each place them) and `?` for unpaired surrogates.
+   - `java.util.Scanner` without regular expressions: whitespace or literal
+     delimiters, the US-locale integer and float syntax, and the JDK's
+     exceptions and position after a failed `nextInt`.
+   - `java.nio.file`: `Path`, `Paths`, and `Files` for reading, writing,
+     listing, creating and deleting, with strict decoding and the JDK's
+     `FileSystemException` subclasses.
+   - Tested by `test/runtime/stdin`, `stdin-reader`, `files` and
+     `streams-io`; `runtime-programs.js` feeds `input.txt` to standard input
+     and runs each side in a new working directory, and runs WSL's `java`
+     when the C++ program runs in WSL. Found G61 (Phase 9), now fixed.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 

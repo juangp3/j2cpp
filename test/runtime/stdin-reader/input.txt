@@ -1,0 +1,7 @@
+ABCfirst line
+secondthird
+  indented	
+Ã¼nÃ¯cÃ¶dÃ© ğŸ˜€
+bad ÿş byte â‚
+
+no newline at end

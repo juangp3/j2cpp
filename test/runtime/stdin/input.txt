@@ -1,0 +1,13 @@
+3
+10 20 30
+2.5 3.5
+hello world
+  next line with spaces
+1,000 +5 -7 abc 99999999999 12
+true FALSE maybe
+héllo wörld 😀 ✓
+３ 4
+line A
+line B
+
+line D

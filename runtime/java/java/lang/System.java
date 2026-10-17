@@ -5,8 +5,25 @@ public final class System {
 	private System() {
 	}
 
-	public static final java.io.PrintStream out = new java.io.PrintStream(new java.io.FileOutputStream(1));
-	public static final java.io.PrintStream err = new java.io.PrintStream(new java.io.FileOutputStream(2));
+	// As the JDK sets them up; not final here, so setIn, setOut and setErr can replace them
+	public static java.io.InputStream in = new java.io.BufferedInputStream(
+			new java.io.FileInputStream(java.io.FileDescriptor.in));
+	public static java.io.PrintStream out = new java.io.PrintStream(
+			new java.io.BufferedOutputStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), 128), true);
+	public static java.io.PrintStream err = new java.io.PrintStream(
+			new java.io.BufferedOutputStream(new java.io.FileOutputStream(java.io.FileDescriptor.err), 128), true);
+
+	public static void setIn(java.io.InputStream in) {
+		System.in = in;
+	}
+
+	public static void setOut(java.io.PrintStream out) {
+		System.out = out;
+	}
+
+	public static void setErr(java.io.PrintStream err) {
+		System.err = err;
+	}
 
 	public static void arraycopy(Object src, int srcPos, Object dest, int destPos, int length) {
 		if (src == null || dest == null) {

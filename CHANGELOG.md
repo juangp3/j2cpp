@@ -53,6 +53,12 @@ C++20-targeted output.
     `split`, `replaceAll` and `replaceFirst`: classes with intersection,
     groups (named, atomic), backreferences, look-around, greedy, reluctant
     and possessive quantifiers, and the inline flags.
+  - text input and files: `System.in`, the `java.io` streams, readers and
+    writers (`BufferedReader`, `PrintWriter`, `FileWriter` and the rest),
+    `File`, `Scanner` (whitespace or literal delimiters, no regular
+    expressions), `java.nio.file.Files` and `Path`, and the UTF-8,
+    ISO-8859-1 and US-ASCII charsets, with the JVM's buffering, malformed
+    input handling and exception messages.
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
 - `make J2C_GC=boehm` links a program with the Boehm garbage collector,
@@ -64,7 +70,9 @@ C++20-targeted output.
   UndefinedBehaviorSanitizer, and compares its output and exit status with
   `java`, then does the same with `J2C_GC=boehm`, collecting every 1000
   allocations. `test/runtime/allocation` allocates about 1 GB and must stay
-  under 100 MB of resident memory with the collector.
+  under 100 MB of resident memory with the collector. A program's
+  `input.txt` is its standard input, and each run starts in an empty
+  working directory, so programs can write files.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.

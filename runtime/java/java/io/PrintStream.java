@@ -1,131 +1,348 @@
 package java.io;
 
-/** Simplified PrintStream: encodes UTF-16 to UTF-8 itself, no charset machinery. */
-public class PrintStream {
-	private final OutputStream out;
+import java.nio.charset.Charset;
+
+/**
+ * Prints text through an OutputStreamWriter over this stream, so the bytes
+ * of each print reach the underlying stream at once, as in the JDK.
+ * IOExceptions only set the error flag.
+ */
+public class PrintStream extends FilterOutputStream implements Appendable, Closeable {
+	private final boolean autoFlush;
+	private boolean trouble = false;
+	private OutputStreamWriter charOut;
+	private boolean closing = false;
 
 	public PrintStream(OutputStream out) {
-		this.out = out;
+		this(out, false);
 	}
 
-	public void print(String s) {
-		if (s == null) {
-			s = "null";
+	public PrintStream(OutputStream out, boolean autoFlush) {
+		this(autoFlush, requireNonNull(out), Charset.defaultCharset());
+	}
+
+	public PrintStream(OutputStream out, boolean autoFlush, String encoding) throws UnsupportedEncodingException {
+		this(autoFlush, requireNonNull(out), toCharset(encoding));
+	}
+
+	public PrintStream(OutputStream out, boolean autoFlush, Charset charset) {
+		this(autoFlush, requireNonNull(out), java.util.Objects.requireNonNull(charset, "charset"));
+	}
+
+	public PrintStream(String fileName) throws FileNotFoundException {
+		this(false, new FileOutputStream(fileName), Charset.defaultCharset());
+	}
+
+	public PrintStream(String fileName, String csn) throws FileNotFoundException, UnsupportedEncodingException {
+		this(false, toCharset(csn), new FileOutputStream(fileName));
+	}
+
+	public PrintStream(String fileName, Charset charset) throws IOException {
+		this(false, java.util.Objects.requireNonNull(charset, "charset"), new FileOutputStream(fileName));
+	}
+
+	public PrintStream(File file) throws FileNotFoundException {
+		this(false, new FileOutputStream(file), Charset.defaultCharset());
+	}
+
+	public PrintStream(File file, String csn) throws FileNotFoundException, UnsupportedEncodingException {
+		this(false, toCharset(csn), new FileOutputStream(file));
+	}
+
+	public PrintStream(File file, Charset charset) throws IOException {
+		this(false, java.util.Objects.requireNonNull(charset, "charset"), new FileOutputStream(file));
+	}
+
+	private PrintStream(boolean autoFlush, Charset charset, OutputStream out) {
+		this(autoFlush, out, charset);
+	}
+
+	private PrintStream(boolean autoFlush, OutputStream out, Charset charset) {
+		super(out);
+		this.autoFlush = autoFlush;
+		this.charOut = new OutputStreamWriter(this, charset);
+	}
+
+	private static OutputStream requireNonNull(OutputStream out) {
+		if (out == null) {
+			throw new NullPointerException("Null output stream");
 		}
-		byte[] buf = new byte[s.length() * 3];
-		int n = 0;
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length()) {
-				char low = s.charAt(i + 1);
-				if (low >= 0xDC00 && low <= 0xDFFF) {
-					int cp = ((c - 0xD800) << 10) + (low - 0xDC00) + 0x10000;
-					buf = ensure(buf, n + 4);
-					buf[n++] = (byte) (0xF0 | (cp >> 18));
-					buf[n++] = (byte) (0x80 | ((cp >> 12) & 0x3F));
-					buf[n++] = (byte) (0x80 | ((cp >> 6) & 0x3F));
-					buf[n++] = (byte) (0x80 | (cp & 0x3F));
-					i++;
-					continue;
+		return out;
+	}
+
+	private static Charset toCharset(String csn) throws UnsupportedEncodingException {
+		java.util.Objects.requireNonNull(csn, "charsetName");
+		try {
+			return Charset.forName(csn);
+		} catch (IllegalArgumentException e) {
+			throw new UnsupportedEncodingException(csn);
+		}
+	}
+
+	private void ensureOpen() throws IOException {
+		if (out == null) {
+			throw new IOException("Stream closed");
+		}
+	}
+
+	public void flush() {
+		try {
+			ensureOpen();
+			out.flush();
+		} catch (IOException x) {
+			trouble = true;
+		}
+	}
+
+	public void close() {
+		if (!closing) {
+			closing = true;
+			try {
+				charOut.close();
+				out.close();
+			} catch (IOException x) {
+				trouble = true;
+			}
+			charOut = null;
+			out = null;
+		}
+	}
+
+	public boolean checkError() {
+		if (out != null) {
+			flush();
+		}
+		if (out instanceof PrintStream) {
+			return ((PrintStream) out).checkError();
+		}
+		return trouble;
+	}
+
+	protected void setError() {
+		trouble = true;
+	}
+
+	protected void clearError() {
+		trouble = false;
+	}
+
+	public void write(int b) {
+		try {
+			ensureOpen();
+			out.write(b);
+			if ((b == '\n') && autoFlush) {
+				out.flush();
+			}
+		} catch (IOException x) {
+			trouble = true;
+		}
+	}
+
+	public void write(byte[] buf, int off, int len) {
+		try {
+			ensureOpen();
+			out.write(buf, off, len);
+			if (autoFlush) {
+				out.flush();
+			}
+		} catch (IOException x) {
+			trouble = true;
+		}
+	}
+
+	public void write(byte[] buf) throws IOException {
+		this.write(buf, 0, buf.length);
+	}
+
+	public void writeBytes(byte[] buf) {
+		this.write(buf, 0, buf.length);
+	}
+
+	private void write(char[] buf) {
+		try {
+			ensureOpen();
+			charOut.write(buf);
+			charOut.flushBuffer();
+			if (autoFlush) {
+				for (int i = 0; i < buf.length; i++) {
+					if (buf[i] == '\n') {
+						out.flush();
+						break;
+					}
 				}
 			}
-			if (c < 0x80) {
-				buf[n++] = (byte) c;
-			} else if (c < 0x800) {
-				buf[n++] = (byte) (0xC0 | (c >> 6));
-				buf[n++] = (byte) (0x80 | (c & 0x3F));
-			} else if (c >= 0xD800 && c <= 0xDFFF) {
-				// An unpaired surrogate is written as '?', as Java does
-				buf[n++] = (byte) '?';
-			} else {
-				buf[n++] = (byte) (0xE0 | (c >> 12));
-				buf[n++] = (byte) (0x80 | ((c >> 6) & 0x3F));
-				buf[n++] = (byte) (0x80 | (c & 0x3F));
+		} catch (IOException x) {
+			trouble = true;
+		}
+	}
+
+	private void write(String s) {
+		try {
+			ensureOpen();
+			charOut.write(s);
+			charOut.flushBuffer();
+			if (autoFlush && (s.indexOf('\n') >= 0)) {
+				out.flush();
 			}
+		} catch (IOException x) {
+			trouble = true;
 		}
-		out.write(buf, 0, n);
 	}
 
-	private static byte[] ensure(byte[] buf, int size) {
-		if (size <= buf.length) {
-			return buf;
+	private void newLine() {
+		try {
+			ensureOpen();
+			charOut.write(System.lineSeparator());
+			charOut.flushBuffer();
+			if (autoFlush) {
+				out.flush();
+			}
+		} catch (IOException x) {
+			trouble = true;
 		}
-		byte[] larger = new byte[size * 2];
-		System.arraycopy(buf, 0, larger, 0, buf.length);
-		return larger;
-	}
-
-	public void print(Object obj) {
-		print(String.valueOf(obj));
-	}
-
-	public void print(char[] s) {
-		print(new String(s));
-	}
-
-	public void print(char c) {
-		print(String.valueOf(c));
 	}
 
 	public void print(boolean b) {
-		print(String.valueOf(b));
+		write(String.valueOf(b));
+	}
+
+	public void print(char c) {
+		write(String.valueOf(c));
 	}
 
 	public void print(int i) {
-		print(String.valueOf(i));
+		write(String.valueOf(i));
 	}
 
 	public void print(long l) {
-		print(String.valueOf(l));
+		write(String.valueOf(l));
 	}
 
 	public void print(float f) {
-		print(String.valueOf(f));
+		write(String.valueOf(f));
 	}
 
 	public void print(double d) {
-		print(String.valueOf(d));
+		write(String.valueOf(d));
+	}
+
+	public void print(char[] s) {
+		write(s);
+	}
+
+	public void print(String s) {
+		write(String.valueOf(s));
+	}
+
+	public void print(Object obj) {
+		write(String.valueOf(obj));
 	}
 
 	public void println() {
-		out.write(new byte[] { 10 }, 0, 1);
+		newLine();
 	}
 
-	public void println(String s) {
-		print(s);
-		println();
+	// As in the JDK, a PrintStream writes the text and the line end together;
+	// a subclass gets print and then the line end, so its overrides see both
+
+	private boolean exact() {
+		return getClass() == PrintStream.class;
 	}
 
-	public void println(Object obj) {
-		println(String.valueOf(obj));
+	private void writeln(String s) {
+		try {
+			ensureOpen();
+			charOut.write(s);
+			charOut.write(System.lineSeparator());
+			charOut.flushBuffer();
+			if (autoFlush) {
+				out.flush();
+			}
+		} catch (IOException x) {
+			trouble = true;
+		}
 	}
 
-	public void println(char[] s) {
-		println(new String(s));
+	public void println(boolean x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(char c) {
-		println(String.valueOf(c));
+	public void println(char x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(boolean b) {
-		println(String.valueOf(b));
+	public void println(int x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(int i) {
-		println(String.valueOf(i));
+	public void println(long x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(long l) {
-		println(String.valueOf(l));
+	public void println(float x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(float f) {
-		println(String.valueOf(f));
+	public void println(double x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
 	}
 
-	public void println(double d) {
-		println(String.valueOf(d));
+	public void println(char[] x) {
+		if (exact()) {
+			writeln(new String(x));
+		} else {
+			print(x);
+			newLine();
+		}
+	}
+
+	public void println(String x) {
+		if (exact()) {
+			writeln(String.valueOf(x));
+		} else {
+			print(x);
+			newLine();
+		}
+	}
+
+	public void println(Object x) {
+		String s = String.valueOf(x);
+		if (exact()) {
+			writeln(s);
+		} else {
+			print(s);
+			newLine();
+		}
 	}
 
 	public PrintStream printf(String format, Object... args) {
@@ -143,6 +360,20 @@ public class PrintStream {
 		return this;
 	}
 
-	public void flush() {
+	public PrintStream append(CharSequence csq) {
+		print(String.valueOf(csq));
+		return this;
+	}
+
+	public PrintStream append(CharSequence csq, int start, int end) {
+		if (csq == null) {
+			csq = "null";
+		}
+		return append(csq.subSequence(start, end));
+	}
+
+	public PrintStream append(char c) {
+		print(c);
+		return this;
 	}
 }

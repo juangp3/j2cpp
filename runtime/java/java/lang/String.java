@@ -45,6 +45,67 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 		this(builder.toString());
 	}
 
+	public String(byte[] bytes) {
+		this(bytes, 0, bytes.length);
+	}
+
+	public String(byte[] bytes, int offset, int length) {
+		this(bytes, offset, length, java.nio.charset.Charset.defaultCharset());
+	}
+
+	public String(byte[] bytes, java.nio.charset.Charset charset) {
+		this(bytes, 0, bytes.length, charset);
+	}
+
+	public String(byte[] bytes, int offset, int length, java.nio.charset.Charset charset) {
+		this(decode(bytes, offset, length, charset), true);
+	}
+
+	public String(byte[] bytes, String charsetName) throws java.io.UnsupportedEncodingException {
+		this(bytes, 0, bytes.length, lookupCharset(charsetName));
+	}
+
+	public String(byte[] bytes, int offset, int length, String charsetName)
+			throws java.io.UnsupportedEncodingException {
+		this(bytes, offset, length, lookupCharset(charsetName));
+	}
+
+	private static char[] decode(byte[] bytes, int offset, int length, java.nio.charset.Charset charset) {
+		if (charset == null) {
+			throw new NullPointerException("charset");
+		}
+		checkBoundsOffCount(offset, length, bytes.length);
+		return charset.j2cDecodeAll(bytes, offset, length);
+	}
+
+	private static java.nio.charset.Charset lookupCharset(String charsetName)
+			throws java.io.UnsupportedEncodingException {
+		if (charsetName == null) {
+			throw new NullPointerException("charsetName");
+		}
+		try {
+			return java.nio.charset.Charset.forName(charsetName);
+		} catch (IllegalArgumentException e) {
+			// UnsupportedCharsetException and IllegalCharsetNameException
+			throw new java.io.UnsupportedEncodingException(charsetName);
+		}
+	}
+
+	public byte[] getBytes() {
+		return getBytes(java.nio.charset.Charset.defaultCharset());
+	}
+
+	public byte[] getBytes(java.nio.charset.Charset charset) {
+		if (charset == null) {
+			throw new NullPointerException();
+		}
+		return charset.j2cEncodeAll(value, 0, value.length);
+	}
+
+	public byte[] getBytes(String charsetName) throws java.io.UnsupportedEncodingException {
+		return getBytes(lookupCharset(charsetName));
+	}
+
 	/** Shares the array; for StringBuilder and the runtime's own use */
 	String(char[] value, boolean share) {
 		this.value = value;

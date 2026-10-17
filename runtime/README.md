@@ -1,8 +1,9 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. It covers milestones R1 to R5 and the
-regular expressions of R6 in `docs/PUBLISHING_PLAN.md` (Phase 10):
+used with `j2c --runtime runtime`. It covers milestones R1 to R6 in
+`docs/PUBLISHING_PLAN.md` (Phase 10), R6 being regular expressions, text
+input and files:
 
 - **`java.lang`:**
   - `String` (with `format` and `formatted`), `StringBuilder` and the boxed
@@ -11,8 +12,24 @@ regular expressions of R6 in `docs/PUBLISHING_PLAN.md` (Phase 10):
   - `Throwable` and the exception classes, with Java's uncaught-exception
     printout;
   - `Iterable`, `Enum`, `Record` and the common annotations.
-- **`java.io`:** `PrintStream`, with `printf` and `format`.
+- **`java.io`:**
+  - byte streams: `InputStream`, `OutputStream`, `FileInputStream`,
+    `FileOutputStream`, `BufferedInputStream`, `BufferedOutputStream`,
+    `ByteArrayInputStream`, `ByteArrayOutputStream` and the filter streams;
+  - text: `Reader`, `Writer`, `InputStreamReader`, `OutputStreamWriter`,
+    `BufferedReader` (with `lines()`), `BufferedWriter`, `StringReader`,
+    `StringWriter`, `FileReader`, `FileWriter`, `PrintWriter`, and
+    `PrintStream` (with `printf`) over any stream;
+  - `File`, `FileDescriptor`, `Closeable`, `Flushable`, and the exceptions
+    (`FileNotFoundException`, `EOFException`, `UncheckedIOException`, ...).
+- **`java.lang`, more:** `System.in`, `setIn`, `setOut` and `setErr`,
+  `Appendable`, and `String`'s byte constructors and `getBytes`.
+- **`java.nio.charset`:** `Charset`, `StandardCharsets`, the coders and
+  their exceptions, for UTF-8, ISO-8859-1 and US-ASCII.
+- **`java.nio.file`:** `Path`, `Paths`, `Files`, the open options and the
+  `FileSystemException` family.
 - **`java.util`:**
+  - `Scanner` over `System.in`, a `String`, a `File` or a `Path`;
   - lists: `ArrayList`, `LinkedList`, and `Arrays.asList`;
   - queues: `ArrayDeque` and `PriorityQueue`;
   - maps: `HashMap`, `LinkedHashMap` and `TreeMap`, with their sets;
@@ -112,6 +129,51 @@ Differences that remain:
     `usePattern`, transparent bounds and the `StringBuffer` overloads
     (absent).
 
+## Text input and files
+
+Streams buffer as the JDK's do, so a program sees the same output and the
+same pitfalls:
+- `System.out` and `System.err` are `PrintStream`s with autoflush over a
+  128-byte buffer, `System.in` a `BufferedInputStream`. Each `print` call
+  reaches the file descriptor at once; `System.out.write(b)` waits for a
+  newline or `flush()`.
+- `InputStreamReader` reads 8192 bytes at a time and `Scanner` 1024
+  characters, so a second reader or scanner on `System.in` misses the input
+  the first one buffered, as on the JVM. `OutputStreamWriter` and
+  `BufferedWriter` keep 8192 bytes or characters until `flush` or `close`,
+  so a `PrintWriter` that is never flushed writes nothing.
+- Decoding replaces malformed input with U+FFFD exactly where the JDK does,
+  one per malformed sequence as the JDK measures it; encoding writes `?` for unpaired
+  surrogates and unmappable characters. `Files` reads and writes strictly
+  and throws `MalformedInputException`, as in the JDK, and
+  `new Scanner(File)` stops at the first malformed byte (`ioException()`).
+- `FileNotFoundException` and `FileSystemException` messages come from
+  `strerror`, as the JVM's do on Linux: `missing.txt (No such file or
+  directory)`, `work/x.txt: Not a directory`.
+
+Limits, each failing loudly:
+- Charsets other than UTF-8, ISO-8859-1 and US-ASCII (UTF-16 among them)
+  throw `UnsupportedCharsetException`. There is no `ByteBuffer`,
+  `CharBuffer` or channel, so `Charset.encode`, `decode`, the coders'
+  buffer methods, `Readable`, `FileChannel` and `getChannel()` are absent,
+  as is `StringWriter.getBuffer()` (no `StringBuffer`).
+- `Scanner` does not use regular expressions: `useDelimiter(String)` takes
+  literal text (with backslash-escaped punctuation, `\t`, `\n` and `\r`)
+  and throws `UnsupportedOperationException` for any other pattern; the
+  methods that take a `Pattern` or a regular expression (`hasNext(String)`,
+  `findInLine`, `skip`, `delimiter()`), locales and `Scanner(Readable)` are
+  absent. Numbers use the US format (`1,234.5`); `nextBigInteger` and
+  `nextBigDecimal` are absent.
+- `Character.isDigit` knows ASCII and full-width digits only, so
+  `nextInt` rejects other scripts' digits that the JVM accepts.
+- `Files` follows symbolic links (`LinkOption` is ignored) and has no
+  `copy`, `move`, `walk`, `find`, attributes or temporary files;
+  `DELETE_ON_CLOSE`, `SPARSE`, `SYNC` and `DSYNC` throw
+  `UnsupportedOperationException`. `File.getCanonicalPath` resolves `.`
+  and `..` but not links, and `File` has no permission setters, URIs or
+  temporary files.
+- POSIX only: the natives use `open`, `read`, `stat` and `readdir`.
+
 ## How it works
 
 The runtime is mostly **Java source that J2C translates**, like the program
@@ -191,9 +253,11 @@ exceed it without (16 MB and 910 MB when this was written).
   Exception, and J2C's C++ helper headers are EPL-1.0, which the FSF lists as
   incompatible with the GPL (`docs/RUNTIME_EXPERIMENT.md`, section 7).
 - Every class lands with a test: a program in `test/runtime/<name>/` (with
-  optional `args.txt`) that `npm run runtime` translates, builds, runs, and
-  compares with `java`: stdout exactly, stderr without stack frames, and the
-  exit status. CI runs it under UBSan.
+  optional `args.txt`, and `input.txt` for standard input) that
+  `npm run runtime` translates, builds, runs, and compares with `java`:
+  stdout exactly, stderr without stack frames, and the exit status. Each
+  side runs in a new, empty working directory, where the program may write
+  files. CI runs it under UBSan.
 - Natives only do the raw work (copying, conversion, system calls); checks
   and exceptions stay in Java, so a native never needs a class the program
   does not reach. Classes the hooks always call are listed in
