@@ -730,6 +730,12 @@ final class ProjectSetup {
 		for (String line : text.split("\r?\n")) {
 			run.lines.add(line);
 		}
+		if (run.status != 0) {
+			// The tool's output is shown only when it fails
+			for (int i = Math.max(0, run.lines.size() - 20); i < run.lines.size(); ++i) {
+				log.println("J2C:   | " + run.lines.get(i));
+			}
+		}
 		return run;
 	}
 

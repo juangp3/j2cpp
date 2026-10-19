@@ -66,6 +66,18 @@ directories can be supplied with `j2c.classPath`. Set `j2c.javaExecutable`
 if `java` on the `PATH` is not Java 11 or newer, and `j2c.cliJar` to use a
 CLI JAR other than the bundled one.
 
+When the workspace folder is a Maven or Gradle project (it has a `pom.xml`,
+`build.gradle(.kts)` or `settings.gradle(.kts)`), `j2c.project` (`auto` by
+default) lets the build supply the source roots, the test roots with
+`j2c.tests`, and the dependency class path, unless `j2c.sourcePaths` is set.
+The class path is resolved by running the project's wrapper (`mvnw`,
+`gradlew`) or `mvn`/`gradle`, which may download dependencies, and is cached
+in `~/.j2c/cache` by a hash of the build files; the J2C output channel shows
+what was detected and the command run. If the build tool is missing or
+fails, a `J2C-PROJECT-CLASSPATH-UNRESOLVED` warning appears on the build
+file. Set `j2c.project` to `none` to turn this off, for commands and for the
+MCP server's tools.
+
 To run the focused integration checks separately, first build the CLI from the
 repository root with `mvn package`, then run `npm run test:cli` and
 `npm run test:extension` here; `npm run test:licenses` checks the bundled

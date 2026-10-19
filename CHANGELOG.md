@@ -120,6 +120,17 @@ C++20-targeted output.
 - `docs/AGENTS.md`, a Claude Code skill, and Copilot instructions describe the
   check-fix-translate workflow; `AGENTS.md` and `CLAUDE.md` guide agents
   working on J2C itself.
+- Project auto-setup: a Maven or Gradle project directory as input (`.` on
+  the command line, `paths: ["."]` in MCP, the workspace folder in VS Code)
+  uses the build's source roots (Maven modules, `<sourceDirectory>`,
+  `build-helper-maven-plugin` sources; Gradle includes and source sets),
+  test roots with `--tests`, and the dependency class path from the
+  project's wrapper or `mvn`/`gradle`, cached by a hash of the build files.
+  `--project auto|none|<directory>` and `--no-build-tool` control it (MCP:
+  `project`, `buildTool`, and `j2c mcp --project none --no-build-tool`;
+  VS Code: `j2c.project`). A missing or failing build tool is the warning
+  `J2C-PROJECT-CLASSPATH-UNRESOLVED`; JSON results gain `projects` and
+  `warnings`, and `j2c capabilities` lists `buildTools`.
 
 ### Java language support
 

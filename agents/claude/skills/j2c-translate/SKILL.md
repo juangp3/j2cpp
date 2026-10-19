@@ -16,10 +16,15 @@ JSON object with the same fields.
 1. **Learn the limits once.** Call `j2c_capabilities`. Note `limitations`:
    translated programs need a C++ implementation of the JDK classes they use,
    so they compile and link but do not run on their own.
-2. **Check before translating.** Call `j2c_check` with the source folder (for
-   Maven or Gradle projects, `src/main/java`). Pass dependency JARs in
-   `classPath`; compile errors about missing types usually mean one is
-   missing.
+2. **Check before translating.** Call `j2c_check` with the source folder. For
+   a Maven or Gradle project, pass the project folder itself
+   (`paths: ["."]`): J2C uses the build's source roots and gets the
+   dependency class path from Maven or Gradle (`projects` in the result shows
+   what it found). Otherwise pass dependency JARs in `classPath`; compile
+   errors about missing types usually mean one is missing. A
+   `J2C-PROJECT-CLASSPATH-UNRESOLVED` warning means the build tool is
+   missing or failed: tell the user, or pass the JARs in `classPath`, rather
+   than changing the Java code.
 3. **Fix the Java, not the C++.** For each problem, apply its `hint` to the
    Java source at `file`:`line`:`column`. Call `j2c_explain` with the
    problem's `id` when the hint is not enough. Keep the Java behavior the
@@ -31,9 +36,10 @@ JSON object with the same fields.
    or earlier J2C output. If J2C refuses because the directory has other
    content, ask the user before retrying with `force: true`: the contents
    would be moved to a backup.
-6. **Include the tests.** If the project has JUnit tests, add the test source
-   folder to `paths` and the JUnit JARs to `classPath`, and pass
-   `tests: true` to both `j2c_check` and `j2c_translate`. Fix reported test
+6. **Include the tests.** If the project has JUnit tests, pass `tests: true`
+   to both `j2c_check` and `j2c_translate`. A Maven or Gradle project folder
+   then adds its test roots and test class path by itself; otherwise add the
+   test source folder to `paths` and the JUnit JARs to `classPath`. Fix reported test
    problems the same way (for example, replace Mockito mocks with small
    hand-written fakes). The generated GoogleTest wrappers are listed in
    `testFiles`.

@@ -10,6 +10,10 @@ Java to C++, or to make Java code translatable:
 - Use the J2C MCP tools: `j2c_check`, `j2c_translate`, `j2c_explain`, and
   `j2c_capabilities`. Without them, run
   `java -jar j2c-cli.jar --check --format json <paths>` in the terminal.
+- For a Maven or Gradle project, pass the project folder (`paths: ["."]`):
+  J2C uses the build's source roots and dependency class path. A
+  `J2C-PROJECT-CLASSPATH-UNRESOLVED` warning means Maven or Gradle could not
+  resolve the dependencies; report it instead of changing the Java code.
 - Run `j2c_check` first. Fix every reported problem in the **Java** source,
   using its `hint` at `file`:`line`:`column`; `j2c_explain` with the problem
   `id` gives more detail. Never edit generated C++ to work around a check

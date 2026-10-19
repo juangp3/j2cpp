@@ -87,8 +87,8 @@ source paths and the output directory must be inside it. Class path entries
 
 | Tool | Writes | Arguments | Result |
 | --- | --- | --- | --- |
-| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding` | `status` (`ok` or `problems`), `problems`, `summary` |
-| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles` |
+| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
+| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `projects`, `warnings` |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
 
@@ -96,6 +96,30 @@ Pass `tests: true` to both tools for projects with JUnit tests (JUnit JARs in
 `classPath`). `j2c_check` then also reports test features that translated
 tests cannot run, and `j2c_translate` generates GoogleTest wrappers, listed
 in `testFiles`, that `make -C <output> test` builds and runs.
+
+### Maven and Gradle projects
+
+Pass the project folder itself, usually `paths: ["."]`. When a folder in
+`paths` has a `pom.xml`, `build.gradle(.kts)` or `settings.gradle(.kts)`,
+J2C uses the build's source roots (every Maven module, Gradle subproject or
+source set), its test roots with `tests: true`, and the dependency class
+path, so `sourcePaths` and `classPath` are rarely needed. `projects` in the
+result shows what was detected: `buildTool`, `modules`, `sourceRoots`,
+`testRoots`, `classPath`, `classPathSource` (`maven`, `gradle`, `cache`,
+`none` or `unresolved`) and the `command` run.
+
+To get the class path, J2C runs the project's wrapper (`mvnw`, `gradlew`) or
+`mvn`/`gradle`, which may download dependencies; the result is cached by a
+hash of the build files. `buildTool: false` never runs it (a cached class
+path is still used); `project: "none"` turns detection off; `project:
+"<folder>"` uses that folder's build for other `paths`. `j2c mcp --project
+none --no-build-tool` changes the server's defaults.
+
+If the build tool is missing or fails, the source roots are still used and
+`warnings` holds `J2C-PROJECT-CLASSPATH-UNRESOLVED` (with `severity:
+"warning"`). The check then reports the dependency types as
+`J2C-COMPILE-ERROR`; fix the build or pass the JARs in `classPath` rather
+than changing the Java code.
 
 Each problem has a stable `id`, `file`, `line`, `column` (1-based), `message`
 and `hint`. Problems in the Java code are a normal `j2c_check` result, not a
@@ -130,13 +154,16 @@ stdout; progress goes to stderr.
 
 ```sh
 java -jar j2c-cli.jar --check --format json src/main/java
+java -jar j2c-cli.jar --check --format json .        # a Maven or Gradle project
 java -jar j2c-cli.jar --output build/cpp --format json src/main/java
 java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
 
 `--runtime <directory>` translates against a J2C runtime instead of the
-running JDK (see `runtime/README.md` in the repository).
+running JDK (see `runtime/README.md` in the repository). `--project
+auto|none|<directory>` and `--no-build-tool` control project auto-setup, as
+`project` and `buildTool` do for the MCP tools.
 
 Exit status is 0 on success, 1 when problems stop a check or translation,
 and 2 for invalid arguments. With `--format json`, invalid arguments produce
@@ -147,7 +174,13 @@ by `schemaVersion`.
 
 - Only `j2c_translate` writes, only inside the workspace root, and it never
   deletes: replaced output is moved to a backup.
-- J2C makes no network requests and never runs the code it translates.
+- J2C itself makes no network requests and never runs the code it
+  translates. For a Maven or Gradle project it runs the project's build tool
+  (its wrapper script, if it has one) to resolve dependencies, which may
+  download them and run build plugins; its stdin is closed, and its output
+  is shown (on stderr) only when it fails. Pass `buildTool: false` (or
+  `--no-build-tool`) for untrusted projects. This is why `j2c_check` and
+  `j2c_translate` have `openWorldHint: true`.
 - Tool results contain file paths and J2C's own messages, never text from
   the Java sources, so comments in translated code cannot reach the agent as
   instructions.

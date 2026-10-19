@@ -65,6 +65,43 @@ every compile error and unsupported construct in the selected files as
 Select a source root to check a whole project. `--version` prints the CLI
 version.
 
+### Maven and Gradle projects
+
+Pass a project directory (one with a `pom.xml`, `build.gradle(.kts)` or
+`settings.gradle(.kts)`) and J2C sets itself up from the build:
+
+```sh
+java -jar target/j2c-cli.jar --check .
+java -jar target/j2c-cli.jar --tests --output generated .
+```
+
+- **Source roots:** Maven's `src/main/java` (or `<sourceDirectory>`) of
+  every module listed in `<modules>`, plus roots added by
+  `build-helper-maven-plugin`; Gradle's `src/main/java` of the root project
+  and each `include`d subproject, or the source sets Gradle reports. With
+  `--tests`, the test roots (`src/test/java`, `<testSourceDirectory>`) too.
+- **Class path:** J2C runs the project's wrapper (`mvnw`, `gradlew`) or else
+  `mvn`/`gradle` from the `PATH`. Maven runs `dependency:build-classpath`
+  (compile scope, or test scope with `--tests`); in a multi-module build
+  whose modules depend on each other it also runs the `compile` phase with
+  compilation skipped, so plugins bound to earlier phases run. Gradle gets an
+  init script (`--init-script`) that prints `compileClasspath` and
+  `testCompileClasspath`, retried with `--offline` if it fails. The build may
+  download dependencies. Other modules' output is left out, because their
+  sources are translated.
+- What was detected, and the command run, is printed to stderr, and is in
+  the JSON output as `projects`. Resolved class paths are cached in
+  `~/.j2c/cache` (or `J2C_CACHE_DIR`), keyed by a hash of the build files.
+- If the tool is missing or fails, J2C still uses the source roots and
+  reports the warning `J2C-PROJECT-CLASSPATH-UNRESOLVED` (in `warnings` in
+  JSON); dependency types then fail to resolve.
+
+`--no-build-tool` never runs Maven or Gradle (a cached class path is still
+used). `--project none` turns detection off, and `--project <directory>`
+uses that directory's build for other inputs, such as one file in it.
+Detection only looks at the input directories themselves, never at their
+parents.
+
 The output directory must be empty or earlier J2C output, which is marked with
 a `.j2c-output` file. Translation first moves the directory's current
 contents to a backup in the temporary folder, so J2C refuses other non-empty
@@ -206,6 +243,7 @@ Configuration:
 | `j2c.cliJar` | `""` | Optional path to a custom CLI JAR; otherwise the packaged CLI is used. |
 | `j2c.javaExecutable` | `"java"` | Java executable used to run the CLI. |
 | `j2c.sealedTypes` | `"advisory"` | `advisory` emits ordinary inheritance and permits comments; `reject` rejects sealed and non-sealed declarations. |
+| `j2c.project` | `"auto"` | `auto` uses a Maven or Gradle build in the workspace folder for source roots and the dependency class path (see [Maven and Gradle projects](#maven-and-gradle-projects)); `none` turns this off. |
 
 ## Java feature support
 

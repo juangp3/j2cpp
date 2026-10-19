@@ -1314,7 +1314,43 @@ the agent's work, ordered by value for effort:
 2. **Project auto-setup.** Detect Maven and Gradle projects: use their source
    roots and test roots, and get the dependency class path from the build
    tool, so `paths: ["."]` just works in the CLI, MCP and the extension.
-   Effort: 2–4 days.
+   Effort: 2–4 days. **Done (2026-10-19):**
+   - `ProjectSetup` detects a build in an input directory (never in its
+     parents): Maven `<modules>` (recursively), `<sourceDirectory>`,
+     `<testSourceDirectory>` and `build-helper-maven-plugin` sources, with
+     `${...}` properties; Gradle `include`s (and `projectDir` overrides) in
+     `settings.gradle(.kts)`, with the source sets Gradle reports replacing
+     the `src/main/java` defaults.
+   - The class path comes from the wrapper (`mvnw`, `gradlew`) or the tool on
+     the `PATH`: Maven `dependency:build-classpath` (pinned 3.7.0; compile or
+     test scope), with the `compile` phase (compilation and resources
+     skipped) when modules depend on each other, since Maven 3 resolves
+     reactor dependencies only then; Gradle through an `--init-script` task
+     printing `compileClasspath`/`testCompileClasspath` (lenient), retried
+     with `--offline`. The build's own output (`target/`, `build/`, reactor
+     artifacts in `~/.m2`) is dropped. Results are cached in `~/.j2c/cache`
+     (`J2C_CACHE_DIR`) keyed by a SHA-256 of the build files, root and scope.
+   - A missing, failing or disabled tool is the warning
+     `J2C-PROJECT-CLASSPATH-UNRESOLVED`; the source roots are still used.
+   - Options: `--project auto|none|<directory>` and `--no-build-tool` (CLI),
+     `project` and `buildTool` arguments plus `j2c mcp --project none
+     --no-build-tool` (MCP; `j2c_check`/`j2c_translate` now have
+     `openWorldHint: true`), and `j2c.project` (VS Code, also passed to the
+     MCP server). JSON results have `projects` and `warnings` (also on a
+     failed translation); `capabilities` lists `buildTools`. Detection is
+     printed to stderr.
+   - Tests: `test/projects/maven-simple`, `maven-multi`, `gradle-simple`
+     (commons-cli, JUnit); `test-cli-projects.js` (run by `test:cli`) checks
+     roots, scopes, the cache and its invalidation, `--project`, a missing
+     Maven (PATH with only Java), `--no-build-tool`, and Gradle through a stub
+     `gradlew` (offline retry, failure); `test-mcp.js` `paths: ["."]` and
+     server defaults; `test-extension.js` the setting and warning
+     diagnostics. The Maven checks are skipped with a message without `mvn`.
+     The init script was also verified by hand with Gradle 8.0.
+   - Open: Maven profiles' modules and `test-jar` dependencies between
+     modules, Gradle source sets other than `main`/`test`, and Kotlin or
+     Groovy sources are not handled; Gradle's configuration cache may reject
+     the init script on old Gradle versions (reported as the warning).
 3. **MCP prompts and resources.**
    - Prompts `/j2c-migrate` and `/j2c-assess`.
    - Resources: the problem catalog, the runtime contract, and generated
