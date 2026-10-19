@@ -22,10 +22,12 @@ public class Main {
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
 			+ "[--format <text|json>] [--force] [--tests] [--runtime <directory>] "
-			+ "<java-file-or-source-directory>..." + NL
+			+ "[--project <auto|none|directory>] [--no-build-tool] "
+			+ "<java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
-			+ "       j2c mcp [--root <directory>]" + NL
+			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
+			+ "[--no-build-tool]" + NL
 			+ "       j2c --version" + NL
 			+ "--check reports every problem that would stop translation "
 			+ "without writing output." + NL
@@ -36,6 +38,14 @@ public class Main {
 			+ "--runtime translates against a J2C runtime directory instead of "
 			+ "the running JDK: java/ holds its Java sources, cpp/ its C++ natives "
 			+ "and hooks (see runtime/README.md)." + NL
+			+ "--project auto (the default) treats an input directory with a "
+			+ "pom.xml, build.gradle or settings.gradle as a Maven or Gradle "
+			+ "project: its source roots (and test roots with --tests) are "
+			+ "translated, and its dependency class path is resolved with the "
+			+ "project's wrapper or mvn/gradle and cached; a directory uses that "
+			+ "build for the given inputs; none turns detection off." + NL
+			+ "--no-build-tool never runs Maven or Gradle (a cached class path is "
+			+ "still used)." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents.";
 
@@ -146,6 +156,10 @@ public class Main {
 				request.tests = true;
 			} else if ("--runtime".equals(arg)) {
 				request.runtime = new File(value(args, ++i, arg));
+			} else if ("--project".equals(arg)) {
+				request.project = project(value(args, ++i, arg), true);
+			} else if ("--no-build-tool".equals(arg)) {
+				request.buildTool = false;
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {
@@ -169,7 +183,18 @@ public class Main {
 			return result.problems.isEmpty() ? 0 : 1;
 		}
 
-		J2cService.TranslateResult result = service.translate(request);
+		J2cService.TranslateResult result;
+		try {
+			result = service.translate(request);
+		} catch (TranslationException e) {
+			if (!json) {
+				throw e;
+			}
+			// The same report as main's, with the detected builds
+			stdout.println(Json.write(J2cService.failedJson("translate",
+					e.problems(), service.projects())));
+			return 1;
+		}
 		if (json) {
 			stdout.println(Json.write(J2cService.translateJson(result)));
 		}
@@ -178,9 +203,15 @@ public class Main {
 
 	private static int mcp(String[] args) throws Exception {
 		File root = new File(".");
+		String project = J2cService.PROJECT_AUTO;
+		boolean buildTool = true;
 		for (int i = 1; i < args.length; i++) {
 			if ("--root".equals(args[i])) {
 				root = new File(value(args, ++i, args[i - 1]));
+			} else if ("--project".equals(args[i])) {
+				project = project(value(args, ++i, args[i - 1]), false);
+			} else if ("--no-build-tool".equals(args[i])) {
+				buildTool = false;
 			} else {
 				throw new IllegalArgumentException("Unknown mcp option: "
 						+ args[i]);
@@ -190,7 +221,8 @@ public class Main {
 			throw new IllegalArgumentException("MCP root is not a directory: "
 					+ root);
 		}
-		new McpServer(root.getCanonicalFile()).serve(System.in, System.out);
+		new McpServer(root.getCanonicalFile(), project, buildTool).serve(
+				System.in, System.out);
 		return 0;
 	}
 
@@ -267,6 +299,20 @@ public class Main {
 		}
 		throw new IllegalArgumentException("Invalid --sealed-types value: "
 				+ policy + " (expected advisory or reject)");
+	}
+
+	/** auto, none, or (when directories are allowed) an existing directory */
+	static String project(String value, boolean directories) {
+		if (J2cService.PROJECT_AUTO.equals(value)
+				|| J2cService.PROJECT_NONE.equals(value)) {
+			return value;
+		}
+		if (directories && new File(value).isDirectory()) {
+			return value;
+		}
+		throw new IllegalArgumentException("Invalid --project value: " + value
+				+ (directories ? " (expected auto, none or a project directory)"
+						: " (expected auto or none)"));
 	}
 
 	static Charset charset(String name) {

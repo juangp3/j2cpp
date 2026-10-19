@@ -30,6 +30,8 @@ public final class ProblemCatalog {
 	public static final String TEST_PRIVATE_METHOD = "J2C-TEST-PRIVATE-METHOD";
 	public static final String TEST_PARAMETERS = "J2C-TEST-PARAMETERS";
 	public static final String TEST_UNSUPPORTED_ASSERTION = "J2C-TEST-UNSUPPORTED-ASSERTION";
+	/** A warning: translation goes on without the dependency class path */
+	public static final String PROJECT_CLASSPATH_UNRESOLVED = "J2C-PROJECT-CLASSPATH-UNRESOLVED";
 
 	public static final class Entry {
 		public final String id;
@@ -154,6 +156,17 @@ public final class ProblemCatalog {
 				"JUnit can inject parameters such as TestInfo through extensions; the "
 						+ "wrappers call test and lifecycle methods without arguments.",
 				"Remove the parameters, and obtain what they provided in another way.");
+		add(PROJECT_CLASSPATH_UNRESOLVED,
+				"Dependency class path not resolved (warning)",
+				"J2C detected a Maven or Gradle build and uses its source roots, but could "
+						+ "not get the dependency class path from the build tool: the tool "
+						+ "(or the project's wrapper) is missing, failed, or was not run. This "
+						+ "is a warning; types from dependencies then fail to resolve as "
+						+ "J2C-COMPILE-ERROR problems.",
+				"Make the build work (mvn dependency:build-classpath or gradle dependencies "
+						+ "should succeed), install Maven or Gradle or add the project's wrapper, "
+						+ "or pass the dependency JARs with --classpath. --no-build-tool skips "
+						+ "running the build tool, and --project none turns detection off.");
 	}
 
 	private static void add(String id, String title, String explanation,

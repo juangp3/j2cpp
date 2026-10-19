@@ -39,6 +39,8 @@ final class J2cService {
 			"module-info.java", "package-info.java");
 	/** Version of the JSON shapes produced below */
 	static final int SCHEMA_VERSION = 1;
+	static final String PROJECT_AUTO = "auto";
+	static final String PROJECT_NONE = "none";
 
 	static final class Request {
 		final List<File> inputs = new ArrayList<File>();
@@ -53,11 +55,22 @@ final class J2cService {
 		String name;
 		Transformer.SealedTypes sealedTypes = Transformer.SealedTypes.ADVISORY;
 		Charset encoding = StandardCharsets.UTF_8;
+		/**
+		 * Project auto-setup: "auto" detects a Maven or Gradle build in each
+		 * input directory, "none" turns detection off, and anything else is
+		 * a project directory whose build supplies the source roots and
+		 * class path for the inputs
+		 */
+		String project = PROJECT_AUTO;
+		/** Whether the build tool may be run to resolve the class path */
+		boolean buildTool = true;
 	}
 
 	static final class CheckResult {
 		final List<Problem> problems;
 		final int fileCount;
+		/** Builds detected by project auto-setup */
+		List<ProjectSetup.Project> projects = Collections.emptyList();
 
 		CheckResult(List<Problem> problems, int fileCount) {
 			this.problems = problems;
@@ -69,6 +82,7 @@ final class J2cService {
 		final File output;
 		final List<String> generatedFiles;
 		final int fileCount;
+		List<ProjectSetup.Project> projects = Collections.emptyList();
 
 		TranslateResult(File output, List<String> generatedFiles, int fileCount) {
 			this.output = output;
@@ -89,6 +103,8 @@ final class J2cService {
 
 	/** When set, every input, source path and output must be inside it */
 	private final File root;
+	/** The builds detected for the latest request */
+	private List<ProjectSetup.Project> projects = Collections.emptyList();
 
 	J2cService(File root) {
 		this.root = root;
@@ -100,8 +116,15 @@ final class J2cService {
 		Transformer checker = new Transformer(prepared.project, "check",
 				new Path(new File(".").getAbsolutePath()), request.sealedTypes);
 		checker.setTests(request.tests);
-		return new CheckResult(checker.check(new NullProgressMonitor(),
-				prepared.units), prepared.units.length);
+		CheckResult result = new CheckResult(checker.check(
+				new NullProgressMonitor(), prepared.units), prepared.units.length);
+		result.projects = projects;
+		return result;
+	}
+
+	/** The builds detected for the latest request, for failure reports */
+	List<ProjectSetup.Project> projects() {
+		return projects;
 	}
 
 	TranslateResult translate(Request request) throws Exception {
@@ -125,10 +148,14 @@ final class J2cService {
 		listFiles(output, "", generated);
 		generated.remove(OUTPUT_MARKER);
 		Collections.sort(generated);
-		return new TranslateResult(output, generated, prepared.units.length);
+		TranslateResult result = new TranslateResult(output, generated,
+				prepared.units.length);
+		result.projects = projects;
+		return result;
 	}
 
 	private Prepared prepare(Request request, boolean writes) throws IOException {
+		projects = Collections.emptyList();
 		if (writes) {
 			File output = request.output;
 			if (output == null) {
@@ -163,9 +190,20 @@ final class J2cService {
 			requireInsideRoot(input, "Input");
 		}
 
+		// A detected build replaces its directory with its source roots
+		List<File> inputs = new ArrayList<File>(request.inputs);
+		List<File> projectRoots = new ArrayList<File>();
+		List<File> classPaths = new ArrayList<File>(request.classPaths);
+		projects = setUpProjects(request, inputs, projectRoots, classPaths);
+
 		List<File> sourcePaths = new ArrayList<File>(request.sourcePaths);
 		if (sourcePaths.isEmpty()) {
-			for (File input : request.inputs) {
+			for (File root : projectRoots) {
+				if (!containsPath(sourcePaths, root)) {
+					sourcePaths.add(root);
+				}
+			}
+			for (File input : inputs) {
 				File sourcePath = input.isDirectory() ? input : inferSourcePath(
 						input.getAbsoluteFile(), request.encoding);
 				if (!containsPath(sourcePaths, sourcePath)) {
@@ -182,7 +220,7 @@ final class J2cService {
 		}
 		// Class path entries are only read, and usually live outside the
 		// project (a Maven or Gradle cache), so they are not restricted
-		for (File classPath : request.classPaths) {
+		for (File classPath : classPaths) {
 			if (!classPath.exists()) {
 				throw new IllegalArgumentException("Class path does not exist: "
 						+ classPath);
@@ -201,7 +239,7 @@ final class J2cService {
 		}
 
 		List<File> selectedFiles = new ArrayList<File>();
-		for (File input : request.inputs) {
+		for (File input : inputs) {
 			if (input.isDirectory()) {
 				collectSources(input, selectedFiles);
 			} else {
@@ -213,14 +251,98 @@ final class J2cService {
 					"No Java source files found in the selected inputs");
 		}
 
-		SourceProject project = new SourceProject(sourcePaths,
-				request.classPaths, request.encoding);
+		SourceProject project = new SourceProject(sourcePaths, classPaths,
+				request.encoding);
 		project.setSystemLibrary(request.runtime == null);
 		SourceUnit[] units = new SourceUnit[selectedFiles.size()];
 		for (int i = 0; i < units.length; ++i) {
 			units[i] = project.getUnit(selectedFiles.get(i));
 		}
 		return new Prepared(project, units);
+	}
+
+	/**
+	 * Detects the builds the request selects and resolves their class paths.
+	 * Input directories that are build roots are replaced in inputs by the
+	 * build's source roots (and test roots with tests); every detected root is
+	 * added to roots, and the class path to classPaths.
+	 */
+	private List<ProjectSetup.Project> setUpProjects(Request request,
+			List<File> inputs, List<File> roots, List<File> classPaths)
+			throws IOException {
+		if (PROJECT_NONE.equals(request.project)) {
+			return Collections.emptyList();
+		}
+		List<ProjectSetup.Project> detected = new ArrayList<ProjectSetup.Project>();
+		if (PROJECT_AUTO.equals(request.project)) {
+			for (int i = 0; i < inputs.size(); ++i) {
+				File input = inputs.get(i);
+				ProjectSetup.Project project = input.isDirectory() ? ProjectSetup
+						.detect(input) : null;
+				if (project == null) {
+					continue;
+				}
+				detected.add(project);
+				List<File> replacement = new ArrayList<File>(project.sourceRoots);
+				if (request.tests) {
+					replacement.addAll(project.testRoots);
+				}
+				if (replacement.isEmpty()) {
+					throw new IllegalArgumentException(project.toolName()
+							+ " project " + input + " has no Java source roots (such "
+							+ "as src/main/java); pass the source folders instead, or "
+							+ "use --project none");
+				}
+				inputs.remove(i);
+				inputs.addAll(i, replacement);
+				i += replacement.size() - 1;
+			}
+		} else {
+			File directory = new File(request.project);
+			requireInsideRoot(directory, "Project directory");
+			ProjectSetup.Project project = directory.isDirectory() ? ProjectSetup
+					.detect(directory) : null;
+			if (project == null) {
+				throw new IllegalArgumentException("No Maven or Gradle build "
+						+ "(pom.xml, build.gradle or settings.gradle) in the project "
+						+ "directory: " + directory);
+			}
+			detected.add(project);
+		}
+
+		for (ProjectSetup.Project project : detected) {
+			ProjectSetup.resolve(project, request.tests, request.buildTool,
+					System.err);
+			List<File> projectRoots = new ArrayList<File>(project.sourceRoots);
+			if (request.tests) {
+				projectRoots.addAll(project.testRoots);
+			}
+			for (File projectRoot : projectRoots) {
+				if (!isInsideRoot(projectRoot)) {
+					// A generated or shared source root outside the workspace
+					System.err.println("J2C:   skipping source root outside the "
+							+ "workspace root: " + projectRoot);
+					inputs.remove(projectRoot);
+				} else if (!containsPath(roots, projectRoot)) {
+					roots.add(projectRoot);
+				}
+			}
+			for (File entry : project.classPath) {
+				if (!containsPath(classPaths, entry)) {
+					classPaths.add(entry);
+				}
+			}
+		}
+		return Collections.unmodifiableList(detected);
+	}
+
+	private boolean isInsideRoot(File file) throws IOException {
+		try {
+			requireInsideRoot(file, "Source root");
+			return true;
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
 	}
 
 	private void requireInsideRoot(File file, String what) throws IOException {
@@ -328,6 +450,7 @@ final class J2cService {
 		json.put("files", result.fileCount);
 		json.put("problems", problemsJson(result.problems));
 		json.put("summary", summaryJson(result.problems));
+		putProjects(json, result.projects);
 		return json;
 	}
 
@@ -347,7 +470,29 @@ final class J2cService {
 		}
 		json.put("testFiles", tests);
 		json.put("problems", Collections.emptyList());
+		putProjects(json, result.projects);
 		return json;
+	}
+
+	/** A failure report that also shows the builds detected on the way */
+	static Map<String, Object> failedJson(String command, List<Problem> problems,
+			List<ProjectSetup.Project> projects) {
+		Map<String, Object> json = failedJson(command, problems);
+		putProjects(json, projects);
+		return json;
+	}
+
+	/** Detected builds, and warnings such as an unresolved class path */
+	private static void putProjects(Map<String, Object> json,
+			List<ProjectSetup.Project> projects) {
+		List<Object> list = new ArrayList<Object>();
+		List<Problem> warnings = new ArrayList<Problem>();
+		for (ProjectSetup.Project project : projects) {
+			list.add(ProjectSetup.json(project));
+			warnings.addAll(project.warnings);
+		}
+		json.put("projects", list);
+		json.put("warnings", problemsJson(warnings, "warning"));
 	}
 
 	static Map<String, Object> failedJson(String command, List<Problem> problems) {
@@ -367,12 +512,17 @@ final class J2cService {
 	}
 
 	private static List<Object> problemsJson(List<Problem> problems) {
+		return problemsJson(problems, "error");
+	}
+
+	private static List<Object> problemsJson(List<Problem> problems,
+			String severity) {
 		List<Object> list = new ArrayList<Object>();
 		for (Problem problem : problems) {
 			Map<String, Object> json = new LinkedHashMap<String, Object>();
 			json.put("id", problem.id);
 			json.put("kind", problem.kind);
-			json.put("severity", "error");
+			json.put("severity", severity);
 			json.put("file", problem.file.getPath());
 			json.put("line", problem.line);
 			json.put("column", problem.column);
@@ -427,6 +577,8 @@ final class J2cService {
 		json.put("cppStandard", "c++20");
 		json.put("commands", Arrays.asList("translate", "check", "explain",
 				"capabilities", "mcp"));
+		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
+				ProjectSetup.GRADLE));
 		json.put("supportedFeatures", Arrays.asList(
 				"Java 1-7 language features handled by the original J2C translator",
 				"Lambda expressions and method references (rewritten into anonymous classes)",
@@ -439,7 +591,10 @@ final class J2cService {
 				"Default, static and private interface methods",
 				"Java integer arithmetic semantics (division by zero, overflow, shifts, saturating casts)",
 				"JUnit 4 and 5 tests run with GoogleTest (--tests): lifecycle methods, "
-						+ "disabled tests and expected exceptions"));
+						+ "disabled tests and expected exceptions",
+				"Maven and Gradle project auto-setup: a project directory as input "
+						+ "uses the build's source and test roots, and the dependency "
+						+ "class path from mvn or gradle (--project, --no-build-tool)"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

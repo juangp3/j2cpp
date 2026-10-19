@@ -31,15 +31,26 @@ final class McpServer {
 			+ "source folders, fix each reported problem in the Java source using "
 			+ "its hint (j2c_explain gives details), check again until no problems "
 			+ "remain, then call j2c_translate with an output directory. Paths are "
-			+ "relative to the workspace root. Translated code still needs a C++ "
+			+ "relative to the workspace root. A Maven or Gradle project folder "
+			+ "(such as \".\") can be passed directly: its source roots and "
+			+ "dependency class path are detected. Translated code still needs a C++ "
 			+ "implementation of the JDK classes it uses (see j2c_capabilities).";
 
 	private final File root;
 	private final J2cService service;
+	/** Project auto-setup defaults, from j2c mcp --project and --no-build-tool */
+	private final String project;
+	private final boolean buildTool;
 
 	McpServer(File root) {
+		this(root, J2cService.PROJECT_AUTO, true);
+	}
+
+	McpServer(File root, String project, boolean buildTool) {
 		this.root = root;
 		this.service = new J2cService(root);
+		this.project = project;
+		this.buildTool = buildTool;
 	}
 
 	void serve(InputStream in, PrintStream rawOut) throws IOException {
@@ -155,7 +166,7 @@ final class McpServer {
 					"usage-error", e.getMessage()), true));
 		} catch (TranslationException e) {
 			return result(id, toolResult(J2cService.failedJson(command,
-					e.problems()), true));
+					e.problems(), service.projects()), true));
 		} catch (Exception e) {
 			e.printStackTrace(System.err);
 			return result(id, toolResult(J2cService.errorJson(command, "error",
@@ -179,6 +190,21 @@ final class McpServer {
 			request.sealedTypes = Main.sealedTypes(sealedTypes);
 		}
 		request.tests = Boolean.TRUE.equals(arguments.get("tests"));
+		String projectMode = optionalString(arguments, "project");
+		if (projectMode == null) {
+			request.project = project;
+		} else if (J2cService.PROJECT_AUTO.equals(projectMode)
+				|| J2cService.PROJECT_NONE.equals(projectMode)) {
+			request.project = projectMode;
+		} else {
+			request.project = resolve(projectMode).getPath();
+		}
+		Object runBuildTool = arguments.get("buildTool");
+		if (runBuildTool != null && !(runBuildTool instanceof Boolean)) {
+			throw new IllegalArgumentException("buildTool must be a boolean");
+		}
+		request.buildTool = runBuildTool == null ? buildTool
+				: (Boolean) runBuildTool;
 		String encoding = optionalString(arguments, "encoding");
 		if (encoding != null) {
 			request.encoding = Main.charset(encoding);
@@ -250,7 +276,7 @@ final class McpServer {
 						+ "translate in the given Java files or source folders, "
 						+ "with file, line, column, a stable problem id and a hint "
 						+ "for fixing it. Writes nothing. Run before j2c_translate.",
-				inputSchema(false), true, false));
+				inputSchema(false), true, false, true));
 		tools.add(tool("j2c_translate", "Translate Java to C++",
 				"Translates Java files or source folders into C++20 in the output "
 						+ "directory and lists the generated files, including a "
@@ -258,26 +284,27 @@ final class McpServer {
 						+ "previous J2C output; its current contents are moved to a "
 						+ "backup in the temporary folder. Fails with the same "
 						+ "problems j2c_check reports.",
-				inputSchema(true), false, true));
+				inputSchema(true), false, true, true));
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
 		tools.add(tool("j2c_explain", "Explain a J2C problem id",
 				"Explains what a problem id from j2c_check means and how to fix it.",
 				schema(explainProperties, Collections.<String> emptyList()), true,
-				false));
+				false, false));
 		tools.add(tool("j2c_capabilities", "J2C capabilities",
 				"Lists the J2C version, supported Java features, known limitations "
 						+ "and problem ids.",
 				schema(new LinkedHashMap<String, Object>(),
-						Collections.<String> emptyList()), true, false));
+						Collections.<String> emptyList()), true, false, false));
 		return tools;
 	}
 
 	private static Map<String, Object> inputSchema(boolean translate) {
 		Map<String, Object> properties = new LinkedHashMap<String, Object>();
-		properties.put("paths", array("Java files or source folders, relative to "
-				+ "the workspace root"));
+		properties.put("paths", array("Java files, source folders, or Maven or "
+				+ "Gradle project folders (such as \".\"), relative to the "
+				+ "workspace root"));
 		properties.put("sourcePaths", array("Source roots used to resolve "
 				+ "dependencies; inferred from the package declarations when omitted"));
 		properties.put("classPath", array("Dependency JARs or class directories"));
@@ -291,6 +318,16 @@ final class McpServer {
 		properties.put("tests", property("boolean", translate
 				? "Generate GoogleTest wrappers that run the JUnit tests (make test)"
 				: "Also report JUnit test features that translated tests cannot run"));
+		properties.put("project", property("string",
+				"auto (default) detects a Maven or Gradle build in each folder in "
+						+ "paths and uses its source roots (test roots with tests) and "
+						+ "dependency class path; none turns detection off; a folder "
+						+ "uses its build for the given paths"));
+		properties.put("buildTool", property("boolean",
+				"Whether Maven or Gradle (the project's wrapper, else mvn or gradle) "
+						+ "may be run to resolve the dependency class path, which can "
+						+ "download dependencies (default true; a cached class path is "
+						+ "used either way)"));
 		List<String> required = new ArrayList<String>();
 		required.add("paths");
 		if (translate) {
@@ -307,13 +344,14 @@ final class McpServer {
 
 	private static Map<String, Object> tool(String name, String title,
 			String description, Map<String, Object> inputSchema,
-			boolean readOnly, boolean destructive) {
+			boolean readOnly, boolean destructive, boolean openWorld) {
 		Map<String, Object> annotations = new LinkedHashMap<String, Object>();
 		annotations.put("title", title);
 		annotations.put("readOnlyHint", readOnly);
 		annotations.put("destructiveHint", destructive);
 		annotations.put("idempotentHint", true);
-		annotations.put("openWorldHint", false);
+		// Project auto-setup may run the build tool, which downloads
+		annotations.put("openWorldHint", openWorld);
 
 		Map<String, Object> tool = new LinkedHashMap<String, Object>();
 		tool.put("name", name);

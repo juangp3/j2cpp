@@ -1,0 +1,3 @@
+// J2C project auto-setup fixture: a Gradle build with one subproject
+rootProject.name = 'gradle-simple'
+include 'lib'
