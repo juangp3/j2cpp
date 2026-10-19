@@ -82,6 +82,11 @@ function findWslJava() {
 	return which.status === 0 && which.stdout.trim() ? which.stdout.trim() : null;
 }
 const wslJava = findWslJava();
+if (useWsl && !wslJava) {
+	// Paths and error messages then differ from the Linux C++ program's
+	console.error("warning: WSL has no java, so programs run with Windows java; "
+		+ "file and input programs will differ (set J2C_WSL_JAVA to a JDK 17 in WSL)");
+}
 
 function normalize(text) {
 	return text.replace(/\r\n/g, "\n");
