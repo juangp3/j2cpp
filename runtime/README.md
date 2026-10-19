@@ -1,8 +1,8 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. It covers milestones R1 to R5 in
-`docs/PUBLISHING_PLAN.md` (Phase 10):
+used with `j2c --runtime runtime`. It covers milestones R1 to R5 and the
+regular expressions of R6 in `docs/PUBLISHING_PLAN.md` (Phase 10):
 
 - **`java.lang`:**
   - `String` (with `format` and `formatted`), `StringBuilder` and the boxed
@@ -27,6 +27,22 @@ used with `j2c --runtime runtime`. It covers milestones R1 to R5 in
   and static methods.
 - **`java.util.stream`:** `Stream`, `IntStream`, `LongStream`,
   `DoubleStream`, `Collectors`, `Collector` and `StreamSupport`.
+- **`java.util.regex`:** `Pattern`, `Matcher`, `MatchResult` and
+  `PatternSyntaxException`, behind `String.matches`, `split`, `replaceAll`
+  and `replaceFirst`:
+  - escapes, `.`, classes with ranges, negation, nesting and `&&`, the
+    predefined classes (`\d \s \w \h \v` and their negations), POSIX
+    (`\p{Alpha}`), `\p{javaLowerCase}` and the like, and the basic Unicode
+    properties `L`, `Lu`, `Ll`, `N`, `Nd`, `Z`, `Zs` and `IsAlphabetic`;
+  - anchors `^ $ \b \B \A \G \Z \z`, capturing, named, non-capturing
+    and atomic groups, backreferences, look-ahead and look-behind, greedy,
+    reluctant and possessive quantifiers, `\R` and `\Q...\E`;
+  - the flags `CASE_INSENSITIVE`, `UNICODE_CASE`, `MULTILINE`, `DOTALL`,
+    `UNIX_LINES`, `COMMENTS` and `LITERAL`, inline too;
+  - `split` with Java's rules for limits, trailing empty strings and
+    zero-width matches, replacement strings with `$n`, `${name}` and `\`,
+    `replaceAll(Function)`, `appendReplacement`, `results()`, `region`,
+    and `PatternSyntaxException` messages identical to the JDK's.
 
 Everything else still gets J2C's generated stubs, which abort with "call to
 an unimplemented Java library method".
@@ -69,6 +85,32 @@ Differences that remain:
   compile).
 - `chars()` and `codePoints()` read a `StringBuilder` when they are called;
   the JVM reads it when the stream runs.
+- Regular expressions:
+  - The matcher backtracks on a stack on the heap; a quantified single
+    character loops without a stack entry per character, and only
+    look-around and atomic groups recurse (once per nesting level of the
+    pattern). Where the JVM recurses per iteration and throws
+    `StackOverflowError` on long inputs (`(a|b)*`), this runtime matches.
+  - Groups keep the values the JDK's matcher leaves in them, which a plain
+    backtracking matcher would not: groups captured in atomic groups and
+    look-arounds stay set when the match backtracks past them, a repeated
+    fixed-length group sets itself to its own last iteration once the rest
+    has matched, and look-behind bounds are computed with the JDK's int
+    overflow. `test/runtime/regex-fuzz` compares 4,000 random patterns with
+    the JVM; in 8,000 more, the one difference left was which stale
+    capture a group kept after atomic groups failed at several start
+    positions.
+  - Unicode properties and `UNICODE_CASE` use `Character`, exact for
+    Latin-1 only. `\b` uses `Character.isLetterOrDigit`, as JDK 17 does.
+  - A `Matcher` copies its input when it is created or reset, `results()`
+    and `splitAsStream` find every match before the stream starts, and
+    regions are always opaque and anchoring.
+  - Not supported, and failing loudly: `CANON_EQ`,
+    `UNICODE_CHARACTER_CLASS` and `(?U)`, `\X`, `\N{...}`, `\b{g}`,
+    Unicode blocks, scripts and other property names
+    (`UnsupportedOperationException`); `hitEnd`, `requireEnd`,
+    `usePattern`, transparent bounds and the `StringBuffer` overloads
+    (absent).
 
 ## How it works
 

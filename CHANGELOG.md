@@ -46,7 +46,13 @@ C++20-targeted output.
     `Collectors`, sequential and lazy in the JVM's order, with `Optional`
     and its primitive forms and the summary statistics;
   - `String.format`, `formatted`, `printf` and `Formatter`, with Java's
-    rounding and exception messages (no `%t` date conversions).
+    rounding and exception messages (no `%t` date conversions);
+  - `java.util.regex` (`Pattern`, `Matcher`, `MatchResult`,
+    `PatternSyntaxException` with the JDK's messages), a backtracking
+    matcher whose stack lives on the heap, used by `String.matches`,
+    `split`, `replaceAll` and `replaceFirst`: classes with intersection,
+    groups (named, atomic), backreferences, look-around, greedy, reluctant
+    and possessive quantifiers, and the inline flags.
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
 - `make J2C_GC=boehm` links a program with the Boehm garbage collector,

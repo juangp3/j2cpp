@@ -1044,6 +1044,26 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
      100 MB.
    - CI runs every runtime program again with the collector, at `-O2`
      under UBSan, collecting every 1000 allocations.
+6. **R6:** regular expressions, text input and files.
+   **Regular expressions done (2026-10-15):**
+   - `java.util.regex`: `Pattern`, `Matcher`, `MatchResult` and
+     `PatternSyntaxException`, written in Java. The parser reports the
+     JDK's descriptions and indexes; the matcher backtracks on a heap stack
+     (single-character loops push one entry, not one per character), so
+     100,000-character inputs do not overflow the C++ stack.
+   - Syntax: escapes, classes with ranges, nesting and `&&`, the predefined,
+     POSIX, `java*` and basic Unicode classes, anchors, capturing, named,
+     non-capturing and atomic groups, backreferences, look-ahead and
+     look-behind, all three quantifier modes, `\R`, `\Q...\E`, and the
+     flags (inline too) but `CANON_EQ` and `UNICODE_CHARACTER_CLASS`, which
+     throw `UnsupportedOperationException` like `\X` and Unicode scripts.
+   - `String.matches`, `split`, `replaceAll` and `replaceFirst` use it;
+     `split` keeps a fast path for literal patterns.
+   - The JDK's capture quirks are emulated (groups set in atomic groups and
+     look-arounds survive backtracking; a repeated fixed-length group
+     resets itself to its last iteration; look-behind bounds overflow).
+   - Tested by `test/runtime/regex`, `regex-split`, and `regex-fuzz`
+     (4,000 pseudo-random patterns compared with the JVM).
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
@@ -1134,7 +1154,8 @@ Milestones, each finished only when its differential tests pass:
    allocation-loop test must keep resident memory bounded. Done
    (2026-10-14) as R5.
 4. **Later, driven by probes and real programs:** streams, `String.format`,
-   regular expressions, threads and `synchronized`, and file I/O.
+   regular expressions (done as R6), threads and `synchronized`, and file
+   I/O.
 
 Tests — differential testing:
 
