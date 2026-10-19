@@ -729,7 +729,7 @@ async function testProjectSetting() {
 	// A class path warning becomes a warning on the build file, which does
 	// not count as a problem
 	const report = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		tool: "j2c",
 		command: "check",
 		status: "ok",
