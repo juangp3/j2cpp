@@ -438,9 +438,11 @@ final class JUnitSupport {
 							+ " is not supported in translated tests");
 				}
 				IAnnotationBinding test = annotation(method, TEST);
+				// timeout = 100 is an int constant, which the binding keeps
+				Object timeout = test == null ? null : member(test, "timeout");
 				if (annotation(method, Arrays.asList("org.junit.jupiter.api.Timeout")) != null
-						|| (test != null && member(test, "timeout") instanceof Long && (Long) member(
-								test, "timeout") > 0)) {
+						|| (timeout instanceof Number && ((Number) timeout)
+								.longValue() > 0)) {
 					add(node.getName(), ProblemCatalog.TEST_TIMEOUT, "Timeout on "
 							+ method.getName()
 							+ " is not supported in translated tests");
