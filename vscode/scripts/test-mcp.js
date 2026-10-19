@@ -102,7 +102,7 @@ try {
 
 	const tools = responses.get(2).result.tools;
 	assert.deepStrictEqual(tools.map((tool) => tool.name),
-		["j2c_check", "j2c_translate", "j2c_explain", "j2c_capabilities"]);
+		["j2c_check", "j2c_translate", "j2c_fix", "j2c_explain", "j2c_capabilities"]);
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
 	assert.strictEqual(byName.get("j2c_check").annotations.readOnlyHint, true);
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
@@ -114,6 +114,12 @@ try {
 	assert.strictEqual(byName.get("j2c_check").inputSchema.properties.buildTool.type, "boolean");
 	assert.strictEqual(byName.get("j2c_check").annotations.openWorldHint, true);
 	assert.strictEqual(byName.get("j2c_explain").annotations.openWorldHint, false);
+	// j2c_fix writes Java files when apply is true, so clients confirm it
+	assert.strictEqual(byName.get("j2c_fix").annotations.readOnlyHint, false);
+	assert.strictEqual(byName.get("j2c_fix").annotations.destructiveHint, true);
+	assert.deepStrictEqual(byName.get("j2c_fix").inputSchema.required, ["paths"]);
+	assert.strictEqual(byName.get("j2c_fix").inputSchema.properties.apply.type, "boolean");
+	assert.strictEqual(byName.get("j2c_fix").annotations.openWorldHint, true);
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -196,6 +202,58 @@ try {
 		env: { J2C_CACHE_DIR: path.join(tempDirectory, "empty cache") } });
 	assert.deepStrictEqual(defaults.get(1).result.structuredContent.projects, []);
 	assert(defaults.get(2).result.structuredContent.warnings[0].message.includes("buildTool: false"));
+	// j2c_fix previews by default, applies with apply: true, and stays inside
+	// the root; test/fix holds the fixture
+	const fixture = path.join(repositoryRoot, "test", "fix", "src", "fixdemo", "AnonymousThis.java");
+	const fixDirectory = path.join(root, "src", "fixdemo");
+	fs.mkdirSync(fixDirectory, { recursive: true });
+	const fixable = path.join(fixDirectory, "AnonymousThis.java");
+	fs.copyFileSync(fixture, fixable);
+	const outsideFixable = path.join(outside, "fixdemo", "AnonymousThis.java");
+	fs.mkdirSync(path.dirname(outsideFixable));
+	fs.copyFileSync(fixture, outsideFixable);
+	const original = fs.readFileSync(fixable, "utf8");
+	const relativeFixable = path.join("src", "fixdemo", "AnonymousThis.java");
+	const previews = session([call(1, "j2c_fix", { paths: [relativeFixable] })]);
+	assert.strictEqual(original, fs.readFileSync(fixable, "utf8"), "A preview writes nothing");
+	const fixes = session([
+		call(2, "j2c_fix", { paths: [relativeFixable], apply: true }),
+		call(3, "j2c_check", { paths: [relativeFixable] }),
+		call(4, "j2c_fix", { paths: [relativeFixable], apply: true }),
+		call(5, "j2c_fix", { paths: [outsideFixable], apply: true }),
+		call(6, "j2c_fix", { paths: [relativeFixable], apply: "yes" })
+	]);
+
+	const preview = previews.get(1).result;
+	assert.strictEqual(preview.isError, false, JSON.stringify(preview));
+	assert.strictEqual(preview.structuredContent.command, "fix");
+	assert.strictEqual(preview.structuredContent.applied, false);
+	assert.strictEqual(preview.structuredContent.status, "ok");
+	assert.strictEqual(preview.structuredContent.fixed.length, 6);
+	assert(preview.structuredContent.fixed.every((fixed) => fixed.id === "J2C-LAMBDA-ANONYMOUS-THIS"));
+	assert(preview.structuredContent.diff.startsWith("--- a/src/fixdemo/AnonymousThis.java\n+++ b/src/fixdemo/AnonymousThis.java\n"),
+		preview.structuredContent.diff);
+	assert(preview.structuredContent.diff.includes("+\t\t\t\tvar self = this;"), preview.structuredContent.diff);
+
+	const applied = fixes.get(2).result.structuredContent;
+	assert.strictEqual(fixes.get(2).result.isError, false, JSON.stringify(applied));
+	assert.strictEqual(applied.applied, true);
+	assert.strictEqual(applied.status, "ok");
+	assert.strictEqual(applied.diff, preview.structuredContent.diff);
+	assert.deepStrictEqual(applied.changedFiles, [fixable]);
+	assert(fs.readFileSync(fixable, "utf8").includes("var self = this;"));
+	assert.strictEqual(fixes.get(3).result.structuredContent.status, "ok");
+	// Applying again finds nothing to do
+	assert.strictEqual(fixes.get(4).result.structuredContent.diff, "");
+	assert.deepStrictEqual(fixes.get(4).result.structuredContent.fixed, []);
+
+	const outsideFix = fixes.get(5).result;
+	assert.strictEqual(outsideFix.isError, true);
+	assert(outsideFix.structuredContent.message.includes("outside the workspace root"),
+		outsideFix.structuredContent.message);
+	assert.strictEqual(fs.readFileSync(outsideFixable, "utf8"), original);
+	// apply must be a boolean; anything else previews, like an omitted one
+	assert.strictEqual(fixes.get(6).result.structuredContent.applied, false);
 
 	console.log("MCP server checks passed");
 } finally {

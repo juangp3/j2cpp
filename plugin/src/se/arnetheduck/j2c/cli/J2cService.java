@@ -18,8 +18,10 @@ import java.util.regex.Pattern;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 
+import se.arnetheduck.j2c.transform.Fix;
 import se.arnetheduck.j2c.transform.Problem;
 import se.arnetheduck.j2c.transform.ProblemCatalog;
+import se.arnetheduck.j2c.transform.SourceEdit;
 import se.arnetheduck.j2c.transform.SourceProject;
 import se.arnetheduck.j2c.transform.SourceUnit;
 import se.arnetheduck.j2c.transform.Transformer;
@@ -37,10 +39,14 @@ final class J2cService {
 	// a module declaration fails when its packages are compiled as sources
 	private static final List<String> DECLARES_NO_TYPES = Arrays.asList(
 			"module-info.java", "package-info.java");
-	/** Version of the JSON shapes produced below */
-	static final int SCHEMA_VERSION = 1;
 	static final String PROJECT_AUTO = "auto";
 	static final String PROJECT_NONE = "none";
+	/**
+	 * Version of the JSON shapes produced below, raised whenever a field is
+	 * added, changed or removed. 2 added problem fixes, the fix command, and
+	 * the project setup fields (projects, warnings, buildTools).
+	 */
+	static final int SCHEMA_VERSION = 2;
 
 	static final class Request {
 		final List<File> inputs = new ArrayList<File>();
@@ -360,7 +366,7 @@ final class J2cService {
 		}
 	}
 
-	private void requireInsideRoot(File file, String what) throws IOException {
+	void requireInsideRoot(File file, String what) throws IOException {
 		if (root == null) {
 			return;
 		}
@@ -450,7 +456,7 @@ final class J2cService {
 
 	// JSON shapes, shared by --format json and the MCP tools
 
-	private static Map<String, Object> header(String command) {
+	static Map<String, Object> header(String command) {
 		Map<String, Object> json = new LinkedHashMap<String, Object>();
 		json.put("schemaVersion", SCHEMA_VERSION);
 		json.put("tool", "j2c");
@@ -526,11 +532,11 @@ final class J2cService {
 		return json;
 	}
 
-	private static List<Object> problemsJson(List<Problem> problems) {
+	static List<Object> problemsJson(List<Problem> problems) {
 		return problemsJson(problems, "error");
 	}
 
-	private static List<Object> problemsJson(List<Problem> problems,
+	static List<Object> problemsJson(List<Problem> problems,
 			String severity) {
 		List<Object> list = new ArrayList<Object>();
 		for (Problem problem : problems) {
@@ -543,12 +549,46 @@ final class J2cService {
 			json.put("column", problem.column);
 			json.put("message", problem.message);
 			json.put("hint", problem.hint());
+			json.put("fixes", fixesJson(problem.fixes));
 			list.add(json);
 		}
 		return list;
 	}
 
-	private static Map<String, Object> summaryJson(List<Problem> problems) {
+	static List<Object> fixesJson(List<Fix> fixes) {
+		List<Object> list = new ArrayList<Object>();
+		for (Fix fix : fixes) {
+			Map<String, Object> json = new LinkedHashMap<String, Object>();
+			json.put("title", fix.title);
+			List<Object> edits = new ArrayList<Object>();
+			for (SourceEdit edit : fix.edits) {
+				edits.add(editJson(edit));
+			}
+			json.put("edits", edits);
+			list.add(json);
+		}
+		return list;
+	}
+
+	static Map<String, Object> editJson(SourceEdit edit) {
+		Map<String, Object> range = new LinkedHashMap<String, Object>();
+		range.put("start", position(edit.startLine, edit.startColumn));
+		range.put("end", position(edit.endLine, edit.endColumn));
+		Map<String, Object> json = new LinkedHashMap<String, Object>();
+		json.put("file", edit.file.getPath());
+		json.put("range", range);
+		json.put("newText", edit.newText);
+		return json;
+	}
+
+	private static Map<String, Object> position(int line, int column) {
+		Map<String, Object> json = new LinkedHashMap<String, Object>();
+		json.put("line", line);
+		json.put("column", column);
+		return json;
+	}
+
+	static Map<String, Object> summaryJson(List<Problem> problems) {
 		Map<String, Integer> byKind = new TreeMap<String, Integer>();
 		List<File> files = new ArrayList<File>();
 		for (Problem problem : problems) {
@@ -590,7 +630,7 @@ final class J2cService {
 		Map<String, Object> json = header("capabilities");
 		json.put("javaSourceLevel", "17");
 		json.put("cppStandard", "c++20");
-		json.put("commands", Arrays.asList("translate", "check", "explain",
+		json.put("commands", Arrays.asList("translate", "check", "fix", "explain",
 				"capabilities", "mcp"));
 		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
 				ProjectSetup.GRADLE));

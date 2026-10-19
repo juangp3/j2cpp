@@ -59,8 +59,9 @@ public final class ProblemCatalog {
 				"Lambda uses this inside an anonymous class",
 				"Lambdas are translated into generated classes that refer to the enclosing "
 						+ "object by its class name, and an anonymous class has no name.",
-				"Assign this to a local variable before the lambda (Runnable self = this;) and "
-						+ "use the variable, or turn the anonymous class into a named nested or local class.");
+				"Assign this to a local variable first in the method (var self = this;) and "
+						+ "use the variable in the lambda (j2c fix does this), or turn the anonymous "
+						+ "class into a named nested or local class.");
 		add(LAMBDA_INTERFACE_SUPER,
 				"Lambda calls a default method through Iface.super",
 				"Lambdas are translated into generated classes, and Java can name "

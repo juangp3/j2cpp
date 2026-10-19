@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
@@ -73,6 +74,8 @@ final class LambdaDesugarer {
 	/** Generated interface names by their extends clause */
 	private final Map<String, String> intersections = new HashMap<String, String>();
 	private final List<Problem> problems = new ArrayList<Problem>();
+	/** For quick fixes, created with the first problem */
+	private QuickFixes.Names names;
 
 	LambdaDesugarer(File file, String source, CompilationUnit ast) {
 		this.file = file;
@@ -149,8 +152,23 @@ final class LambdaDesugarer {
 			problems.add(Problem.of(e.id, kind, "Java 8 " + kind
 					+ " cannot be translated: " + e.getMessage()).at(file,
 					ast.getLineNumber(node.getStartPosition()),
-					ast.getColumnNumber(node.getStartPosition()) + 1));
+					ast.getColumnNumber(node.getStartPosition()) + 1)
+					.withFixes(fixes(e.id, node)));
 		}
+	}
+
+	private List<Fix> fixes(String id, Expression node) {
+		if (!ProblemCatalog.LAMBDA_ANONYMOUS_THIS.equals(id)
+				&& !ProblemCatalog.LAMBDA_INTERFACE_SUPER.equals(id)) {
+			return Collections.emptyList();
+		}
+		if (names == null) {
+			names = new QuickFixes.Names(ast);
+		}
+		SourceText text = new SourceText(source);
+		return ProblemCatalog.LAMBDA_ANONYMOUS_THIS.equals(id) ? QuickFixes
+				.anonymousThis(file, text, node, names) : QuickFixes
+				.interfaceSuper(file, text, node, names);
 	}
 
 	private String lambda(LambdaExpression node) throws Unsupported {
@@ -540,10 +558,13 @@ final class LambdaDesugarer {
 
 	/** Names that an anonymous class implementing target would declare */
 	private Set<String> memberMethodNames(ITypeBinding target) {
+		return memberMethodNames(ast.getAST(), target);
+	}
+
+	static Set<String> memberMethodNames(AST ast, ITypeBinding target) {
 		Set<String> names = new HashSet<String>();
 		collectMethodNames(target.getErasure(), names);
-		ITypeBinding object = ast.getAST().resolveWellKnownType(
-				"java.lang.Object");
+		ITypeBinding object = ast.resolveWellKnownType("java.lang.Object");
 		if (object != null) {
 			collectMethodNames(object, names);
 		}

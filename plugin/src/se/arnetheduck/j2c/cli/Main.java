@@ -24,6 +24,10 @@ public class Main {
 			+ "[--format <text|json>] [--force] [--tests] [--runtime <directory>] "
 			+ "[--project <auto|none|directory>] [--no-build-tool] "
 			+ "<java-file-or-source-directory-or-project>..." + NL
+			+ "       j2c fix [--apply] [--format <text|json>] [--sourcepath <paths>] "
+			+ "[--classpath <paths>] [--encoding <charset>] [--tests] "
+			+ "[--project <auto|none|directory>] [--no-build-tool] "
+			+ "<java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
@@ -35,6 +39,8 @@ public class Main {
 			+ "create; its contents are moved to a backup in the temporary folder." + NL
 			+ "--tests checks JUnit tests and generates GoogleTest wrappers that run "
 			+ "them (make test)." + NL
+			+ "fix shows the mechanical fixes of problems as a unified diff; "
+			+ "--apply writes them into the Java files." + NL
 			+ "--runtime translates against a J2C runtime directory instead of "
 			+ "the running JDK: java/ holds its Java sources, cpp/ its C++ natives "
 			+ "and hooks (see runtime/README.md)." + NL
@@ -53,8 +59,9 @@ public class Main {
 		boolean json = isJson(args);
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;
-		if (json) {
+		if (json || "fix".equals(command)) {
 			// The translator reports progress on stdout; keep it for JSON
+			// and for diffs
 			System.setOut(System.err);
 		}
 		try {
@@ -100,7 +107,8 @@ public class Main {
 
 	private static String command(String[] args) {
 		if (args.length > 0
-				&& ("explain".equals(args[0]) || "capabilities".equals(args[0]))) {
+				&& ("explain".equals(args[0]) || "capabilities".equals(args[0])
+						|| "fix".equals(args[0]))) {
 			return args[0];
 		}
 		for (String arg : args) {
@@ -122,6 +130,9 @@ public class Main {
 		}
 		if (args.length > 0 && "explain".equals(args[0])) {
 			return explain(args, stdout, json);
+		}
+		if (args.length > 0 && "fix".equals(args[0])) {
+			return fix(args, stdout, json);
 		}
 
 		J2cService.Request request = new J2cService.Request();
@@ -224,6 +235,69 @@ public class Main {
 		new McpServer(root.getCanonicalFile(), project, buildTool).serve(
 				System.in, System.out);
 		return 0;
+	}
+
+	/**
+	 * Previews (a unified diff on stdout) or applies the mechanical fixes.
+	 * Exits with 0 when no problem is left without a fix, else 1.
+	 */
+	private static int fix(String[] args, PrintStream stdout, boolean json)
+			throws Exception {
+		J2cService.Request request = new J2cService.Request();
+		boolean apply = false;
+		for (int i = 1; i < args.length; i++) {
+			String arg = args[i];
+			if ("--apply".equals(arg)) {
+				apply = true;
+			} else if ("--format".equals(arg)) {
+				format(value(args, ++i, arg));
+			} else if ("--sourcepath".equals(arg)) {
+				request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--classpath".equals(arg)) {
+				request.classPaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--sealed-types".equals(arg)) {
+				request.sealedTypes = sealedTypes(value(args, ++i, arg));
+			} else if ("--encoding".equals(arg)) {
+				request.encoding = charset(value(args, ++i, arg));
+			} else if ("--tests".equals(arg)) {
+				request.tests = true;
+			} else if ("--runtime".equals(arg)) {
+				request.runtime = new File(value(args, ++i, arg));
+			} else if ("--project".equals(arg)) {
+				request.project = project(value(args, ++i, arg), true);
+			} else if ("--no-build-tool".equals(arg)) {
+				request.buildTool = false;
+			} else if (arg.startsWith("-")) {
+				throw new IllegalArgumentException("Unknown fix option: " + arg);
+			} else {
+				request.inputs.add(new File(arg));
+			}
+		}
+
+		Fixer fixer = new Fixer(new J2cService(null), new File("."));
+		Fixer.Result result = fixer.fix(request, apply);
+		if (json) {
+			stdout.println(Json.write(fixer.json(result)));
+		} else {
+			stdout.print(fixer.diff(result));
+			stdout.flush();
+			PrintStream report = System.err;
+			for (Problem problem : result.remaining) {
+				report.println(problem);
+			}
+			report.println("J2C fix: " + (apply ? "applied " : "")
+					+ result.fixed.size() + " fix(es) in "
+					+ result.changes.size() + " file(s)"
+					+ (result.deferred.isEmpty() ? "" : "; "
+							+ result.deferred.size()
+							+ " more overlap them and are applied by later rounds of --apply")
+					+ "; " + result.remaining.size()
+					+ " problem(s) need changes by hand");
+			if (result.message != null) {
+				report.println(result.message);
+			}
+		}
+		return result.remaining.isEmpty() ? 0 : 1;
 	}
 
 	private static int explain(String[] args, PrintStream stdout, boolean json) {

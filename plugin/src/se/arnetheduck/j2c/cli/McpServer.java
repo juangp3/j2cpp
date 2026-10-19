@@ -30,7 +30,8 @@ final class McpServer {
 			+ "into C++20. Typical workflow: call j2c_check on the Java files or "
 			+ "source folders, fix each reported problem in the Java source using "
 			+ "its hint (j2c_explain gives details), check again until no problems "
-			+ "remain, then call j2c_translate with an output directory. Paths are "
+			+ "remain (j2c_fix previews or applies the mechanical fixes some "
+			+ "problems carry), then call j2c_translate with an output directory. Paths are "
 			+ "relative to the workspace root. A Maven or Gradle project folder "
 			+ "(such as \".\") can be passed directly: its source roots and "
 			+ "dependency class path are detected. Translated code still needs a C++ "
@@ -152,6 +153,12 @@ final class McpServer {
 						arguments, true));
 				return result(id, toolResult(J2cService.translateJson(result),
 						false));
+			}
+			case "j2c_fix": {
+				Fixer fixer = new Fixer(service, root);
+				Fixer.Result result = fixer.fix(request(arguments, false),
+						Boolean.TRUE.equals(arguments.get("apply")));
+				return result(id, toolResult(fixer.json(result), false));
 			}
 			case "j2c_explain":
 				return result(id, toolResult(J2cService.explainJson(optionalString(
@@ -285,6 +292,21 @@ final class McpServer {
 						+ "backup in the temporary folder. Fails with the same "
 						+ "problems j2c_check reports.",
 				inputSchema(true), false, true, true));
+		Map<String, Object> fixSchema = inputSchema(false);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> fixProperties = (Map<String, Object>) fixSchema
+				.get("properties");
+		fixProperties.put("apply", property("boolean",
+				"Write the fixes into the Java files (default false: only preview "
+						+ "them as a unified diff)"));
+		tools.add(tool("j2c_fix", "Fix Java translation problems",
+				"Previews, as a unified diff, the mechanical fixes of the problems "
+						+ "j2c_check reports, such as this used in a lambda inside an "
+						+ "anonymous class; with apply: true writes them into the Java "
+						+ "files, checks again, and repeats until no fixable problem is "
+						+ "left. Problems without a fix are returned with their hints.",
+				// Like j2c_check, it may run the project's build tool
+				fixSchema, false, true, true));
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));

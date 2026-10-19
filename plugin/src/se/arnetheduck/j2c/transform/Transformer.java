@@ -386,6 +386,8 @@ public class Transformer {
 						try {
 							List<Problem> problems = problems(source, ast);
 							if (!problems.isEmpty()) {
+								problems = QuickFixes.addFixes(project, source,
+										problems);
 								throw new TranslationException(join(problems), problems);
 							}
 							if (tests && selection.contains(source)) {
@@ -449,8 +451,10 @@ public class Transformer {
 		project.parse(Arrays.asList(units), monitor,
 				new SourceProject.UnitHandler() {
 					@Override
-					public void accept(SourceUnit source, CompilationUnit ast) {
-						problems.addAll(problems(source, ast));
+					public void accept(SourceUnit source, CompilationUnit ast)
+							throws IOException {
+						problems.addAll(QuickFixes.addFixes(project, source,
+								problems(source, ast)));
 					}
 				});
 		return problems;

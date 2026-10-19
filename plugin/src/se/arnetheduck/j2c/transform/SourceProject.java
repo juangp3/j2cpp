@@ -181,6 +181,14 @@ public class SourceProject {
 		}
 	}
 
+	/**
+	 * The unit's original source text, before any rewriting, in which problem
+	 * locations and fixes are given
+	 */
+	public String sourceText(SourceUnit unit) throws IOException {
+		return read(unit.file());
+	}
+
 	/** The source text, without a byte order mark, which JDT also skips */
 	private String read(File file) throws IOException {
 		String text = new String(Files.readAllBytes(file.toPath()), encoding);

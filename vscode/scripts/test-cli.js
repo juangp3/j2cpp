@@ -41,6 +41,222 @@ function filesUnder(directory) {
 	});
 }
 
+/** The problems of a JSON report, keyed by "File.java:line:id" */
+function problemsByLocation(report) {
+	return new Map(report.problems.map((problem) =>
+		[`${path.basename(problem.file)}:${problem.line}:${problem.id}`, problem]));
+}
+
+/** A fix's edits as [startLine, startColumn, endLine, endColumn, newText] */
+function editTuples(problem) {
+	assert(problem, "Missing problem");
+	assert.strictEqual(problem.fixes.length, 1, JSON.stringify(problem));
+	return problem.fixes[0].edits.map((edit) => {
+		assert.strictEqual(edit.file, problem.file);
+		// Checkouts may have CRLF line breaks, which inserted lines follow
+		return [edit.range.start.line, edit.range.start.column,
+			edit.range.end.line, edit.range.end.column,
+			edit.newText.replace(/\r\n/g, "\n")];
+	});
+}
+
+function javacCompiles(sources, sourcePath) {
+	const classes = fs.mkdtempSync(path.join(tempDirectory, "javac "));
+	const result = childProcess.spawnSync("javac", [
+		"-d", classes, "-sourcepath", sourcePath, ...sources
+	], { encoding: "utf8" });
+	assert.strictEqual(result.status, 0, result.stderr);
+}
+
+function readAll(files) {
+	return files.map((file) => fs.readFileSync(file, "utf8"));
+}
+
+/**
+ * j2c fix: problems carry exact edits in JSON, previewed as a unified diff;
+ * --apply writes them, and the result compiles, translates and checks clean.
+ */
+function checkQuickFixes() {
+	const fixRoot = path.join(repositoryRoot, "test", "fix");
+	const work = path.join(tempDirectory, "fix work");
+	fs.cpSync(path.join(fixRoot, "src"), path.join(work, "src"), { recursive: true });
+	fs.cpSync(path.join(fixRoot, "junit"), path.join(work, "junit"), { recursive: true });
+	fs.cpSync(path.join(fixRoot, "unfixable"), path.join(work, "unfixable"), { recursive: true });
+	const sources = path.join(work, "src");
+	const sourceFiles = ["AnonymousThis.java", "InterfaceSuper.java", "PatternFields.java"]
+		.map((name) => path.join(sources, "fixdemo", name));
+	const originals = readAll(sourceFiles);
+
+	const checked = runCli(["--check", "--format", "json", sources]);
+	assert.strictEqual(checked.status, 1, checked.stderr);
+	const report = JSON.parse(checked.stdout);
+	assert.strictEqual(report.schemaVersion, 2);
+	assert.strictEqual(report.summary.problemCount, 11);
+	const problems = problemsByLocation(report);
+	const declaration = [24, 5, 24, 5, "var self = this;\n\t\t\t\t"];
+	const anonymousThis = "J2C-LAMBDA-ANONYMOUS-THIS";
+	assert.strictEqual(problems.get(`AnonymousThis.java:24:${anonymousThis}`).fixes[0].title,
+		"Use a local variable for this (var self = this;)");
+	assert.deepStrictEqual(editTuples(problems.get(`AnonymousThis.java:24:${anonymousThis}`)),
+		[declaration, [24, 40, 24, 44, "self"]]);
+	// A lambda in an if without braces shares the method's one declaration
+	assert.deepStrictEqual(editTuples(problems.get(`AnonymousThis.java:27:${anonymousThis}`)),
+		[declaration, [27, 26, 27, 30, "self"]]);
+	// toString() would call the generated class's own method
+	assert.deepStrictEqual(editTuples(problems.get(`AnonymousThis.java:28:${anonymousThis}`)),
+		[declaration, [28, 35, 28, 35, "self."]]);
+	// this::count would store the anonymous type in a field
+	assert.deepStrictEqual(editTuples(problems.get(`AnonymousThis.java:29:${anonymousThis}`)),
+		[declaration, [29, 30, 29, 41, "(p0) -> self.count(p0)"]]);
+	assert.deepStrictEqual(editTuples(problems.get(`AnonymousThis.java:30:${anonymousThis}`)),
+		[declaration, [31, 38, 31, 42, "self"]]);
+	const helper = [19, 1, 19, 1,
+		"\n\tprivate String describeFromNamed(String p0) {\n\t\treturn Named.super.describe(p0);\n\t}\n"];
+	assert.deepStrictEqual(editTuples(problems.get("InterfaceSuper.java:12:J2C-LAMBDA-INTERFACE-SUPER")),
+		[helper, [12, 33, 12, 67, "describeFromNamed(prefix + \">\")"]]);
+	assert.deepStrictEqual(editTuples(problems.get("InterfaceSuper.java:17:J2C-LAMBDA-INTERFACE-SUPER")),
+		[helper, [17, 10, 17, 31, "this::describeFromNamed"]]);
+	assert.deepStrictEqual(editTuples(problems.get("PatternFields.java:7:J2C-PATTERN-OUTSIDE-METHOD")), [
+		[7, 31, 7, 71, "initEMPTY()"],
+		// After the line comment that follows the field
+		[7, 84, 7, 84, "\n\n\tprivate static boolean initEMPTY() {\n\t\treturn VALUE instanceof String s && s.isEmpty();\n\t}"]
+	]);
+	assert.deepStrictEqual(editTuples(problems.get("PatternFields.java:10:J2C-PATTERN-OUTSIDE-METHOD"))[1],
+		[10, 78, 10, 78, "\n\n\tprivate int initLength() {\n\t\treturn item() instanceof CharSequence text ? text.length() : -1;\n\t}"]);
+	// Interface fields are static
+	assert(editTuples(problems.get("PatternFields.java:22:J2C-PATTERN-OUTSIDE-METHOD"))[1][4]
+		.includes("\t\tprivate static int initMAX_VALUE() {"));
+
+	// A preview is a unified diff that applies cleanly, and writes nothing
+	const preview = runCli(["fix", "src"], { cwd: work });
+	assert.strictEqual(preview.status, 0, preview.stderr);
+	assert(preview.stdout.startsWith("--- a/src/fixdemo/AnonymousThis.java\n+++ b/src/fixdemo/AnonymousThis.java\n@@ -21,14 +21,15 @@\n"),
+		preview.stdout);
+	const previewLines = preview.stdout.split("\n").map((line) => line.replace(/\r$/, ""));
+	assert(previewLines.includes("-\t\t\t\tRunnable remember = () -> seen.add(this);"), preview.stdout);
+	assert(previewLines.includes("+\t\t\t\tvar self = this;"));
+	assert(previewLines.includes("+\t\t\t\tRunnable remember = () -> seen.add(self);"));
+	assert(!preview.stdout.includes("Selected stats"), "Progress output must not mix with the diff");
+	assert(preview.stderr.includes("J2C fix: 11 fix(es) in 3 file(s); 0 problem(s) need changes by hand"),
+		preview.stderr);
+	assert.deepStrictEqual(readAll(sourceFiles), originals);
+	const patch = path.join(tempDirectory, "fixes.patch");
+	fs.writeFileSync(patch, preview.stdout);
+	const gitApply = childProcess.spawnSync("git", ["apply", "--check", patch], { cwd: work, encoding: "utf8" });
+	if (!gitApply.error) {
+		assert.strictEqual(gitApply.status, 0, gitApply.stderr);
+	}
+
+	const jsonPreview = JSON.parse(runCli(["fix", "--format", "json", sources]).stdout);
+	assert.strictEqual(jsonPreview.command, "fix");
+	assert.strictEqual(jsonPreview.status, "ok");
+	assert.strictEqual(jsonPreview.applied, false);
+	assert.strictEqual(jsonPreview.fixed.length, 11);
+	assert.deepStrictEqual(jsonPreview.problems, []);
+	assert.strictEqual(jsonPreview.changedFiles.length, 3);
+
+	const applied = runCli(["fix", "--apply", "--format", "json", sources]);
+	assert.strictEqual(applied.status, 0, applied.stderr);
+	const appliedReport = JSON.parse(applied.stdout);
+	assert.strictEqual(appliedReport.applied, true);
+	assert.strictEqual(appliedReport.status, "ok");
+	assert.strictEqual(appliedReport.diff, jsonPreview.diff, "--apply writes what the preview showed");
+	const fixed = readAll(sourceFiles);
+	assert(fixed[0].includes("\t\t\t\tvar self = this;\n") || fixed[0].includes("\t\t\t\tvar self = this;\r\n"));
+	assert.strictEqual(fixed[0].split("var self = this;").length, 2, "One declaration for the method");
+	assert(fixed[1].includes("return this::describeFromNamed;"));
+	assert.strictEqual(fixed[1].split("private String describeFromNamed").length, 2, "One helper for both calls");
+	assert(fixed[2].includes("static final boolean EMPTY = initEMPTY(); // constant"));
+	if (javaMajorVersion() >= 17) {
+		javacCompiles(sourceFiles, sources);
+	}
+	assert.strictEqual(runCli(["--check", sources]).status, 0, "Fixed sources check clean");
+	const fixedOutput = path.join(tempDirectory, "fixed output");
+	fs.mkdirSync(fixedOutput);
+	const fixedTranslation = runCli(["--output", fixedOutput, sources]);
+	assert.strictEqual(fixedTranslation.status, 0, fixedTranslation.stderr);
+	assert(fs.existsSync(path.join(fixedOutput, "src", "fixdemo", "AnonymousThis.cpp")));
+
+	// Fixing again changes nothing
+	const again = runCli(["fix", "--apply", sources]);
+	assert.strictEqual(again.status, 0, again.stderr);
+	assert.strictEqual(again.stdout, "");
+	assert.deepStrictEqual(readAll(sourceFiles), fixed);
+
+	// Test problems: timeouts removed, private methods made package-private
+	const junitApi = path.join(repositoryRoot, "test", "junit-api");
+	const junitSources = path.join(work, "junit");
+	const junitFiles = ["LegacyTimeoutTest.java", "TimeoutTest.java"]
+		.map((name) => path.join(junitSources, "fixdemo", name));
+	const junitPath = [junitSources, junitApi].join(path.delimiter);
+	const junitReport = JSON.parse(runCli(["--check", "--tests", "--format", "json",
+		"--sourcepath", junitPath, junitSources]).stdout);
+	const junitProblems = problemsByLocation(junitReport);
+	assert.strictEqual(junitReport.summary.problemCount, 6);
+	assert.deepStrictEqual(editTuples(junitProblems.get("LegacyTimeoutTest.java:12:J2C-TEST-TIMEOUT")),
+		[[11, 7, 11, 23, ""]]);
+	assert.deepStrictEqual(editTuples(junitProblems.get("LegacyTimeoutTest.java:17:J2C-TEST-TIMEOUT")),
+		[[16, 44, 16, 59, ""]]);
+	// An annotation alone on its line is removed with the line
+	assert.deepStrictEqual(editTuples(junitProblems.get("TimeoutTest.java:21:J2C-TEST-TIMEOUT")),
+		[[20, 1, 21, 1, ""]]);
+	assert.deepStrictEqual(editTuples(junitProblems.get("TimeoutTest.java:15:J2C-TEST-PRIVATE-METHOD")),
+		[[15, 2, 15, 10, ""]]);
+	const junitApplied = runCli(["fix", "--apply", "--tests", "--sourcepath", junitPath, junitSources]);
+	assert.strictEqual(junitApplied.status, 0, junitApplied.stderr);
+	const junitFixed = readAll(junitFiles);
+	assert(junitFixed[0].includes("@Test(expected = ArithmeticException.class)\n")
+		|| junitFixed[0].includes("@Test(expected = ArithmeticException.class)\r\n"));
+	assert(junitFixed[1].includes("\t@Test void triples() {"));
+	if (javaMajorVersion() >= 17) {
+		javacCompiles(junitFiles, junitPath);
+	}
+	assert.strictEqual(runCli(["--check", "--tests", "--sourcepath", junitPath, junitSources]).status, 0);
+
+	// Problems without a mechanical fix are left alone, and the exit status
+	// says that changes by hand are needed
+	const unfixable = path.join(work, "unfixable", "fixdemo", "Unfixable.java");
+	const unfixableText = fs.readFileSync(unfixable, "utf8");
+	const unfixed = runCli(["fix", "--apply", "--format", "json", unfixable]);
+	assert.strictEqual(unfixed.status, 1, unfixed.stderr);
+	const unfixedReport = JSON.parse(unfixed.stdout);
+	assert.strictEqual(unfixedReport.status, "problems");
+	assert.strictEqual(unfixedReport.problems.length, 2);
+	assert(unfixedReport.problems.every((problem) => problem.fixes.length === 0));
+	assert.strictEqual(unfixedReport.diff, "");
+	assert.strictEqual(fs.readFileSync(unfixable, "utf8"), unfixableText);
+
+	// Line breaks and a byte order mark are kept
+	const crlfSource = path.join(work, "crlf", "Crlf.java");
+	fs.mkdirSync(path.dirname(crlfSource));
+	fs.writeFileSync(crlfSource, "﻿" + [
+		"public class Crlf {",
+		"    Object make() {",
+		"        return new Object() {",
+		"            Runnable run() {",
+		"                return () -> System.out.println(this);",
+		"            }",
+		"        };",
+		"    }",
+		"}",
+		""
+	].join("\r\n"));
+	assert.strictEqual(runCli(["fix", "--apply", crlfSource]).status, 0);
+	const crlfFixed = fs.readFileSync(crlfSource, "utf8");
+	assert(crlfFixed.startsWith("﻿public class Crlf {\r\n"));
+	assert(crlfFixed.includes("\r\n                var self = this;\r\n                return () -> System.out.println(self);\r\n"),
+		crlfFixed);
+	assert(!/[^\r]\n/.test(crlfFixed), "Only CRLF line breaks");
+
+	const unknownOption = runCli(["fix", "--output", tempDirectory, sources]);
+	assert.strictEqual(unknownOption.status, 2);
+	assert(unknownOption.stderr.includes("Unknown fix option: --output"));
+	const noInput = runCli(["fix", "--format", "json"]);
+	assert.strictEqual(noInput.status, 2);
+	assert.strictEqual(JSON.parse(noInput.stdout).status, "usage-error");
+	assert.strictEqual(JSON.parse(noInput.stdout).command, "fix");
+}
+
 try {
 	assert(fs.existsSync(cliJar), `CLI JAR not found: ${cliJar}`);
 	fs.mkdirSync(outputDirectory);
@@ -49,6 +265,7 @@ try {
 	assert.strictEqual(help.status, 0, help.stderr);
 	assert(help.stdout.includes("--sealed-types <advisory|reject>"));
 	assert(help.stdout.includes("--check"));
+	assert(help.stdout.includes("j2c fix [--apply]"));
 
 	const version = runCli(["--version"]);
 	assert.strictEqual(version.status, 0, version.stderr);
@@ -389,7 +606,10 @@ try {
 	const jsonCheck = runCli(["--check", "--format", "json", unsupportedSource]);
 	assert.strictEqual(jsonCheck.status, 1, jsonCheck.stderr);
 	const checkReport = JSON.parse(jsonCheck.stdout);
-	assert.strictEqual(checkReport.schemaVersion, 1);
+	assert.strictEqual(checkReport.schemaVersion, 2);
+	assert.deepStrictEqual(checkReport.problems.map((problem) => [problem.id, problem.fixes.length]),
+		[["J2C-COMPILE-ERROR", 0], ["J2C-PATTERN-OUTSIDE-METHOD", 1]],
+		"The pattern problem has a fix; the compile error has none");
 	assert.strictEqual(checkReport.command, "check");
 	assert.strictEqual(checkReport.status, "problems");
 	assert.strictEqual(checkReport.summary.problemCount, 2);
@@ -423,6 +643,8 @@ try {
 		capabilities.problemIds,
 		allExplained.problems.map((entry) => entry.id)
 	);
+
+	checkQuickFixes();
 
 	// Translation refuses to move aside a directory J2C did not create
 	const guarded = path.join(tempDirectory, "guarded output");
