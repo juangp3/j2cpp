@@ -206,6 +206,10 @@ final class J2cService {
 			for (File input : inputs) {
 				File sourcePath = input.isDirectory() ? input : inferSourcePath(
 						input.getAbsoluteFile(), request.encoding);
+				// A package folder inside a build's source root is not a root
+				if (input.isDirectory() && isUnder(input, projectRoots)) {
+					continue;
+				}
 				if (!containsPath(sourcePaths, sourcePath)) {
 					sourcePaths.add(sourcePath);
 				}
@@ -334,6 +338,17 @@ final class J2cService {
 			}
 		}
 		return Collections.unmodifiableList(detected);
+	}
+
+	private static boolean isUnder(File file, List<File> directories) {
+		String path = ProjectSetup.normalize(file).getPath();
+		for (File directory : directories) {
+			String prefix = ProjectSetup.normalize(directory).getPath();
+			if (path.equals(prefix) || path.startsWith(prefix + File.separator)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private boolean isInsideRoot(File file) throws IOException {

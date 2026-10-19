@@ -46,7 +46,7 @@ function createHarness(options = {}) {
 				Object.assign(this, { range, message, severity });
 			}
 		},
-		DiagnosticSeverity: { Error: 0 },
+		DiagnosticSeverity: { Error: 0, Warning: 1 },
 		EventEmitter: class {
 			constructor() {
 				this.listeners = [];
@@ -574,6 +574,92 @@ async function testTestsSettingPassesFlag() {
 	assert(harness.spawned[0][1].includes("--tests"), "j2c.tests checks JUnit tests");
 }
 
+// j2c.project: a Maven or Gradle workspace folder is named with --project
+// for selections inside it, and supplies the source roots; none turns it off
+async function testProjectSetting() {
+	const root = path.join(tempDirectory, "maven workspace");
+	const pom = makeFile(path.join(root, "pom.xml"));
+	const input = makeFile(path.join(root, "src", "main", "java", "demo", "App.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "project extension", "lib", "j2c-cli.jar"));
+	const extensionPath = path.dirname(path.dirname(bundledJar));
+	const workspace = { name: "maven workspace", uri: { fsPath: root } };
+
+	const auto = createHarness({ extensionPath, workspaceFolders: [workspace] });
+	await auto.commands.get("j2c.check")({ fsPath: input });
+	const autoArgs = auto.spawned[0][1];
+	const projectIndex = autoArgs.indexOf("--project");
+	assert(projectIndex > 0, JSON.stringify(autoArgs));
+	assert.strictEqual(autoArgs[projectIndex + 1], root);
+	assert(!autoArgs.includes("--sourcepath"), "The build supplies the source roots");
+
+	// Selecting the project folder itself lets the CLI detect the build
+	const folder = createHarness({ extensionPath, workspaceFolders: [workspace] });
+	await folder.commands.get("j2c.check")({ fsPath: root });
+	assert(!folder.spawned[0][1].includes("--project"));
+	assert.strictEqual(folder.spawned[0][1][folder.spawned[0][1].length - 1], root);
+
+	// Explicit source paths still win
+	const configured = createHarness({ config: { sourcePaths: ["src/main/java"] }, extensionPath,
+		workspaceFolders: [workspace] });
+	await configured.commands.get("j2c.check")({ fsPath: input });
+	assert(configured.spawned[0][1].includes("--sourcepath"));
+
+	const none = createHarness({ config: { project: "none" }, extensionPath, mcpApi: true,
+		workspaceFolders: [workspace] });
+	await none.commands.get("j2c.check")({ fsPath: input });
+	const noneArgs = none.spawned[0][1];
+	assert.deepStrictEqual(noneArgs.slice(noneArgs.indexOf("--project"), noneArgs.indexOf("--project") + 2),
+		["--project", "none"]);
+	assert(noneArgs[noneArgs.indexOf("--sourcepath") + 1].startsWith(path.join(root, "src", "main", "java")),
+		"Without detection, the default source roots are passed");
+	const [server] = await none.mcpProviders.get("j2c").provideMcpServerDefinitions();
+	assert.deepStrictEqual(server.args.slice(-2), ["--project", "none"]);
+
+	// Without a build file nothing is added
+	const plainRoot = path.join(tempDirectory, "plain workspace");
+	const plainInput = makeFile(path.join(plainRoot, "src", "Plain.java"));
+	const plain = createHarness({ extensionPath, workspaceFolders: [createWorkspace(plainRoot)] });
+	await plain.commands.get("j2c.check")({ fsPath: plainInput });
+	assert(!plain.spawned[0][1].includes("--project"));
+
+	// A class path warning becomes a warning on the build file, which does
+	// not count as a problem
+	const report = {
+		schemaVersion: 1,
+		tool: "j2c",
+		command: "check",
+		status: "ok",
+		files: 1,
+		problems: [],
+		projects: [{ buildTool: "maven", root, sourceRoots: [path.join(root, "src", "main", "java")],
+			testRoots: [], classPath: [], classPathSource: "unresolved" }],
+		warnings: [{
+			id: "J2C-PROJECT-CLASSPATH-UNRESOLVED",
+			kind: "project setup",
+			severity: "warning",
+			file: pom,
+			line: 1,
+			column: 0,
+			message: "Maven was not found",
+			hint: "Install Maven"
+		}]
+	};
+	const warned = createHarness({
+		extensionPath,
+		spawnOutcome: { code: 0, stdout: `${JSON.stringify(report)}\n` },
+		workspaceFolders: [workspace]
+	});
+	await warned.commands.get("j2c.check")({ fsPath: input });
+	const [warning] = warned.diagnostics.entries.get(pom);
+	assert.strictEqual(warning.severity, 1);
+	assert.strictEqual(warning.code, "J2C-PROJECT-CLASSPATH-UNRESOLVED");
+	assert(warning.message.includes("How to fix: Install Maven"));
+	assert(warned.information[0].includes("No problems found"), JSON.stringify(warned.information));
+	const log = warned.outputs[0].lines.join("");
+	assert(log.includes("maven project"), log);
+	assert(log.includes("warning: Maven was not found [J2C-PROJECT-CLASSPATH-UNRESOLVED]"), log);
+}
+
 // Menu "when" clauses may only use context keys VS Code defines: an
 // unknown key is silently false and hides the menu item
 function testMenuContextKeys() {
@@ -617,6 +703,7 @@ async function main() {
 		await testOutputDirectoryGuard();
 		await testMcpServerDefinitions();
 		await testTestsSettingPassesFlag();
+		await testProjectSetting();
 		await testNoTargetIsReported();
 		testMenuContextKeys();
 		console.log("Extension configuration and failure checks passed");

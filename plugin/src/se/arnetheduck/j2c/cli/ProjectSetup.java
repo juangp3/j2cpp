@@ -468,7 +468,8 @@ final class ProjectSetup {
 		if (!runTool) {
 			logRoots(project, tests, log);
 			warn(project, log, "The dependency class path was not resolved because "
-					+ "running the build tool was turned off (--no-build-tool), and no "
+					+ "running the build tool was turned off (--no-build-tool, or "
+					+ "buildTool: false in MCP), and no "
 					+ "cached class path matches the build files. Types from "
 					+ "dependencies will not resolve.");
 			return;

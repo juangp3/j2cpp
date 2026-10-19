@@ -7,6 +7,8 @@ const vscode = require("vscode");
 const PROBLEM_PATTERN = /^(.+\.java):(\d+): (.+?)\r?$/;
 // Written by the CLI into every output directory it creates
 const OUTPUT_MARKER = ".j2c-output";
+// A workspace folder with one of these is a Maven or Gradle project
+const BUILD_FILES = ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"];
 
 let running = false;
 
@@ -62,7 +64,8 @@ function mcpServers(context) {
 		const server = new vscode.McpStdioServerDefinition(
 			`J2C (${folder.name})`,
 			configuration.get("javaExecutable", "java"),
-			["-jar", cliJar, "mcp", "--root", folder.uri.fsPath],
+			["-jar", cliJar, "mcp", "--root", folder.uri.fsPath,
+				...(configuration.get("project", "auto") === "none" ? ["--project", "none"] : [])],
 			{},
 			extensionVersion(context)
 		);
@@ -171,7 +174,8 @@ async function prepare(session, target, writesOutput) {
 		return undefined;
 	}
 	const configuration = vscode.workspace.getConfiguration("j2c");
-	const sourcePaths = getSourcePaths(configuration, workspaceFolder);
+	const project = projectSetup(configuration, workspaceFolder, targets);
+	const sourcePaths = getSourcePaths(configuration, workspaceFolder, project.detected);
 	const classPath = getClassPath(configuration, workspaceFolder);
 
 	let outputDirectory;
@@ -221,6 +225,7 @@ async function prepare(session, target, writesOutput) {
 	if (configuration.get("tests", false)) {
 		args.push("--tests");
 	}
+	args.push(...project.args);
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
 	}
@@ -330,6 +335,13 @@ function parseReport(stdout) {
 }
 
 function logReport(output, report) {
+	for (const project of report.projects || []) {
+		output.appendLine(`${project.buildTool} project ${project.root}: ${project.sourceRoots.length} source root(s), `
+			+ `class path from ${project.classPathSource} (${project.classPath.length} entries)`);
+	}
+	for (const warning of report.warnings || []) {
+		output.appendLine(`${warning.file}: warning: ${warning.message} [${warning.id}]`);
+	}
 	for (const problem of report.problems || []) {
 		output.appendLine(`${problem.file}:${problem.line}:${problem.column}: ${problem.message} [${problem.id}]`);
 	}
@@ -356,7 +368,20 @@ function publishReport(diagnostics, report) {
 		diagnostic.code = problem.id;
 		addDiagnostic(byFile, problem.file, diagnostic);
 	}
-	return replaceDiagnostics(diagnostics, byFile);
+	// Warnings, such as an unresolved class path, go on the build file but
+	// are not counted as problems that stop translation
+	const warnings = report.warnings || [];
+	for (const warning of warnings) {
+		const diagnostic = new vscode.Diagnostic(
+			new vscode.Range(0, 0, 0, Number.MAX_SAFE_INTEGER),
+			warning.hint ? `${warning.message}\nHow to fix: ${warning.hint}` : warning.message,
+			vscode.DiagnosticSeverity.Warning
+		);
+		diagnostic.source = "j2c";
+		diagnostic.code = warning.id;
+		addDiagnostic(byFile, warning.file, diagnostic);
+	}
+	return replaceDiagnostics(diagnostics, byFile) - warnings.length;
 }
 
 /** The same for "path:line: message" text from older CLIs */
@@ -420,9 +445,34 @@ function getTargets(target) {
 		: [];
 }
 
-function getSourcePaths(configuration, workspaceFolder) {
+/**
+ * Project auto-setup (j2c.project): the CLI detects a Maven or Gradle build
+ * in a selected folder by itself; for a selection inside a workspace folder
+ * with a build, the folder is named with --project, so the build's source
+ * roots and class path are used.
+ */
+function projectSetup(configuration, workspaceFolder, targets) {
+	if (configuration.get("project", "auto") === "none") {
+		return { args: ["--project", "none"], detected: false };
+	}
+	if (!workspaceFolder) {
+		return { args: [], detected: false };
+	}
+	const root = workspaceFolder.uri.fsPath;
+	if (!BUILD_FILES.some((name) => fs.existsSync(path.join(root, name)))) {
+		return { args: [], detected: false };
+	}
+	const selectsRoot = targets.some((target) => path.resolve(target) === path.resolve(root));
+	return { args: selectsRoot ? [] : ["--project", root], detected: true };
+}
+
+function getSourcePaths(configuration, workspaceFolder, projectDetected) {
 	const configured = configuration.get("sourcePaths", []);
 	let relativePaths = configured;
+	// A detected build supplies its own source roots
+	if (relativePaths.length === 0 && projectDetected) {
+		return [];
+	}
 	if (relativePaths.length === 0) {
 		relativePaths = vscode.workspace.getConfiguration("java.project")
 			.get("sourcePaths", []);

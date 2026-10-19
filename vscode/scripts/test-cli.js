@@ -878,6 +878,9 @@ try {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}
 
+	// Maven and Gradle project auto-setup
+	require("./test-cli-projects").checkProjects(runCli, tempDirectory);
+
 	console.log("CLI integration checks passed");
 } finally {
 	fs.rmSync(tempDirectory, { recursive: true, force: true });

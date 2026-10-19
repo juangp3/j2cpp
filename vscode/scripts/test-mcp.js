@@ -5,6 +5,7 @@ const childProcess = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const projects = require("./test-cli-projects");
 
 const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
@@ -13,13 +14,15 @@ const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "j2c mcp test "));
 const root = path.join(tempDirectory, "workspace root");
 const outside = path.join(tempDirectory, "outside");
 
-function session(messages) {
+function session(messages, options = {}) {
 	const input = messages.map((message) =>
 		typeof message === "string" ? message : JSON.stringify(message)
 	).join("\n") + "\n";
-	const result = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root", root], {
+	const result = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root",
+		options.root || root, ...(options.args || [])], {
 		encoding: "utf8",
-		input
+		input,
+		env: { ...process.env, J2C_CACHE_DIR: path.join(tempDirectory, "cache"), ...(options.env || {}) }
 	});
 	assert.strictEqual(result.status, 0, result.stderr);
 	const lines = result.stdout.split(/\r?\n/).filter((line) => line.trim() !== "");
@@ -106,6 +109,11 @@ try {
 	assert.strictEqual(byName.get("j2c_translate").annotations.destructiveHint, true);
 	assert.deepStrictEqual(byName.get("j2c_translate").inputSchema.required, ["paths", "output"]);
 	assert.strictEqual(byName.get("j2c_translate").inputSchema.properties.tests.type, "boolean");
+	// Project auto-setup may run Maven or Gradle, which can download
+	assert.strictEqual(byName.get("j2c_check").inputSchema.properties.project.type, "string");
+	assert.strictEqual(byName.get("j2c_check").inputSchema.properties.buildTool.type, "boolean");
+	assert.strictEqual(byName.get("j2c_check").annotations.openWorldHint, true);
+	assert.strictEqual(byName.get("j2c_explain").annotations.openWorldHint, false);
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -146,6 +154,48 @@ try {
 	assert.strictEqual(responses.get(null).error.code, -32700);
 	// Every request with an id got exactly one response; the notification none
 	assert.strictEqual(responses.size, 15);
+
+	// paths: ["."] in a Maven project: its source roots and class path
+	const mavenRoot = projects.copyFixtures(path.join(tempDirectory, "projects"))["maven-simple"];
+	fs.mkdirSync(path.join(mavenRoot, "out"));
+	const maven = projects.mavenAvailable();
+	const projectResponses = session([
+		call(1, "j2c_check", { paths: ["."], buildTool: false }),
+		call(2, "j2c_check", { paths: ["."], project: "none" }),
+		call(3, "j2c_check", { paths: ["."], buildTool: "yes" }),
+		...(maven ? [
+			call(4, "j2c_check", { paths: ["."], tests: true }),
+			call(5, "j2c_translate", { paths: ["."], output: "out" })
+		] : [])
+	], { root: mavenRoot });
+	const unresolved = projectResponses.get(1).result;
+	assert.strictEqual(unresolved.isError, false);
+	assert.strictEqual(unresolved.structuredContent.status, "problems");
+	assert.strictEqual(unresolved.structuredContent.warnings[0].id, "J2C-PROJECT-CLASSPATH-UNRESOLVED");
+	assert.strictEqual(unresolved.structuredContent.projects[0].buildTool, "maven");
+	assert.strictEqual(unresolved.structuredContent.projects[0].sourceRoots.length, 1);
+	assert.deepStrictEqual(projectResponses.get(2).result.structuredContent.projects, []);
+	assert.strictEqual(projectResponses.get(3).result.isError, true);
+	if (maven) {
+		const resolved = projectResponses.get(4).result.structuredContent;
+		assert.strictEqual(resolved.status, "ok", JSON.stringify(resolved));
+		assert.strictEqual(resolved.files, 2);
+		assert.strictEqual(resolved.projects[0].classPathSource, "maven");
+		const translatedProject = projectResponses.get(5).result;
+		assert.strictEqual(translatedProject.isError, false, JSON.stringify(translatedProject));
+		assert(translatedProject.structuredContent.generatedFiles.includes("src/simple/App.cpp"));
+	} else {
+		console.log("MCP Maven class path checks skipped (mvn not found on the PATH)");
+	}
+
+	// The server's defaults: j2c mcp --project none, --no-build-tool
+	const defaults = session([
+		call(1, "j2c_check", { paths: ["."] }),
+		call(2, "j2c_check", { paths: ["."], project: "auto" })
+	], { root: mavenRoot, args: ["--project", "none", "--no-build-tool"],
+		env: { J2C_CACHE_DIR: path.join(tempDirectory, "empty cache") } });
+	assert.deepStrictEqual(defaults.get(1).result.structuredContent.projects, []);
+	assert(defaults.get(2).result.structuredContent.warnings[0].message.includes("buildTool: false"));
 
 	console.log("MCP server checks passed");
 } finally {

@@ -118,7 +118,17 @@
         "j2c.tests": {
           "type": "boolean",
           "default": false,
-          "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath."
+          "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath, unless the workspace is a Maven or Gradle project (see j2c.project)."
+        },
+        "j2c.project": {
+          "type": "string",
+          "enum": ["auto", "none"],
+          "enumDescriptions": [
+            "Detect a Maven or Gradle build (pom.xml, build.gradle, settings.gradle) in the workspace folder or the selected folder, and use its source roots, test roots and dependency class path. The class path is resolved by running the project's wrapper or mvn/gradle, and cached.",
+            "Never detect a build; use j2c.sourcePaths and j2c.classPath only."
+          ],
+          "default": "auto",
+          "description": "Project auto-setup for Maven and Gradle projects. Also applies to the MCP server's tools."
         }
       }
     },
