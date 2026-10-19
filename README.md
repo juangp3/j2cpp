@@ -114,8 +114,29 @@ object (problems with ID, file, line, column, message and hint; or the
 generated files). `j2c capabilities` prints the supported features and
 limitations as JSON.
 
+Some problems have a mechanical fix, which `j2c fix` makes in the Java source:
+
+```sh
+java -jar target/j2c-cli.jar fix src/main/java           # preview as a unified diff
+java -jar target/j2c-cli.jar fix --apply src/main/java   # write the fixes
+```
+
+It takes the same inputs and options as `--check` (except `--output`, `--name`
+and `--force`). The preview prints a diff on stdout that `git apply` accepts;
+`--apply` writes the fixes, checks again, and repeats until no fixable
+problem is left. Fixes exist for `J2C-LAMBDA-ANONYMOUS-THIS` (a
+`var self = this;` local used in the lambda), `J2C-LAMBDA-INTERFACE-SUPER`
+(the `Iface.super.m()` call moved into a private method),
+`J2C-PATTERN-OUTSIDE-METHOD` (the field initializer moved into a private
+method), `J2C-TEST-TIMEOUT` (the timeout removed) and
+`J2C-TEST-PRIVATE-METHOD` (`private` removed). With `--format json`, every
+problem lists its fixes as exact edits (`file`, a `range` with 1-based
+`line` and `column`, and `newText`).
+
 The CLI exits with status 0 on success (or a clean check), 1 when translation
-fails or a check finds problems, and 2 for invalid arguments.
+fails or a check finds problems, and 2 for invalid arguments. `j2c fix` exits
+with 0 when no problem is left that needs changes by hand (after applying,
+or that the preview cannot fix), else 1.
 
 ## Unit tests (JUnit to GoogleTest)
 
@@ -196,8 +217,8 @@ methods. Each has a problem ID and a suggested fix.
 ## Using J2C with AI agents
 
 `j2c mcp` serves J2C as a Model Context Protocol server, so agents such as
-GitHub Copilot agent mode, Claude Code and Claude Desktop can check, translate
-and explain problems through typed tools. The VS Code extension registers it
+GitHub Copilot agent mode, Claude Code and Claude Desktop can check, fix,
+translate and explain problems through typed tools. The VS Code extension registers it
 automatically for each workspace folder. For Claude Code:
 
 ```sh
@@ -213,7 +234,8 @@ reference, and the recommended workflow. A ready-made
 
 The extension provides **J2C: Translate to C++** from Java editor and Explorer
 context menus. Select a Java file or source folder, then choose an existing
-output directory.
+output directory. Problems appear in the Problems panel, and those with a
+mechanical fix offer it as a quick fix.
 
 The Marketplace release is not published yet. To install a locally packaged
 VSIX after building it:

@@ -52,7 +52,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
  * compiles; anything less certain is left to the hint.
  *
  * <ul>
- * <li>J2C-LAMBDA-ANONYMOUS-THIS: "var self = this;" before the statement, and
+ * <li>J2C-LAMBDA-ANONYMOUS-THIS: "var self = this;" first in the method, and
  * self for this in the lambda.</li>
  * <li>J2C-LAMBDA-INTERFACE-SUPER: the Iface.super.m() call moved into a
  * private method of the class.</li>

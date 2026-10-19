@@ -15,7 +15,11 @@ Translatability** to Java editor and Explorer context menus.
   a project can be translated.
 
 Problems from either command appear in the **Problems** panel at their source
-lines; a clean run clears them.
+lines; a clean run clears them. Problems with a mechanical fix (such as `this`
+used in a lambda inside an anonymous class, or an `instanceof` pattern in a
+field initializer) offer it as a quick fix (**Ctrl+.** on the problem), which
+edits the Java source. A file's quick fixes are withdrawn once it changes, or
+if it had unsaved changes when it was checked; check again to get new ones.
 
 The extension requires VS Code 1.85 or newer and runs the bundled J2C CLI,
 which requires Java 11 or newer. The
@@ -30,8 +34,9 @@ panel. Sources are read as UTF-8.
 
 The extension also offers J2C to AI agents: with `j2c.mcp.enabled` (on by
 default), it registers the bundled CLI as an MCP server for each workspace
-folder, so Copilot agent mode can check and translate Java through the
-`j2c_check`, `j2c_translate`, `j2c_explain`, and `j2c_capabilities` tools.
+folder, so Copilot agent mode can check, fix and translate Java through the
+`j2c_check`, `j2c_fix`, `j2c_translate`, `j2c_explain`, and
+`j2c_capabilities` tools.
 This needs a VS Code version with MCP support. See `docs/AGENTS.md` in the
 repository.
 

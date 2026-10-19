@@ -639,6 +639,7 @@ try {
 	const capabilities = JSON.parse(runCli(["capabilities"]).stdout);
 	assert.strictEqual(capabilities.version, extensionVersion);
 	assert.strictEqual(capabilities.javaSourceLevel, "17");
+	assert(capabilities.commands.includes("fix"));
 	assert.deepStrictEqual(
 		capabilities.problemIds,
 		allExplained.problems.map((entry) => entry.id)

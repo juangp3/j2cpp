@@ -1311,6 +1311,43 @@ the agent's work, ordered by value for effort:
    - A `j2c_fix` MCP tool previews (by default) or applies them.
    - The VS Code extension offers them as quick fixes.
    - Effort: about 3–5 days.
+
+   **Done (2026-10-19):**
+   - Problems in JSON output carry `fixes: [{title, edits: [{file, range:
+     {start: {line, column}, end: {line, column}}, newText}]}]`, 1-based and
+     end-exclusive like problem columns (JSON schema version 2). Fixes are
+     computed on the original source (`QuickFixes`): the lambda ones in
+     `LambdaDesugarer`, with bindings, and the others after parsing, on a
+     reparse of the original text, since problem columns come from the
+     rewritten text.
+   - Covered: `J2C-LAMBDA-ANONYMOUS-THIS` (`var self = this;` first in the
+     method, `self` for `this`, `self.` for calls the generated class would
+     capture, `this::m` as `(p0) -> self.m(p0)`), `J2C-LAMBDA-INTERFACE-SUPER`
+     (a private helper at the end of the class), `J2C-PATTERN-OUTSIDE-METHOD`
+     (the initializer moved into a private method), `J2C-TEST-TIMEOUT` and
+     `J2C-TEST-PRIVATE-METHOD`. No fix is offered where the rewrite could
+     change meaning: lambdas in anonymous-class field initializers, `super`
+     in lambdas, generic or varargs `Iface.super` methods, and non-denotable
+     helper types.
+   - Not mechanical: compile errors, unresolved or untranslated lambdas,
+     non-denotable types and intersection casts with type variables (they
+     need a chosen type), sealed rejections (a CLI option, not the source),
+     and the test problems that need a different design (mocking,
+     extensions, parameterized tests, `@Nested`, `@TestInstance`, test
+     parameters, unsupported assertions).
+   - `j2c fix [--apply] [--format json|text]` (exit 0 when nothing is left
+     that needs changes by hand, else 1), the `j2c_fix` MCP tool (destructive
+     annotation, root-restricted writes), and VS Code quick fixes. Applying
+     repeats check and fix until no fixable problem is left, and undoes a
+     round that adds compile errors.
+   - Tests: `test/fix` fixtures; `test-cli.js` checks exact ranges, the diff
+     (applied with `git apply --check`), that applied fixes compile with
+     javac, check clean and translate, idempotence, CRLF and BOM files, and
+     unfixable problems; `test-mcp.js` and `test-extension.js` cover the
+     tool and the code actions. The fixed fixtures' C++ builds with GCC
+     (checked by hand in WSL).
+   - Found on the way: JUnit 4 `@Test(timeout = ...)` was not reported when
+     the timeout was an `int` constant (fixed).
 2. **Project auto-setup.** Detect Maven and Gradle projects: use their source
    roots and test roots, and get the dependency class path from the build
    tool, so `paths: ["."]` just works in the CLI, MCP and the extension.

@@ -649,14 +649,18 @@ final class J2cService {
 						+ "disabled tests and expected exceptions",
 				"Maven and Gradle project auto-setup: a project directory as input "
 						+ "uses the build's source and test roots, and the dependency "
-						+ "class path from mvn or gradle (--project, --no-build-tool)"));
+						+ "class path from mvn or gradle (--project, --no-build-tool)",
+				"Mechanical fixes for some problems, as exact edits to the Java source "
+						+ "(fixes in JSON output, j2c fix, the j2c_fix tool)"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",
 				"Generated objects are never freed unless the program is built with "
 						+ "make J2C_GC=boehm, which links the Boehm garbage collector",
-				"Lambdas that use this inside an anonymous class are not translated",
-				"instanceof patterns in field initializers are not translated",
+				"Lambdas that use this inside an anonymous class are not translated; "
+						+ "j2c fix rewrites most of them to use a local variable",
+				"instanceof patterns in field initializers are not translated; "
+						+ "j2c fix moves the initializer into a method",
 				"Exceptions from close() during exception unwinding terminate the program",
 				"In translated tests, assertEquals on JDK objects (strings, boxed numbers, "
 						+ "collections) and custom assertion messages need a Java runtime "

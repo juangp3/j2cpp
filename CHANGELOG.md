@@ -86,6 +86,8 @@ C++20-targeted output.
 - With `--tests`, `--check` reports test features the wrappers cannot run
   (mocking libraries, runners and extensions, parameterized or repeated tests,
   `@Nested`, timeouts, `@TestInstance`, private or parameterized methods).
+  JUnit 4's `@Test(timeout = ...)` is reported too (it was missed when the
+  timeout was written as an `int`).
 - JUnit assertions and assumptions (`assertEquals` with and without delta,
   `assertTrue`, `assertNull`, `assertSame`, `assertArrayEquals`, `fail`,
   `assertThrows`, `assertDoesNotThrow`, `assumeTrue`, and others) are
@@ -131,6 +133,17 @@ C++20-targeted output.
   VS Code: `j2c.project`). A missing or failing build tool is the warning
   `J2C-PROJECT-CLASSPATH-UNRESOLVED`; JSON results gain `projects` and
   `warnings`, and `j2c capabilities` lists `buildTools`.
+- Structured quick fixes: problems with a mechanical fix carry the exact
+  edits to the Java source in `--format json` output (`fixes`, JSON schema
+  version 2): `J2C-LAMBDA-ANONYMOUS-THIS` (`var self = this;`),
+  `J2C-LAMBDA-INTERFACE-SUPER` (a private helper method),
+  `J2C-PATTERN-OUTSIDE-METHOD` (the initializer moved into a method),
+  `J2C-TEST-TIMEOUT` and `J2C-TEST-PRIVATE-METHOD`.
+- `j2c fix [--apply] <paths>` previews the fixes as a unified diff, or with
+  `--apply` writes them and checks again until no fixable problem is left. It
+  exits with 0 when no problem needs changes by hand, else 1. The MCP server
+  adds a `j2c_fix` tool (preview by default, `apply: true` writes), and the
+  VS Code extension offers the fixes as quick fixes on J2C diagnostics.
 
 ### Java language support
 
