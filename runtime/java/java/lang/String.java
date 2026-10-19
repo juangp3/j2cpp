@@ -6,10 +6,9 @@ package java.lang;
  *
  * Limits: case mapping (toUpperCase, toLowerCase, the ignoreCase methods)
  * is exact for ASCII and Latin-1 characters only, as in the JDK's root
- * locale; other characters keep their case. split accepts only patterns
- * without regular expression constructs (literal text, backslash-escaped
- * punctuation, or the empty pattern) and throws
- * UnsupportedOperationException for anything else.
+ * locale; other characters keep their case. matches, split, replaceAll
+ * and replaceFirst use java.util.regex; split takes a fast path without it
+ * for patterns with no regular expression constructs.
  */
 public final class String implements java.io.Serializable, Comparable<String>, CharSequence {
 	private final char[] value;
@@ -539,10 +538,21 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 	public String[] split(String regex, int limit) {
 		String literal = literalPattern(regex);
 		if (literal == null) {
-			throw new UnsupportedOperationException("String.split: the J2C runtime supports only literal patterns, not the regular expression \""
-					+ regex + "\"");
+			return java.util.regex.Pattern.compile(regex).split(this, limit);
 		}
 		return splitLiteral(literal, limit);
+	}
+
+	public boolean matches(String regex) {
+		return java.util.regex.Pattern.matches(regex, this);
+	}
+
+	public String replaceAll(String regex, String replacement) {
+		return java.util.regex.Pattern.compile(regex).matcher(this).replaceAll(replacement);
+	}
+
+	public String replaceFirst(String regex, String replacement) {
+		return java.util.regex.Pattern.compile(regex).matcher(this).replaceFirst(replacement);
 	}
 
 	/**
