@@ -113,7 +113,7 @@
         "j2c.mcp.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Offer J2C's check, translate, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
+          "description": "Offer J2C's check, translate, fix, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
         },
         "j2c.tests": {
           "type": "boolean",

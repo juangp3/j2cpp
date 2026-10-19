@@ -25,6 +25,8 @@ function createHarness(options = {}) {
 	const mcpProviders = new Map();
 	const configurationListeners = [];
 	const commands = new Map();
+	const codeActionProviders = [];
+	const documentListeners = [];
 	const workspaceFolders = options.workspaceFolders || [];
 	const config = options.config || {};
 	const sourcePathConfig = options.javaSourcePaths || [];
@@ -64,12 +66,32 @@ function createHarness(options = {}) {
 		Range: class {
 			constructor(startLine, startCharacter, endLine, endCharacter) {
 				Object.assign(this, { startLine, startCharacter, endLine, endCharacter });
+				this.start = { line: startLine, character: startCharacter };
+				this.end = { line: endLine, character: endCharacter };
+			}
+		},
+		CodeAction: class {
+			constructor(title, kind) {
+				Object.assign(this, { title, kind });
+			}
+		},
+		CodeActionKind: { QuickFix: "quickfix" },
+		WorkspaceEdit: class {
+			constructor() {
+				this.replacements = [];
+			}
+			replace(uri, range, newText) {
+				this.replacements.push({ uri, range, newText });
 			}
 		},
 		languages: {
 			createDiagnosticCollection: (name) => {
 				assert.strictEqual(name, "j2c");
 				return diagnostics;
+			},
+			registerCodeActionsProvider: (selector, provider, metadata) => {
+				codeActionProviders.push({ selector, provider, metadata });
+				return { dispose() {} };
 			}
 		},
 		Uri: {
@@ -120,6 +142,11 @@ function createHarness(options = {}) {
 				return { dispose() {} };
 			},
 			onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
+			onDidChangeTextDocument: (listener) => {
+				documentListeners.push(listener);
+				return { dispose() {} };
+			},
+			textDocuments: options.textDocuments || [],
 			getConfiguration: (section) => ({
 				get: (key, defaultValue) => {
 					if (section === "j2c") {
@@ -227,6 +254,10 @@ function createHarness(options = {}) {
 		changeConfiguration: (section) => configurationListeners.forEach((listener) =>
 			listener({ affectsConfiguration: (name) => name === section })
 		),
+		changeDocument: (fsPath) => documentListeners.forEach((listener) =>
+			listener({ document: { uri: { fsPath } }, contentChanges: [{ text: "x" }] })
+		),
+		codeActionProviders,
 		commands,
 		config,
 		context,
@@ -458,7 +489,7 @@ async function testJsonReportPublishesDiagnostics() {
 	const input = makeFile(path.join(root, "src", "Anonymous.java"));
 	const bundledJar = makeFile(path.join(tempDirectory, "json extension", "lib", "j2c-cli.jar"));
 	const report = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		tool: "j2c",
 		command: "check",
 		status: "problems",
@@ -496,6 +527,79 @@ async function testJsonReportPublishesDiagnostics() {
 	assert(log.includes("progress on stderr"));
 	assert(!log.includes("schemaVersion"), "The raw JSON report is not shown to people");
 	assert(harness.warnings[0].includes("1 problem(s) would stop translation"));
+}
+
+async function testQuickFixesFromJsonReport() {
+	const root = path.join(tempDirectory, "quick fix workspace");
+	const input = makeFile(path.join(root, "src", "Anonymous.java"));
+	const dirty = makeFile(path.join(root, "src", "Dirty.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "quick fix extension", "lib", "j2c-cli.jar"));
+	const fix = {
+		title: "Use a local variable for this (var self = this;)",
+		edits: [
+			{ file: input, range: { start: { line: 3, column: 3 }, end: { line: 3, column: 3 } }, newText: "var self = this;\n\t\t" },
+			{ file: input, range: { start: { line: 4, column: 40 }, end: { line: 4, column: 44 } }, newText: "self" }
+		]
+	};
+	const problem = (file, line, column, fixes) => ({
+		id: "J2C-LAMBDA-ANONYMOUS-THIS",
+		kind: "lambda expression",
+		severity: "error",
+		file,
+		line,
+		column,
+		message: "Java 8 lambda expression cannot be translated",
+		hint: "Assign this to a local variable",
+		fixes
+	});
+	const report = {
+		schemaVersion: 2,
+		tool: "j2c",
+		command: "check",
+		status: "problems",
+		problems: [
+			problem(input, 4, 22, [fix]),
+			problem(input, 9, 5, []),
+			problem(dirty, 4, 22, [{ ...fix, edits: [{ ...fix.edits[1], file: dirty }] }])
+		]
+	};
+	const harness = createHarness({
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		spawnOutcome: { code: 1, stdout: `${JSON.stringify(report)}\n` },
+		textDocuments: [{ uri: { fsPath: dirty }, isDirty: true }],
+		workspaceFolders: [createWorkspace(root)]
+	});
+	const [registration] = harness.codeActionProviders;
+	assert.deepStrictEqual(registration.selector, { language: "java" });
+	assert.deepStrictEqual(registration.metadata.providedCodeActionKinds, ["quickfix"]);
+	await harness.commands.get("j2c.check")({ fsPath: input });
+
+	const provide = (file, diagnostics) => registration.provider.provideCodeActions(
+		{ uri: { fsPath: file } }, diagnostics[0].range, { diagnostics });
+	const [withFix, withoutFix] = harness.diagnostics.entries.get(input);
+	const other = { ...withFix, source: "java" };
+	const actions = provide(input, [withFix, withoutFix, other]);
+	assert.strictEqual(actions.length, 1, "Only J2C diagnostics with fixes get actions");
+	const [action] = actions;
+	assert.strictEqual(action.title, "J2C: Use a local variable for this (var self = this;)");
+	assert.strictEqual(action.kind, "quickfix");
+	assert.strictEqual(action.isPreferred, true);
+	assert.deepStrictEqual(action.diagnostics, [withFix]);
+	assert.deepStrictEqual(action.edit.replacements.map((replacement) => [
+		replacement.uri.fsPath,
+		replacement.range.startLine, replacement.range.startCharacter,
+		replacement.range.endLine, replacement.range.endCharacter,
+		replacement.newText
+	]), [
+		[input, 2, 2, 2, 2, "var self = this;\n\t\t"],
+		[input, 3, 39, 3, 43, "self"]
+	], "1-based JSON positions become 0-based editor positions");
+
+	// The CLI read the saved file, so an unsaved one gets no fixes
+	assert.deepStrictEqual(provide(dirty, harness.diagnostics.entries.get(dirty)), []);
+	// Once the file changes, the fixes' ranges are stale
+	harness.changeDocument(input);
+	assert.deepStrictEqual(provide(input, [withFix]), []);
 }
 
 async function testOutputDirectoryGuard() {
@@ -700,6 +804,7 @@ async function main() {
 		await testCheckPublishesProblems();
 		await testTranslationProblemsArePublished();
 		await testJsonReportPublishesDiagnostics();
+		await testQuickFixesFromJsonReport();
 		await testOutputDirectoryGuard();
 		await testMcpServerDefinitions();
 		await testTestsSettingPassesFlag();

@@ -11,6 +11,8 @@ const OUTPUT_MARKER = ".j2c-output";
 const BUILD_FILES = ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"];
 
 let running = false;
+// Quick fixes from the last JSON report, by file: [{ id, line, column, fixes }]
+const quickFixes = new Map();
 
 function activate(context) {
 	const output = vscode.window.createOutputChannel("J2C");
@@ -26,6 +28,66 @@ function activate(context) {
 		(target) => check(session, target)
 	));
 	registerMcpServer(context);
+	registerQuickFixes(context);
+}
+
+/**
+ * Offers the fixes that problems in the CLI's JSON report carry as quick
+ * fixes on their diagnostics. A file's fixes are dropped once it changes,
+ * because their ranges no longer match it; checking again offers new ones.
+ */
+function registerQuickFixes(context) {
+	context.subscriptions.push(vscode.languages.registerCodeActionsProvider(
+		{ language: "java" },
+		{ provideCodeActions: (document, _range, actionContext) => codeActions(document, actionContext) },
+		{ providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+	));
+	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event) => {
+		if (event.contentChanges.length > 0) {
+			quickFixes.delete(fileKey(event.document.uri.fsPath));
+		}
+	}));
+}
+
+function codeActions(document, actionContext) {
+	const entries = quickFixes.get(fileKey(document.uri.fsPath)) || [];
+	const actions = [];
+	for (const diagnostic of actionContext.diagnostics) {
+		if (diagnostic.source !== "j2c") {
+			continue;
+		}
+		const entry = entries.find((candidate) => candidate.id === diagnostic.code
+			&& candidate.line === diagnostic.range.start.line
+			&& candidate.column === diagnostic.range.start.character);
+		for (const [index, fix] of (entry ? entry.fixes : []).entries()) {
+			const action = new vscode.CodeAction(`J2C: ${fix.title}`, vscode.CodeActionKind.QuickFix);
+			action.diagnostics = [diagnostic];
+			action.isPreferred = index === 0;
+			action.edit = new vscode.WorkspaceEdit();
+			for (const edit of fix.edits) {
+				const { start, end } = edit.range;
+				action.edit.replace(
+					vscode.Uri.file(edit.file),
+					new vscode.Range(start.line - 1, start.column - 1, end.line - 1, end.column - 1),
+					edit.newText
+				);
+			}
+			actions.push(action);
+		}
+	}
+	return actions;
+}
+
+function fileKey(file) {
+	const normalized = path.normalize(file);
+	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+/** Whether the file is open with changes the CLI did not see */
+function isDirty(file) {
+	const key = fileKey(file);
+	return (vscode.workspace.textDocuments || []).some((document) =>
+		document.isDirty && fileKey(document.uri.fsPath) === key);
 }
 
 /**
@@ -356,6 +418,7 @@ function logReport(output, report) {
 /** Replaces the J2C diagnostics with the report's problems */
 function publishReport(diagnostics, report) {
 	const byFile = new Map();
+	quickFixes.clear();
 	for (const problem of report.problems || []) {
 		const line = Math.max(problem.line - 1, 0);
 		const column = Math.max((problem.column || 1) - 1, 0);
@@ -367,6 +430,13 @@ function publishReport(diagnostics, report) {
 		diagnostic.source = "j2c";
 		diagnostic.code = problem.id;
 		addDiagnostic(byFile, problem.file, diagnostic);
+		if (Array.isArray(problem.fixes) && problem.fixes.length > 0 && !isDirty(problem.file)) {
+			const key = fileKey(problem.file);
+			if (!quickFixes.has(key)) {
+				quickFixes.set(key, []);
+			}
+			quickFixes.get(key).push({ id: problem.id, line, column, fixes: problem.fixes });
+		}
 	}
 	// Warnings, such as an unresolved class path, go on the build file but
 	// are not counted as problems that stop translation
@@ -387,6 +457,7 @@ function publishReport(diagnostics, report) {
 /** The same for "path:line: message" text from older CLIs */
 function publishText(diagnostics, text) {
 	const byFile = new Map();
+	quickFixes.clear();
 	for (const line of text.split("\n")) {
 		const match = line.match(PROBLEM_PATTERN);
 		if (!match) {
