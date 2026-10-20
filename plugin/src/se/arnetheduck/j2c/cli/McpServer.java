@@ -13,6 +13,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.core.runtime.OperationCanceledException;
 
 import se.arnetheduck.j2c.transform.TranslationException;
 
@@ -20,11 +27,22 @@ import se.arnetheduck.j2c.transform.TranslationException;
  * J2C as a Model Context Protocol server: JSON-RPC 2.0 messages, one per line,
  * on stdin and stdout. Every path is resolved against, and must stay inside,
  * the workspace root.
+ *
+ * Tool calls run one at a time on a worker thread, in the order they arrive,
+ * while this thread keeps reading: ping and the other methods are answered
+ * at once, and notifications/cancelled stops a call at its next file or
+ * phase, after which the call gets no response. A call with a progressToken
+ * in its _meta gets notifications/progress while it runs. Every message is
+ * written whole, one at a time.
  */
 final class McpServer {
 	/** Newest first; the client's version is used when it is one of these */
 	private static final List<String> PROTOCOL_VERSIONS = Arrays.asList(
 			"2025-06-18", "2025-03-26", "2024-11-05");
+	/** Before 2025-03-26, progress notifications had no message */
+	private static final String FIRST_PROGRESS_MESSAGE_VERSION = "2025-03-26";
+	/** Progress notifications of one call are at least this far apart */
+	static final long PROGRESS_INTERVAL_MILLIS = 100;
 
 	private static final String INSTRUCTIONS = "J2C translates Java 17 source "
 			+ "into C++20. Typical workflow: call j2c_check on the Java files or "
@@ -41,28 +59,119 @@ final class McpServer {
 			+ "runtime's contract and API (j2c://runtime), and translated files "
 			+ "(j2c://output/{path}).";
 
+	/**
+	 * A tool: its tools/list definition and what a call does. Calls get the
+	 * call's progress, to report phases and counted items and to stop with
+	 * OperationCanceledException once cancelled. Throwing
+	 * IllegalArgumentException reports a usage error, TranslationException
+	 * the problems; any other exception is a tool error.
+	 */
+	abstract static class Tool {
+		final String name;
+		final Map<String, Object> definition;
+
+		Tool(Map<String, Object> definition) {
+			this.name = (String) definition.get("name");
+			this.definition = definition;
+		}
+
+		/** The structured result, shown as the tool result */
+		abstract Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+				throws Exception;
+
+		/**
+		 * The tools/call result: the structured result as text and as
+		 * structuredContent; overridden to add content
+		 */
+		Map<String, Object> result(Map<?, ?> arguments, Progress progress)
+				throws Exception {
+			return toolResult(call(arguments, progress), false);
+		}
+	}
+
+	/** A tools/call in the queue or running */
+	private final class Call extends Progress {
+		final Object id;
+		/** null when the client asked for no progress */
+		final Object progressToken;
+		/** Set once the response was written, or skipped after a cancel */
+		boolean finished;
+		private long lastReport;
+
+		Call(Object id, Object progressToken) {
+			this.id = id;
+			this.progressToken = progressToken;
+		}
+
+		@Override
+		protected void report(long progress, long total, String message) {
+			if (progressToken == null) {
+				return;
+			}
+			long now = System.nanoTime();
+			if (lastReport != 0
+					&& now - lastReport < TimeUnit.MILLISECONDS
+							.toNanos(PROGRESS_INTERVAL_MILLIS)) {
+				return;
+			}
+			lastReport = now;
+			Map<String, Object> params = new LinkedHashMap<String, Object>();
+			params.put("progressToken", progressToken);
+			params.put("progress", progress);
+			if (total >= 0) {
+				params.put("total", total);
+			}
+			if (message != null && supportsProgressMessage()) {
+				params.put("message", message);
+			}
+			Map<String, Object> notification = new LinkedHashMap<String, Object>();
+			notification.put("jsonrpc", "2.0");
+			notification.put("method", "notifications/progress");
+			notification.put("params", params);
+			synchronized (output) {
+				// Progress stops with the response, and with a cancel
+				if (!finished && !cancelled()) {
+					send(notification);
+				}
+			}
+		}
+	}
+
 	private final File root;
 	private final J2cService service;
 	/** Project auto-setup defaults, from j2c mcp --project and --no-build-tool */
 	private final String project;
 	private final boolean buildTool;
+	private final Map<String, Tool> tools = new LinkedHashMap<String, Tool>();
+	/** Tool calls not yet answered, by request id */
+	private final Map<Object, Call> calls = new ConcurrentHashMap<Object, Call>();
+	/** Guards out; every message is written while holding it */
+	private final Object output = new Object();
+	private PrintStream out;
+	private volatile String protocolVersion = PROTOCOL_VERSIONS.get(0);
 
 	McpServer(File root) {
-		this(root, J2cService.PROJECT_AUTO, true);
+		this(root, J2cService.PROJECT_AUTO, true, CheckCache.DEFAULT_MAX_FILES);
 	}
 
-	McpServer(File root, String project, boolean buildTool) {
+	/**
+	 * @param cachedFiles how many files' check results to keep between calls
+	 *            (j2c mcp --check-cache); 0 checks everything every time
+	 */
+	McpServer(File root, String project, boolean buildTool, int cachedFiles) {
 		this.root = root;
 		this.service = new J2cService(root);
 		this.project = project;
 		this.buildTool = buildTool;
 		this.content = new McpContent(root, service);
+		if (cachedFiles > 0) {
+			service.setCache(new CheckCache(cachedFiles));
+		}
+		registerTools();
 	}
 
 	/** Prompts and resources */
 	private final McpContent content;
-	/** The version agreed in initialize */
-	private String protocolVersion = PROTOCOL_VERSIONS.get(0);
 
 	/** Whether titles may be sent: 2025-06-18 added them */
 	private boolean titles() {
@@ -70,25 +179,116 @@ final class McpServer {
 	}
 
 	void serve(InputStream in, PrintStream rawOut) throws IOException {
-		PrintStream out = new PrintStream(rawOut, true, StandardCharsets.UTF_8);
+		out = new PrintStream(rawOut, true, StandardCharsets.UTF_8);
 		// Only protocol messages may appear on stdout; the translator's
 		// progress output goes to stderr
 		System.setOut(System.err);
+		ExecutorService worker = Executors
+				.newSingleThreadExecutor(new ThreadFactory() {
+					@Override
+					public Thread newThread(Runnable runnable) {
+						Thread thread = new Thread(runnable, "j2c-mcp-tools");
+						thread.setDaemon(true);
+						return thread;
+					}
+				});
 		BufferedReader reader = new BufferedReader(new InputStreamReader(in,
 				StandardCharsets.UTF_8));
-		for (String line = reader.readLine(); line != null; line = reader
-				.readLine()) {
-			if (line.trim().isEmpty()) {
-				continue;
+		try {
+			for (String line = reader.readLine(); line != null; line = reader
+					.readLine()) {
+				if (!line.trim().isEmpty()) {
+					receive(line, worker);
+				}
 			}
-			Map<String, Object> response = handle(line);
-			if (response != null) {
-				out.println(Json.write(response));
+		} finally {
+			// The client closed stdin: answer the calls already received
+			worker.shutdown();
+			try {
+				worker.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
 			}
 		}
 	}
 
-	/** The response to one message, or null for a notification */
+	private void send(Map<String, Object> message) {
+		synchronized (output) {
+			out.println(Json.write(message));
+		}
+	}
+
+	/** Answers one message now, or queues a tool call */
+	private void receive(String line, ExecutorService worker) {
+		final Map<?, ?> request = request(line);
+		if (request == null || !"tools/call".equals(request.get("method"))) {
+			Map<String, Object> response = handle(line);
+			if (response != null) {
+				send(response);
+			}
+			return;
+		}
+		if (!request.containsKey("id")) {
+			// A tools/call notification asks for nothing
+			return;
+		}
+		final Map<?, ?> params = params(request);
+		Object meta = params.get("_meta");
+		Object token = meta instanceof Map ? ((Map<?, ?>) meta)
+				.get("progressToken") : null;
+		if (!(token instanceof String) && !(token instanceof Number)) {
+			token = null;
+		}
+		final Call call = new Call(request.get("id"), token);
+		if (call.id != null) {
+			calls.put(call.id, call);
+		}
+		worker.execute(new Runnable() {
+			@Override
+			public void run() {
+				Map<String, Object> response = null;
+				try {
+					if (!call.cancelled()) {
+						response = callTool(call.id, params, call);
+					}
+				} catch (OperationCanceledException e) {
+					response = null;
+				} finally {
+					synchronized (output) {
+						// A cancelled request gets no response
+						if (response != null && !call.cancelled()) {
+							send(response);
+						}
+						call.finished = true;
+					}
+					if (call.id != null) {
+						calls.remove(call.id, call);
+					}
+				}
+			}
+		});
+	}
+
+	/** The message as a request object, or null when it is not one */
+	private static Map<?, ?> request(String line) {
+		try {
+			Object message = Json.parse(line);
+			return message instanceof Map ? (Map<?, ?>) message : null;
+		} catch (IllegalArgumentException e) {
+			return null;
+		}
+	}
+
+	private static Map<?, ?> params(Map<?, ?> request) {
+		return request.get("params") instanceof Map ? (Map<?, ?>) request
+				.get("params") : Collections.emptyMap();
+	}
+
+	/**
+	 * The response to one message other than a queued tool call, or null for
+	 * a notification. Tool calls are answered here too, on this thread, when
+	 * called directly.
+	 */
 	Map<String, Object> handle(String line) {
 		Object message;
 		try {
@@ -106,8 +306,7 @@ final class McpServer {
 			return error(id, -32600, "Invalid request");
 		}
 		boolean notification = !request.containsKey("id");
-		Map<?, ?> params = request.get("params") instanceof Map ? (Map<?, ?>) request
-				.get("params") : Collections.emptyMap();
+		Map<?, ?> params = params(request);
 
 		switch ((String) method) {
 		case "initialize":
@@ -115,11 +314,18 @@ final class McpServer {
 		case "ping":
 			return result(id, new LinkedHashMap<String, Object>());
 		case "tools/list":
-			Map<String, Object> tools = new LinkedHashMap<String, Object>();
-			tools.put("tools", toolDefinitions());
-			return result(id, tools);
+			Map<String, Object> list = new LinkedHashMap<String, Object>();
+			List<Object> definitions = new ArrayList<Object>();
+			for (Tool tool : tools.values()) {
+				definitions.add(tool.definition);
+			}
+			list.put("tools", definitions);
+			return result(id, list);
 		case "tools/call":
-			return callTool(id, params);
+			return callTool(id, params, new Progress());
+		case "notifications/cancelled":
+			cancel(params);
+			return null;
 		case "prompts/list":
 			return result(id, McpContent.promptList(titles()));
 		case "prompts/get":
@@ -149,6 +355,22 @@ final class McpServer {
 		}
 	}
 
+	/** Stops the call named by notifications/cancelled, if still running */
+	private void cancel(Map<?, ?> params) {
+		Object requestId = params.get("requestId");
+		Call call = requestId == null ? null : calls.get(requestId);
+		if (call != null) {
+			Object reason = params.get("reason");
+			System.err.println("J2C: cancelling request " + Json.write(requestId)
+					+ (reason instanceof String ? ": " + reason : ""));
+			call.cancel();
+		}
+	}
+
+	private boolean supportsProgressMessage() {
+		return protocolVersion.compareTo(FIRST_PROGRESS_MESSAGE_VERSION) >= 0;
+	}
+
 	private Map<String, Object> initialize(Map<?, ?> params) {
 		Object requested = params.get("protocolVersion");
 		String version = PROTOCOL_VERSIONS.contains(requested) ? (String) requested
@@ -156,9 +378,9 @@ final class McpServer {
 		protocolVersion = version;
 
 		Map<String, Object> capabilities = new LinkedHashMap<String, Object>();
-		Map<String, Object> tools = new LinkedHashMap<String, Object>();
-		tools.put("listChanged", false);
-		capabilities.put("tools", tools);
+		Map<String, Object> toolCapabilities = new LinkedHashMap<String, Object>();
+		toolCapabilities.put("listChanged", false);
+		capabilities.put("tools", toolCapabilities);
 		// Prompts and resources (with templates) are in every supported
 		// version; the list never changes on its own, and nothing is
 		// subscribable
@@ -185,57 +407,30 @@ final class McpServer {
 		return result;
 	}
 
-	private Map<String, Object> callTool(Object id, Map<?, ?> params) {
+	/**
+	 * Runs a tool. OperationCanceledException is passed on when the call was
+	 * cancelled.
+	 */
+	private Map<String, Object> callTool(Object id, Map<?, ?> params,
+			Progress progress) {
 		Object name = params.get("name");
 		Map<?, ?> arguments = params.get("arguments") instanceof Map ? (Map<?, ?>) params
 				.get("arguments") : Collections.emptyMap();
 		String command = name instanceof String ? ((String) name).replaceFirst(
 				"^j2c_", "") : "";
+		Tool tool = tools.get(String.valueOf(name));
+		if (tool == null) {
+			return error(id, -32602, "Unknown tool: " + name);
+		}
 
 		try {
-			switch (String.valueOf(name)) {
-			case "j2c_check": {
-				J2cService.CheckResult result = service.check(request(arguments,
-						false));
-				return result(id, toolResult(J2cService.checkJson(result), false));
+			return result(id, tool.result(arguments, progress));
+		} catch (OperationCanceledException e) {
+			if (progress.cancelled()) {
+				throw e;
 			}
-			case "j2c_translate": {
-				J2cService.TranslateResult result = service.translate(request(
-						arguments, true));
-				content.translated(result);
-				return result(id, toolResult(J2cService.translateJson(result),
-						false));
-			}
-			case "j2c_fix": {
-				Fixer fixer = new Fixer(service, root);
-				Fixer.Result result = fixer.fix(request(arguments, false),
-						Boolean.TRUE.equals(arguments.get("apply")));
-				return result(id, toolResult(fixer.json(result), false));
-			}
-			case "j2c_report": {
-				Report report = new Report(service, root);
-				List<String> inputs = strings(arguments, "paths", true);
-				Report.Result result = report.run(request(arguments, false));
-				Map<String, Object> toolResult = toolResult(report.json(result,
-						inputs), false);
-				// The same report as Markdown, for people reading along
-				Map<String, Object> markdown = new LinkedHashMap<String, Object>();
-				markdown.put("type", "text");
-				markdown.put("text", report.markdown(result, inputs));
-				List<Object> content = new ArrayList<Object>(
-						(List<?>) toolResult.get("content"));
-				content.add(markdown);
-				toolResult.put("content", content);
-				return result(id, toolResult);
-			}
-			case "j2c_explain":
-				return result(id, toolResult(J2cService.explainJson(optionalString(
-						arguments, "id")), false));
-			case "j2c_capabilities":
-				return result(id, toolResult(J2cService.capabilitiesJson(), false));
-			default:
-				return error(id, -32602, "Unknown tool: " + name);
-			}
+			return result(id, toolResult(J2cService.errorJson(command, "error",
+					"Stopped: " + e.getMessage()), true));
 		} catch (IllegalArgumentException e) {
 			return result(id, toolResult(J2cService.errorJson(command,
 					"usage-error", e.getMessage()), true));
@@ -247,6 +442,129 @@ final class McpServer {
 			return result(id, toolResult(J2cService.errorJson(command, "error",
 					String.valueOf(e.getMessage())), true));
 		}
+	}
+
+	private void register(Tool tool) {
+		tools.put(tool.name, tool);
+	}
+
+	/** The tools, in tools/list order */
+	private void registerTools() {
+		register(new Tool(tool("j2c_check", "Check Java for translation problems",
+				"Reports every Java compile error and construct J2C cannot "
+						+ "translate in the given Java files or source folders, "
+						+ "with file, line, column, a stable problem id and a hint "
+						+ "for fixing it. Writes nothing. Run before j2c_translate. "
+						+ "Checking again is fast: only changed files and the files "
+						+ "that use them are compiled again.",
+				inputSchema(false), true, false, true)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				return J2cService.checkJson(service.check(request(arguments,
+						false), progress));
+			}
+		});
+		register(new Tool(tool("j2c_translate", "Translate Java to C++",
+				"Translates Java files or source folders into C++20 in the output "
+						+ "directory and lists the generated files, including a "
+						+ "Makefile. The output directory must exist and be empty or "
+						+ "previous J2C output; its current contents are moved to a "
+						+ "backup in the temporary folder. Fails with the same "
+						+ "problems j2c_check reports.",
+				inputSchema(true), false, true, true)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				J2cService.TranslateResult result = service.translate(request(
+						arguments, true), progress);
+				content.translated(result);
+				return J2cService.translateJson(result);
+			}
+		});
+		Map<String, Object> fixSchema = inputSchema(false);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> fixProperties = (Map<String, Object>) fixSchema
+				.get("properties");
+		fixProperties.put("apply", property("boolean",
+				"Write the fixes into the Java files (default false: only preview "
+						+ "them as a unified diff)"));
+		register(new Tool(tool("j2c_fix", "Fix Java translation problems",
+				"Previews, as a unified diff, the mechanical fixes of the problems "
+						+ "j2c_check reports, such as this used in a lambda inside an "
+						+ "anonymous class; with apply: true writes them into the Java "
+						+ "files, checks again, and repeats until no fixable problem is "
+						+ "left. Problems without a fix are returned with their hints.",
+				// Like j2c_check, it may run the project's build tool
+				fixSchema, false, true, true)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				Fixer fixer = new Fixer(service, root);
+				return fixer.json(fixer.fix(request(arguments, false),
+						Boolean.TRUE.equals(arguments.get("apply")), progress));
+			}
+		});
+		register(new Tool(tool("j2c_report", "Migration readiness report",
+				"Reports how much of the Java code translates (files, types and "
+						+ "methods with no problem from j2c_check), the blockers by "
+						+ "problem id and package with top locations and quick-fix "
+						+ "counts, test-feature blockers with tests, the JDK types and "
+						+ "members the code uses compared with what the J2C runtime "
+						+ "provides, and next steps. Writes nothing. Returns JSON and "
+						+ "the same report as Markdown.",
+				// Like j2c_check, it may run the project's build tool
+				inputSchema(false), true, false, true)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				Report report = new Report(service, root);
+				return report.json(report.run(request(arguments, false), progress),
+						strings(arguments, "paths", true));
+			}
+
+			@Override
+			Map<String, Object> result(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				Report report = new Report(service, root);
+				List<String> inputs = strings(arguments, "paths", true);
+				Report.Result result = report.run(request(arguments, false),
+						progress);
+				Map<String, Object> toolResult = toolResult(report.json(result,
+						inputs), false);
+				// The same report as Markdown, for people reading along
+				Map<String, Object> markdown = new LinkedHashMap<String, Object>();
+				markdown.put("type", "text");
+				markdown.put("text", report.markdown(result, inputs));
+				List<Object> content = new ArrayList<Object>(
+						(List<?>) toolResult.get("content"));
+				content.add(markdown);
+				toolResult.put("content", content);
+				return toolResult;
+			}
+		});
+		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
+		explainProperties.put("id", property("string",
+				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
+		register(new Tool(tool("j2c_explain", "Explain a J2C problem id",
+				"Explains what a problem id from j2c_check means and how to fix it.",
+				schema(explainProperties, Collections.<String> emptyList()), true,
+				false, false)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress) {
+				return J2cService.explainJson(optionalString(arguments, "id"));
+			}
+		});
+		register(new Tool(tool("j2c_capabilities", "J2C capabilities",
+				"Lists the J2C version, supported Java features, known limitations "
+						+ "and problem ids.",
+				schema(new LinkedHashMap<String, Object>(),
+						Collections.<String> emptyList()), true, false, false)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress) {
+				return J2cService.capabilitiesJson();
+			}
+		});
 	}
 
 	private J2cService.Request request(Map<?, ?> arguments, boolean writes) {
@@ -344,61 +662,6 @@ final class McpServer {
 		return result;
 	}
 
-	private static List<Object> toolDefinitions() {
-		List<Object> tools = new ArrayList<Object>();
-		tools.add(tool("j2c_check", "Check Java for translation problems",
-				"Reports every Java compile error and construct J2C cannot "
-						+ "translate in the given Java files or source folders, "
-						+ "with file, line, column, a stable problem id and a hint "
-						+ "for fixing it. Writes nothing. Run before j2c_translate.",
-				inputSchema(false), true, false, true));
-		tools.add(tool("j2c_translate", "Translate Java to C++",
-				"Translates Java files or source folders into C++20 in the output "
-						+ "directory and lists the generated files, including a "
-						+ "Makefile. The output directory must exist and be empty or "
-						+ "previous J2C output; its current contents are moved to a "
-						+ "backup in the temporary folder. Fails with the same "
-						+ "problems j2c_check reports.",
-				inputSchema(true), false, true, true));
-		Map<String, Object> fixSchema = inputSchema(false);
-		@SuppressWarnings("unchecked")
-		Map<String, Object> fixProperties = (Map<String, Object>) fixSchema
-				.get("properties");
-		fixProperties.put("apply", property("boolean",
-				"Write the fixes into the Java files (default false: only preview "
-						+ "them as a unified diff)"));
-		tools.add(tool("j2c_fix", "Fix Java translation problems",
-				"Previews, as a unified diff, the mechanical fixes of the problems "
-						+ "j2c_check reports, such as this used in a lambda inside an "
-						+ "anonymous class; with apply: true writes them into the Java "
-						+ "files, checks again, and repeats until no fixable problem is "
-						+ "left. Problems without a fix are returned with their hints.",
-				// Like j2c_check, it may run the project's build tool
-				fixSchema, false, true, true));
-		tools.add(tool("j2c_report", "Migration readiness report",
-				"Reports how much of the Java code translates (files, types and "
-						+ "methods with no problem from j2c_check), the blockers by "
-						+ "problem id and package with top locations and quick-fix "
-						+ "counts, test-feature blockers with tests, the JDK types and "
-						+ "members the code uses compared with what the J2C runtime "
-						+ "provides, and next steps. Writes nothing. Returns JSON and "
-						+ "the same report as Markdown.",
-				// Like j2c_check, it may run the project's build tool
-				inputSchema(false), true, false, true));
-		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
-		explainProperties.put("id", property("string",
-				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
-		tools.add(tool("j2c_explain", "Explain a J2C problem id",
-				"Explains what a problem id from j2c_check means and how to fix it.",
-				schema(explainProperties, Collections.<String> emptyList()), true,
-				false, false));
-		tools.add(tool("j2c_capabilities", "J2C capabilities",
-				"Lists the J2C version, supported Java features, known limitations "
-						+ "and problem ids.",
-				schema(new LinkedHashMap<String, Object>(),
-						Collections.<String> emptyList()), true, false, false));
-		return tools;
-	}
 
 	private static Map<String, Object> inputSchema(boolean translate) {
 		Map<String, Object> properties = new LinkedHashMap<String, Object>();

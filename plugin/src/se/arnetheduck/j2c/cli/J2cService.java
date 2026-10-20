@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,6 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 
 import se.arnetheduck.j2c.transform.Fix;
@@ -102,9 +102,15 @@ final class J2cService {
 		final SourceProject project;
 		final SourceUnit[] units;
 
-		Prepared(SourceProject project, SourceUnit[] units) {
+		final List<File> sourcePaths;
+		final List<File> classPaths;
+
+		Prepared(SourceProject project, SourceUnit[] units,
+				List<File> sourcePaths, List<File> classPaths) {
 			this.project = project;
 			this.units = units;
+			this.sourcePaths = sourcePaths;
+			this.classPaths = classPaths;
 		}
 	}
 
@@ -112,28 +118,78 @@ final class J2cService {
 	private final File root;
 	/** The builds detected for the latest request */
 	private List<ProjectSetup.Project> projects = Collections.emptyList();
+	/** Results kept between checks, in the MCP server; null checks all */
+	private CheckCache cache;
 
 	J2cService(File root) {
 		this.root = root;
 	}
 
-	CheckResult check(Request request) throws Exception {
-		return check(request, null);
+	/** Keeps check results between calls; null checks everything each time */
+	void setCache(CheckCache cache) {
+		this.cache = cache;
 	}
 
-	/** A check that also hands each unit's AST to the listener (the report) */
-	CheckResult check(Request request, Transformer.CheckListener listener)
+	CheckResult check(Request request) throws Exception {
+		return check(request, null, Progress.NONE);
+	}
+
+	CheckResult check(Request request, Progress progress) throws Exception {
+		return check(request, null, progress);
+	}
+
+	/**
+	 * Checks the request's files. Problems are grouped by file in path order,
+	 * each file's in the order they were found. A listener (the report) gets
+	 * each unit's AST, so all units are checked; otherwise the cache, when
+	 * set, re-checks only what may have changed.
+	 */
+	CheckResult check(final Request request,
+			final Transformer.CheckListener listener, final Progress progress)
 			throws Exception {
-		Prepared prepared = prepare(request, false);
-		// Checking writes nothing, so the output root is never used
-		Transformer checker = new Transformer(prepared.project, "check",
-				new Path(new File(".").getAbsolutePath()), request.sealedTypes);
-		checker.setTests(request.tests);
-		CheckResult result = new CheckResult(checker.check(
-				new NullProgressMonitor(), listener, prepared.units),
+		final Prepared prepared = prepare(request, false, progress);
+		CheckCache.Checker checker = new CheckCache.Checker() {
+			@Override
+			public List<Problem> check(SourceUnit[] units) throws Exception {
+				// Checking writes nothing, so the output root is never used
+				Transformer checker = new Transformer(prepared.project, "check",
+						new Path(new File(".").getAbsolutePath()),
+						request.sealedTypes);
+				checker.setTests(request.tests);
+				return checker.check(progress.monitor(), listener, units);
+			}
+		};
+		List<Problem> problems;
+		if (cache == null || listener != null) {
+			problems = checker.check(prepared.units);
+		} else {
+			List<File> buildFiles = new ArrayList<File>();
+			for (ProjectSetup.Project project : projects) {
+				buildFiles.addAll(project.buildFiles);
+			}
+			problems = cache.check(prepared.sourcePaths, prepared.classPaths,
+					request.runtime == null, request.sealedTypes + " tests="
+							+ request.tests + " runtime=" + request.runtime
+							+ " encoding=" + request.encoding.name(), buildFiles,
+					request.encoding, prepared.units, checker, progress);
+			System.err.println("J2C: " + cache.last());
+		}
+		CheckResult result = new CheckResult(byFile(problems),
 				prepared.units.length);
 		result.projects = projects;
 		return result;
+	}
+
+	/** Sorts by file; problems in one file keep their order */
+	private static List<Problem> byFile(List<Problem> problems) {
+		List<Problem> sorted = new ArrayList<Problem>(problems);
+		Collections.sort(sorted, new Comparator<Problem>() {
+			@Override
+			public int compare(Problem a, Problem b) {
+				return a.file.getPath().compareTo(b.file.getPath());
+			}
+		});
+		return sorted;
 	}
 
 	/** The builds detected for the latest request, for failure reports */
@@ -142,7 +198,18 @@ final class J2cService {
 	}
 
 	TranslateResult translate(Request request) throws Exception {
-		Prepared prepared = prepare(request, true);
+		return translate(request, Progress.NONE);
+	}
+
+	/**
+	 * Translates the request's files. The output directory is marked as J2C
+	 * output before anything is written to it, so a translation that fails or
+	 * is cancelled half-way leaves generated files that the next translation
+	 * replaces without --force.
+	 */
+	TranslateResult translate(Request request, Progress progress)
+			throws Exception {
+		Prepared prepared = prepare(request, true, progress);
 		File output = request.output.getAbsoluteFile();
 		String name = request.name == null ? output.getName() : request.name;
 		Transformer transformer = new Transformer(prepared.project, name,
@@ -151,12 +218,12 @@ final class J2cService {
 		if (request.runtime != null) {
 			transformer.setRuntimeCpp(new File(request.runtime, "cpp"));
 		}
-		transformer.process(new NullProgressMonitor(), prepared.units);
-
+		progress.checkCancelled();
 		Files.write(new File(output, OUTPUT_MARKER).toPath(), ("Generated by J2C "
 				+ version() + ". Translating into this directory again moves its "
 				+ "current contents to a backup in the temporary folder.\n")
 				.getBytes(StandardCharsets.UTF_8));
+		transformer.process(progress.monitor(), prepared.units);
 
 		List<String> generated = new ArrayList<String>();
 		listFiles(output, "", generated);
@@ -168,7 +235,8 @@ final class J2cService {
 		return result;
 	}
 
-	private Prepared prepare(Request request, boolean writes) throws IOException {
+	private Prepared prepare(Request request, boolean writes, Progress progress)
+			throws IOException {
 		projects = Collections.emptyList();
 		if (writes) {
 			File output = request.output;
@@ -208,7 +276,8 @@ final class J2cService {
 		List<File> inputs = new ArrayList<File>(request.inputs);
 		List<File> projectRoots = new ArrayList<File>();
 		List<File> classPaths = new ArrayList<File>(request.classPaths);
-		projects = setUpProjects(request, inputs, projectRoots, classPaths);
+		projects = setUpProjects(request, inputs, projectRoots, classPaths,
+				progress);
 
 		List<File> sourcePaths = new ArrayList<File>(request.sourcePaths);
 		if (sourcePaths.isEmpty()) {
@@ -276,7 +345,7 @@ final class J2cService {
 		for (int i = 0; i < units.length; ++i) {
 			units[i] = project.getUnit(selectedFiles.get(i));
 		}
-		return new Prepared(project, units);
+		return new Prepared(project, units, sourcePaths, classPaths);
 	}
 
 	/**
@@ -286,7 +355,8 @@ final class J2cService {
 	 * added to roots, and the class path to classPaths.
 	 */
 	private List<ProjectSetup.Project> setUpProjects(Request request,
-			List<File> inputs, List<File> roots, List<File> classPaths)
+			List<File> inputs, List<File> roots, List<File> classPaths,
+			Progress progress)
 			throws IOException {
 		if (PROJECT_NONE.equals(request.project)) {
 			return Collections.emptyList();
@@ -330,7 +400,7 @@ final class J2cService {
 
 		for (ProjectSetup.Project project : detected) {
 			ProjectSetup.resolve(project, request.tests, request.buildTool,
-					System.err);
+					System.err, progress);
 			List<File> projectRoots = new ArrayList<File>(project.sourceRoots);
 			if (request.tests) {
 				projectRoots.addAll(project.testRoots);

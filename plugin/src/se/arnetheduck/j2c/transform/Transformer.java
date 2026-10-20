@@ -16,6 +16,7 @@ import java.util.WeakHashMap;
 
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
@@ -141,8 +142,15 @@ public class Transformer {
 		junitAssertions = true;
 	}
 
+	/**
+	 * Translates the units and the types they depend on. The monitor counts
+	 * written units (beginTask with an unknown total, then worked(1) after
+	 * each) and stops the translation with OperationCanceledException when
+	 * cancelled, leaving what was written so far.
+	 */
 	public void process(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
+		monitor.beginTask("Translating", IProgressMonitor.UNKNOWN);
 		monitor.subTask("Moving old files");
 		renameOld();
 
@@ -183,8 +191,10 @@ public class Transformer {
 		todo.addAll(selection);
 
 		while (!todo.isEmpty()) {
+			checkCanceled(monitor);
 			processSome(monitor);
 		}
+		checkCanceled(monitor);
 
 		writeResources();
 		writeTests();
@@ -205,6 +215,12 @@ public class Transformer {
 
 		System.out.println("Done (" + (System.currentTimeMillis() - start)
 				+ " ms).");
+	}
+
+	private static void checkCanceled(IProgressMonitor monitor) {
+		if (monitor.isCanceled()) {
+			throw new OperationCanceledException();
+		}
 	}
 
 	private void collectTests(CompilationUnit ast) {
@@ -442,7 +458,8 @@ public class Transformer {
 
 	/**
 	 * Reports every problem in the units that would stop their translation,
-	 * without writing anything.
+	 * without writing anything. The monitor counts checked units and stops
+	 * the check with OperationCanceledException when cancelled.
 	 */
 	public List<Problem> check(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
@@ -460,10 +477,11 @@ public class Transformer {
 	 * unit's AST (of the source after lambda rewriting, which keeps line
 	 * numbers) to the listener, when it is not null
 	 */
-	public List<Problem> check(IProgressMonitor monitor,
+	public List<Problem> check(final IProgressMonitor monitor,
 			final CheckListener listener, SourceUnit... units) throws Exception {
 		selection.addAll(Arrays.asList(units));
 		final List<Problem> problems = new ArrayList<Problem>();
+		monitor.beginTask("Checking " + units.length + " file(s)", units.length);
 		project.parse(Arrays.asList(units), monitor,
 				new SourceProject.UnitHandler() {
 					@Override
@@ -475,8 +493,11 @@ public class Transformer {
 						if (listener != null) {
 							listener.checked(source, ast, found);
 						}
+						monitor.subTask("Checked " + source.file().getPath());
+						monitor.worked(1);
 					}
 				});
+		monitor.done();
 		return problems;
 	}
 
@@ -610,6 +631,7 @@ public class Transformer {
 				+ done.size() + " types done, "
 				+ todo.size() + " units and " + hardDeps.size()
 				+ " dependencies pending)");
+		checkCanceled(monitor);
 		UnitInfo ui = new UnitInfo();
 
 		cu.accept(new TypeInfoVisitor(ui));
@@ -636,6 +658,7 @@ public class Transformer {
 		for (ITypeBinding tb : ui.types.keySet()) {
 			addDone(tb, cur == sel);
 		}
+		monitor.worked(1);
 	}
 
 	public void write(UnitInfo ui, IPath unitRoot, EnumDeclaration node) {
@@ -781,7 +804,10 @@ public class Transformer {
 
 			cur = ext;
 			for (ITypeBinding tb : bindings) {
+				checkCanceled(monitor);
 				writeHeader(null, tb);
+				monitor.subTask("Wrote the header of " + tb.getQualifiedName());
+				monitor.worked(1);
 			}
 
 			cur = sel;

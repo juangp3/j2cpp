@@ -127,6 +127,11 @@ final class Report {
 	}
 
 	Result run(J2cService.Request request) throws Exception {
+		return run(request, Progress.NONE);
+	}
+
+	/** Like run, reporting the check's progress and stopping when cancelled */
+	Result run(J2cService.Request request, Progress progress) throws Exception {
 		final Result result = new Result();
 		result.tests = request.tests;
 		result.runtime = request.runtime != null ? RuntimeApi
@@ -145,7 +150,7 @@ final class Report {
 				ast.accept(new Scanner(ast, info, result.jdk));
 				files.put(source.file(), info);
 			}
-		});
+		}, progress);
 		result.files.addAll(files.values());
 		for (FileInfo file : result.files) {
 			for (Problem problem : file.problems) {

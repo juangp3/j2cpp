@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -84,6 +86,8 @@ public class SourceProject {
 	 * Parses the units with one shared compiler environment, which is much
 	 * cheaper than resolving bindings for each file separately. Handler
 	 * failures stop the remaining units from being handled and are rethrown.
+	 * The monitor is only asked whether to stop (OperationCanceledException):
+	 * progress is the handler's to report.
 	 */
 	public void parse(Collection<SourceUnit> batch, IProgressMonitor monitor,
 			final UnitHandler handler) throws Exception {
@@ -109,16 +113,33 @@ public class SourceProject {
 						if (failure[0] != null) {
 							return;
 						}
+						if (monitor.isCanceled()) {
+							failure[0] = new OperationCanceledException();
+							return;
+						}
 						try {
 							handler.accept(byPath.get(sourceFilePath), ast);
 						} catch (Exception e) {
 							failure[0] = e;
 						}
 					}
-				}, monitor);
+				}, cancelOnly(monitor));
 		if (failure[0] != null) {
 			throw failure[0];
 		}
+	}
+
+	/**
+	 * Forwards only cancellation, so that JDT's own work units stay out of the
+	 * caller's progress
+	 */
+	private static IProgressMonitor cancelOnly(final IProgressMonitor monitor) {
+		return new NullProgressMonitor() {
+			@Override
+			public boolean isCanceled() {
+				return monitor.isCanceled();
+			}
+		};
 	}
 
 	/** Lambdas and method references in the unit that were not rewritten */
@@ -163,6 +184,13 @@ public class SourceProject {
 					@Override
 					public void acceptAST(String sourceFilePath,
 							CompilationUnit ast) {
+						if (failure[0] != null) {
+							return;
+						}
+						if (monitor.isCanceled()) {
+							failure[0] = new OperationCanceledException();
+							return;
+						}
 						SourceUnit unit = candidates.get(sourceFilePath);
 						LambdaDesugarer desugarer = new LambdaDesugarer(
 								unit.file(), texts.get(unit), ast);
@@ -175,7 +203,7 @@ public class SourceProject {
 							failure[0] = e;
 						}
 					}
-				}, monitor);
+				}, cancelOnly(monitor));
 		if (failure[0] != null) {
 			throw failure[0];
 		}

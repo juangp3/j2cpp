@@ -27,6 +27,7 @@ import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
+import org.eclipse.core.runtime.OperationCanceledException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -447,6 +448,15 @@ final class ProjectSetup {
 	 */
 	static void resolve(Project project, boolean tests, boolean runTool,
 			PrintStream log) {
+		resolve(project, tests, runTool, log, Progress.NONE);
+	}
+
+	/**
+	 * Like resolve, reporting the build tool run as a phase of progress.
+	 * Cancelling stops the build tool and throws OperationCanceledException.
+	 */
+	static void resolve(Project project, boolean tests, boolean runTool,
+			PrintStream log, Progress progress) {
 		log.println("J2C: " + project.toolName() + " project in " + project.root
 				+ (project.modules.size() > 1 ? " (" + (project.modules.size() - 1)
 						+ " module(s))" : ""));
@@ -477,10 +487,12 @@ final class ProjectSetup {
 
 		try {
 			if (MAVEN.equals(project.buildTool)) {
-				runMaven(project, tests, log);
+				runMaven(project, tests, log, progress);
 			} else {
-				runGradle(project, tests, log);
+				runGradle(project, tests, log, progress);
 			}
+		} catch (OperationCanceledException e) {
+			throw e;
 		} catch (Exception e) {
 			warn(project, log, project.toolName() + " could not be run to resolve "
 					+ "the class path: " + e.getMessage());
@@ -499,7 +511,8 @@ final class ProjectSetup {
 		return count + (count == 1 ? " entry" : " entries");
 	}
 
-	private static void runMaven(Project project, boolean tests, PrintStream log)
+	private static void runMaven(Project project, boolean tests, PrintStream log,
+			Progress progress)
 			throws IOException, InterruptedException {
 		List<String> command = mavenCommand(project, tests);
 		if (command == null) {
@@ -508,7 +521,7 @@ final class ProjectSetup {
 					+ "on the class path. Types from dependencies will not resolve.");
 			return;
 		}
-		Run run = run(project, command, log);
+		Run run = run(project, command, log, progress);
 		List<String> entries = parseMaven(run.lines);
 		if (run.status != 0 && entries.isEmpty()) {
 			warn(project, log, failure(project, run));
@@ -522,7 +535,8 @@ final class ProjectSetup {
 		}
 	}
 
-	private static void runGradle(Project project, boolean tests, PrintStream log)
+	private static void runGradle(Project project, boolean tests, PrintStream log,
+			Progress progress)
 			throws IOException, InterruptedException {
 		File initScript = File.createTempFile("j2c-init", ".gradle");
 		try {
@@ -536,10 +550,11 @@ final class ProjectSetup {
 						+ "dependencies will not resolve.");
 				return;
 			}
-			Run run = run(project, command, log);
+			Run run = run(project, command, log, progress);
 			if (run.status != 0) {
 				log.println("J2C:   " + project.toolName() + " failed; retrying offline");
-				run = run(project, gradleCommand(project, initScript, true), log);
+				run = run(project, gradleCommand(project, initScript, true), log,
+						progress);
 			}
 			if (run.status != 0) {
 				warn(project, log, failure(project, run));
@@ -680,11 +695,14 @@ final class ProjectSetup {
 		List<String> lines = new ArrayList<String>();
 	}
 
-	private static Run run(Project project, List<String> command, PrintStream log)
+	private static Run run(Project project, List<String> command, PrintStream log,
+			Progress progress)
 			throws IOException, InterruptedException {
 		project.command = join(command);
 		log.println("J2C:   resolving the class path: " + project.command
 				+ " (--no-build-tool skips this)");
+		progress.phase("Resolving the class path with " + project.toolName()
+				+ " in " + project.root);
 		ProcessBuilder builder = new ProcessBuilder(command);
 		builder.directory(project.root);
 		builder.redirectErrorStream(true);
@@ -712,7 +730,14 @@ final class ProjectSetup {
 		reader.setDaemon(true);
 		reader.start();
 		Run run = new Run();
-		if (!process.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
+		long deadline = System.nanoTime()
+				+ TimeUnit.MINUTES.toNanos(TIMEOUT_MINUTES);
+		boolean exited = false;
+		while (!exited && !progress.cancelled()
+				&& System.nanoTime() < deadline) {
+			exited = process.waitFor(100, TimeUnit.MILLISECONDS);
+		}
+		if (!exited) {
 			run.timedOut = true;
 			Iterator<ProcessHandle> descendants = process.descendants().iterator();
 			while (descendants.hasNext()) {
@@ -720,6 +745,8 @@ final class ProjectSetup {
 			}
 			process.destroyForcibly();
 			process.waitFor(10, TimeUnit.SECONDS);
+			// Stopped for a cancelled request, not timed out
+			progress.checkCancelled();
 		}
 		reader.join(10000);
 		run.status = run.timedOut ? -1 : process.exitValue();

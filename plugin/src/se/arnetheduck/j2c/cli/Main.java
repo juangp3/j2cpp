@@ -35,7 +35,7 @@ public class Main {
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
-			+ "[--no-build-tool]" + NL
+			+ "[--no-build-tool] [--check-cache <files>]" + NL
 			+ "       j2c --version" + NL
 			+ "--check reports every problem that would stop translation "
 			+ "without writing output." + NL
@@ -60,7 +60,10 @@ public class Main {
 			+ "--no-build-tool never runs Maven or Gradle (a cached class path is "
 			+ "still used)." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
-			+ "for AI agents.";
+			+ "for AI agents; --check-cache keeps the check results of up to "
+			+ "that many files between calls (default "
+			+ CheckCache.DEFAULT_MAX_FILES + ", 0 turns it off), so checking "
+			+ "again compiles only changed files and the files that use them.";
 
 	public static void main(String[] args) {
 		boolean json = isJson(args);
@@ -226,6 +229,7 @@ public class Main {
 		File root = new File(".");
 		String project = J2cService.PROJECT_AUTO;
 		boolean buildTool = true;
+		int cachedFiles = CheckCache.DEFAULT_MAX_FILES;
 		for (int i = 1; i < args.length; i++) {
 			if ("--root".equals(args[i])) {
 				root = new File(value(args, ++i, args[i - 1]));
@@ -233,6 +237,17 @@ public class Main {
 				project = project(value(args, ++i, args[i - 1]), false);
 			} else if ("--no-build-tool".equals(args[i])) {
 				buildTool = false;
+			} else if ("--check-cache".equals(args[i])) {
+				String files = value(args, ++i, args[i - 1]);
+				try {
+					cachedFiles = Integer.parseInt(files);
+				} catch (NumberFormatException e) {
+					cachedFiles = -1;
+				}
+				if (cachedFiles < 0) {
+					throw new IllegalArgumentException("--check-cache needs a "
+							+ "number of files (0 turns the cache off): " + files);
+				}
 			} else {
 				throw new IllegalArgumentException("Unknown mcp option: "
 						+ args[i]);
@@ -242,7 +257,7 @@ public class Main {
 			throw new IllegalArgumentException("MCP root is not a directory: "
 					+ root);
 		}
-		new McpServer(root.getCanonicalFile(), project, buildTool).serve(
+		new McpServer(root.getCanonicalFile(), project, buildTool, cachedFiles).serve(
 				System.in, System.out);
 		return 0;
 	}

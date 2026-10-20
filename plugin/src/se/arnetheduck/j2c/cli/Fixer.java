@@ -8,6 +8,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.eclipse.core.runtime.OperationCanceledException;
+
 import se.arnetheduck.j2c.transform.Fix;
 import se.arnetheduck.j2c.transform.Problem;
 import se.arnetheduck.j2c.transform.ProblemCatalog;
@@ -60,9 +62,18 @@ final class Fixer {
 	}
 
 	Result fix(J2cService.Request request, boolean apply) throws Exception {
+		return fix(request, apply, Progress.NONE);
+	}
+
+	/**
+	 * Like fix. Cancelling stops at the next check; a round whose check was
+	 * cancelled is undone, so the files keep the fixes of the rounds before.
+	 */
+	Result fix(J2cService.Request request, boolean apply, Progress progress)
+			throws Exception {
 		Result result = new Result();
 		result.applied = apply;
-		J2cService.CheckResult check = service.check(request);
+		J2cService.CheckResult check = service.check(request, progress);
 		result.fileCount = check.fileCount;
 		if (!apply) {
 			Plan plan = plan(check.problems);
@@ -92,12 +103,22 @@ final class Fixer {
 					originals.put(file.getKey(), text);
 				}
 			}
-			for (Map.Entry<File, List<SourceEdit>> file : plan.edits.entrySet()) {
-				write(file.getKey(), edit(before.get(file.getKey()),
-						file.getValue(), file.getKey()), request);
+			progress.checkCancelled();
+			J2cService.CheckResult next;
+			try {
+				for (Map.Entry<File, List<SourceEdit>> file : plan.edits
+						.entrySet()) {
+					write(file.getKey(), edit(before.get(file.getKey()),
+							file.getValue(), file.getKey()), request);
+				}
+				next = service.check(request, progress);
+			} catch (OperationCanceledException e) {
+				// An unchecked round is not kept
+				for (Map.Entry<File, String> file : before.entrySet()) {
+					write(file.getKey(), file.getValue(), request);
+				}
+				throw e;
 			}
-
-			J2cService.CheckResult next = service.check(request);
 			if (count(next.problems, true) > count(check.problems, true)) {
 				// A fix that breaks compilation is a J2C bug; keep the user's code
 				for (Map.Entry<File, String> file : before.entrySet()) {
@@ -109,10 +130,10 @@ final class Fixer {
 				break;
 			}
 			result.fixed.addAll(plan.fixed);
-			boolean progress = count(next.problems, false) < count(
+			boolean fewer = count(next.problems, false) < count(
 					check.problems, false);
 			check = next;
-			if (!progress) {
+			if (!fewer) {
 				break;
 			}
 		}
