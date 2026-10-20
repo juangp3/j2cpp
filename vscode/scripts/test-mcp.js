@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const projects = require("./test-cli-projects");
+const sessions = require("./test-mcp-sessions");
 
 const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
@@ -39,6 +40,7 @@ function call(id, name, args) {
 	return { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } };
 }
 
+async function main() {
 try {
 	assert(fs.existsSync(cliJar), `CLI JAR not found: ${cliJar}`);
 	const sourceDirectory = path.join(root, "src", "demo");
@@ -394,7 +396,26 @@ try {
 		assert(older.get(id).result[key].every((item) => item.title === undefined), key);
 	}
 
+	// A long-running server: incremental re-checks equal fresh checks, and
+	// progress, ping during a call, and cancellation
+	const sessionEnv = { J2C_CACHE_DIR: path.join(tempDirectory, "cache") };
+	const rechecked = await sessions.checkIncremental(cliJar, tempDirectory, sessionEnv);
+	console.log("Incremental re-checks equal fresh checks: " + rechecked
+		.filter((entry) => entry.paths === "src")
+		.map((entry) => `${entry.step} ${entry.rechecked}/${entry.selected}`).join(", "));
+	const timing = await sessions.checkProgressAndCancellation(cliJar, tempDirectory, sessionEnv);
+	console.log(`Cancelled translation stopped in ${timing.stopTime} ms (a full one takes ${timing.fullTime} ms)`);
+	await sessions.checkOldProgress(cliJar, tempDirectory, sessionEnv);
+	const gradleStop = await sessions.checkBuildToolCancellation(cliJar, tempDirectory, sessionEnv);
+	console.log(`Cancelled check stopped the build tool in ${gradleStop} ms`);
+
 	console.log("MCP server checks passed");
 } finally {
 	fs.rmSync(tempDirectory, { recursive: true, force: true });
 }
+}
+
+main().catch((error) => {
+	console.error(error);
+	process.exitCode = 1;
+});

@@ -29,6 +29,10 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.ToolFactory;
+import org.eclipse.jdt.core.compiler.IScanner;
+import org.eclipse.jdt.core.compiler.ITerminalSymbols;
+import org.eclipse.jdt.core.compiler.InvalidInputException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -115,17 +119,17 @@ final class CheckCache {
 		String[] topLevel;
 		String packageName;
 		boolean syntaxErrors;
-		/** The unit path the problems were found for, or null */
-		String unitPath;
-		List<Problem> problems;
+		/**
+		 * Problems found, by the unit path and the undiscoverable selected
+		 * files compiled alongside; cleared when the file may be affected
+		 */
+		final Map<String, List<Problem>> results = new HashMap<String, List<Problem>>();
 	}
 
 	private static final class Session {
 		final Map<String, FileState> files = new HashMap<String, FileState>();
 		/** Packages on the class path or in the JDK */
 		Set<String> externalPackages;
-		/** The undiscoverable selected files the results were found with */
-		List<String> context;
 	}
 
 	private final int maxFiles;
@@ -258,23 +262,24 @@ final class CheckCache {
 				context.add(path);
 			}
 		}
-		if (!context.equals(session.context)) {
-			full = true;
-			session.context = context;
-		}
+		String contextKey = String.join("\n", context);
 
 		Set<String> affected = new HashSet<String>(apiChanged);
 		if (!apiChanged.isEmpty()) {
 			dependents(session, names, affected);
 		}
 		affected.addAll(changed);
+		for (Map.Entry<String, FileState> entry : session.files.entrySet()) {
+			if (full || affected.contains(entry.getKey())) {
+				entry.getValue().results.clear();
+			}
+		}
 
 		List<SourceUnit> batch = new ArrayList<SourceUnit>();
 		for (Map.Entry<String, SourceUnit> entry : selected.entrySet()) {
 			FileState state = session.files.get(entry.getKey());
-			if (full || affected.contains(entry.getKey())
-					|| state.problems == null
-					|| !entry.getValue().file().getPath().equals(state.unitPath)) {
+			if (!state.results.containsKey(resultKey(entry.getValue(),
+					contextKey))) {
 				batch.add(entry.getValue());
 			}
 		}
@@ -302,18 +307,22 @@ final class CheckCache {
 			}
 			for (SourceUnit unit : batch) {
 				FileState state = session.files.get(normalize(unit.file()));
-				state.unitPath = unit.file().getPath();
-				state.problems = Collections.unmodifiableList(byUnit.get(unit
-						.file().getPath()));
+				state.results.put(resultKey(unit, contextKey), Collections
+						.unmodifiableList(byUnit.get(unit.file().getPath())));
 			}
 		}
 		stats.rechecked = batch.size();
 
 		List<Problem> result = new ArrayList<Problem>();
-		for (String path : selected.keySet()) {
-			result.addAll(session.files.get(path).problems);
+		for (Map.Entry<String, SourceUnit> entry : selected.entrySet()) {
+			result.addAll(session.files.get(entry.getKey()).results.get(resultKey(
+					entry.getValue(), contextKey)));
 		}
 		return result;
+	}
+
+	private static String resultKey(SourceUnit unit, String contextKey) {
+		return unit.file().getPath() + "\n\n" + contextKey;
 	}
 
 	/** Adds the files that may depend on the names, transitively */
@@ -525,19 +534,41 @@ final class CheckCache {
 			// Recovery may read declarations differently in another context
 			state.api = hash;
 		} else {
-			StringBuilder api = new StringBuilder(text.length());
-			int at = 0;
-			for (int[] body : bodies) {
-				if (body[0] < at) {
-					continue;
-				}
-				api.append(text, at, body[0]).append("{}");
-				at = body[1];
-			}
-			api.append(text, at, text.length());
-			state.api = sha256(api.toString().getBytes(StandardCharsets.UTF_8));
+			state.api = api(text, bodies, hash);
 		}
 		return state;
+	}
+
+	/**
+	 * A hash of the tokens outside method and initializer bodies, without
+	 * comments and whitespace: what other files can see of this one
+	 */
+	private static byte[] api(String text, List<int[]> bodies, byte[] hash)
+			throws NoSuchAlgorithmException {
+		IScanner scanner = ToolFactory.createScanner(false, false, false,
+				JavaCore.VERSION_17);
+		scanner.setSource(text.toCharArray());
+		StringBuilder api = new StringBuilder(text.length());
+		int body = 0;
+		try {
+			for (int token = scanner.getNextToken(); token != ITerminalSymbols.TokenNameEOF; token = scanner
+					.getNextToken()) {
+				int start = scanner.getCurrentTokenStartPosition();
+				while (body < bodies.size() && start >= bodies.get(body)[1]) {
+					++body;
+				}
+				if (body < bodies.size() && start >= bodies.get(body)[0]) {
+					if (start == bodies.get(body)[0]) {
+						api.append("{}\n");
+					}
+					continue;
+				}
+				api.append(scanner.getCurrentTokenSource()).append('\n');
+			}
+		} catch (InvalidInputException e) {
+			return hash;
+		}
+		return sha256(api.toString().getBytes(StandardCharsets.UTF_8));
 	}
 
 	/** Every identifier-like word in the text, comments and strings included */
