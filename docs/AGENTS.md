@@ -290,6 +290,62 @@ output directory with J2C's `.j2c-output` marker; anything else is an error.
 `resources/list` lists the catalog, the runtime, and the files of each
 translation made in the session; `resources/templates/list` has the two
 templates.
+### Re-checks, progress and cancellation
+
+The server keeps check results between calls, so checking again after an
+edit compiles only what may have changed. Results are always the same as a
+fresh `j2c --check`:
+
+- On each call J2C reads and hashes every Java file under the source paths.
+  A file's API is its declarations: everything outside method and
+  initializer bodies, without comments and whitespace.
+- An edit inside bodies (or to comments) compiles only that file. A changed
+  API, or a file added, deleted or renamed, also compiles every file that
+  mentions a type declared in it (as a word anywhere in its text), and the
+  files that mention those, until nothing is added.
+- Files whose types JDT cannot find by name through the source path
+  (several top-level types in a file, a package that does not match its
+  folder, a package also on the class path or in the JDK, syntax errors) are
+  compiled alongside every re-check, as a fresh check would.
+- Different source paths, class path (entries and their size and
+  modification time), options or build files start again from scratch, as
+  do `module-info.java` and `package-info.java` changes and a type declared
+  in two files.
+- `j2c mcp --check-cache <files>` limits how many files' results are kept
+  over all environments (default 20000, dropping the least recently used;
+  `0` turns the cache off). `j2c_fix` uses the cache for its re-checks too.
+
+On joda-time (166 files), a fresh `j2c --check` takes about 2.6 s and a
+check in a warm server without the cache about 1.2 s; after a body edit the
+re-check takes about 0.13 s, and after an API change about 0.7 s, since
+most of joda-time mentions most of it. On javaparser (740 files, 431
+problems), 10 s fresh and 0.5–1 s after a body edit.
+
+Problems are listed by file path, each file's in the order they are found,
+in every check.
+
+A `tools/call` with `_meta.progressToken` gets `notifications/progress`
+while it runs, at most every 100 ms, with an increasing `progress`, `total`
+when known, and a `message` (left out for protocol version 2024-11-05):
+looking for changed files, the build tool resolving the class path, files
+checked (out of `total`), and translated files and headers (no total).
+None are sent after the response.
+
+Tool calls run one at a time, in the order they arrive; `ping` and the other
+requests are answered while one runs. `notifications/cancelled` with the
+call's `requestId` stops it at its next file or phase, stopping the build
+tool if it is running, and the call gets no response (a queued call never
+starts). What is left:
+
+- `j2c_check` and `j2c_report`: nothing changes; the kept results for that
+  environment are dropped. (`j2c_report` reads every file's syntax tree, so
+  it always checks every file and does not use the kept results.)
+- `j2c_translate`: the output directory has the `.j2c-output` marker and the
+  files written so far (no `Makefile`, which is written last); its previous
+  contents are in the backup, as for any translation. Translating again
+  replaces it without `force`. Cancelling deletes nothing.
+- `j2c_fix` with `apply: true`: the files keep the fixes of the rounds whose
+  check finished; the round being checked is undone.
 
 ## Recommended workflow
 

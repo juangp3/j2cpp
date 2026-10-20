@@ -245,6 +245,11 @@ The tools are `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`,
 `j2c_explain` and `j2c_capabilities`; the server also has the prompts
 `j2c-migrate` and `j2c-assess`, and resources for the problem catalog, the
 runtime's contract and translated files.
+The server keeps check results between calls, so checking again after an
+edit compiles only the changed files and the files that use them, with the
+same result as a fresh check (`--check-cache <files>` bounds what is kept;
+`0` turns it off). Tool calls report progress to clients that ask for it,
+can be cancelled, and `ping` is answered while one runs.
 
 See [docs/AGENTS.md](docs/AGENTS.md) for setup in each client, the tool
 reference, and the recommended workflow. A ready-made

@@ -221,7 +221,8 @@ final class McpServer {
 	/** Answers one message now, or queues a tool call */
 	private void receive(String line, ExecutorService worker) {
 		final Map<?, ?> request = request(line);
-		if (request == null || !"tools/call".equals(request.get("method"))) {
+		if (request == null || !"tools/call".equals(request.get("method"))
+				|| !"2.0".equals(request.get("jsonrpc"))) {
 			Map<String, Object> response = handle(line);
 			if (response != null) {
 				send(response);
@@ -253,6 +254,10 @@ final class McpServer {
 					}
 				} catch (OperationCanceledException e) {
 					response = null;
+				} catch (Throwable e) {
+					// Such as StackOverflowError: still exactly one response
+					e.printStackTrace(System.err);
+					response = error(call.id, -32603, "Internal error: " + e);
 				} finally {
 					synchronized (output) {
 						// A cancelled request gets no response

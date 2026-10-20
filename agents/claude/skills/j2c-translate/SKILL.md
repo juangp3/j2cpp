@@ -38,7 +38,9 @@ one JSON object with the same fields.
    `file`:`line`:`column`. Call `j2c_explain` with the problem's `id` when the
    hint is not enough. Keep the Java behavior the same, and keep fixes
    minimal.
-4. **Check again** until `status` is `ok`. If a problem's `id` is
+4. **Check again** until `status` is `ok`; the MCP server re-compiles only
+   the files you changed and the files that use them, so checking after
+   each round of edits is cheap. If a problem's `id` is
    `J2C-LAMBDA-UNTRANSLATED`, stop and tell the user: it is a J2C bug, not a
    code problem.
 5. **Translate.** Call `j2c_translate` with an output directory that is empty

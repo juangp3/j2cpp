@@ -1535,9 +1535,91 @@ the agent's work, ordered by value for effort:
      the same JAR) and attaches it to the draft release.
 7. **Faster re-checks.** Keep the parsed environment cached in the
    long-running MCP server, and re-check only changed files.
-   Effort: 2–3 days.
+   Effort: 2–3 days. **Done (2026-10-20):**
+   - JDT cannot resolve bindings incrementally, and its class path
+     environment lives inside each `createASTs` call, so `CheckCache` keeps
+     per-file check results instead and compiles only the files whose
+     result may differ, with the others found through the source path as
+     JDT does for files outside the batch. A session holds one environment:
+     source paths, class path entries (size and modification time),
+     options, project build files (by content); any difference is a new
+     session, and sessions are dropped least recently used beyond
+     `j2c mcp --check-cache <files>` (default 20000; 0 turns it off).
+   - Every call hashes every Java file under the source paths. A file's API
+     is a hash of its tokens outside method and initializer bodies (JDT's
+     scanner: no comments or whitespace). A body edit re-checks the file; an
+     API change, an added or a deleted file also re-checks, transitively,
+     every file that mentions a declared type name as a word (and a new or
+     vanished package's names), so a use of an inherited member is reached
+     through the subclass. This is the conservative dependency rule: no
+     binding-level graph.
+   - A fresh check compiles all selected files together, so files a lookup
+     by name cannot find (secondary top-level types, a package not matching
+     the folder, a package also on the class path or in the JDK, syntax
+     errors) are compiled alongside every re-check, and results are kept by
+     that set. `module-info.java`, `package-info.java` changes and duplicate
+     types check everything.
+   - To make results comparable, problems are now sorted by file path in
+     every check (stable, so a file's problems keep their order); before,
+     the order depended on the desugared files' temporary paths.
+   - Measured (warm server, Windows): joda-time (166 files, 0 problems)
+     fresh CLI check 2.6 s, warm full check 1.2 s, re-check after a body or
+     comment edit 0.10–0.23 s, after an API change 0.7–1.2 s (160 of 166
+     files mention it); javaparser (740 files, 431 problems) fresh 10 s,
+     body or comment edit 0.47–1.2 s, API change 4.2–6.6 s (all 740).
+   - Tests: `test-mcp-sessions.js` (run by `test:mcp`) checks a sequence of
+     16 edits through one server against a fresh `j2c --check --format
+     json` for two selections (the folder, one file with an inferred source
+     path): a body edit, a compile error in a body, a method removed from an
+     indirect superclass (used through a subclass that never names it),
+     restored, a file added and deleted, a type renamed and its uses
+     updated, secondary types, a qualified name of a missing package and
+     the package added, a syntax error and its fix, and a J2C problem; it
+     also checks how many files each step compiled, `--check-cache 3` and
+     `0`. By hand: random body, comment and API edits and their reverts on
+     joda-time and javaparser compared with fresh checks (all equal).
+   - Open: the API rule is coarse for tightly connected code (most of
+     javaparser is re-checked after any API change); translation is not
+     incremental.
 8. **MCP progress and cancellation** for long translations. Effort: about one
-   day.
+   day. **Done (2026-10-20):**
+   - `McpServer` reads stdin on its own thread and runs tool calls one at a
+     time, in order, on a worker thread; `ping`, `initialize`, `tools/list`
+     and notifications are answered at once, and every message is written
+     whole under one lock. Tools are registered in a table (`Tool`: the
+     `tools/list` definition and a `call(arguments, progress)`) so new tools
+     get progress and cancellation the same way. On end of input the server
+     answers the calls it already received, then exits.
+   - `Progress` counts phases and items: the CLI passes `Progress.NONE`, the
+     server one per call that sends `notifications/progress`
+     (`progressToken`, increasing `progress`, `total` when known, `message`
+     from protocol version 2025-03-26 on) at most every 100 ms and never
+     after the response. Reported: looking for changed files, the build
+     tool resolving the class path, files checked (with the total), and
+     translated files and dependency headers (no total).
+   - `notifications/cancelled` (2025-06-18, 2025-03-26 and 2024-11-05 all
+     define it the same way: `requestId`, optional `reason`; the receiver
+     should stop and not respond) sets the call's flag. The translator
+     checks it between files and headers, JDT through the monitor, and
+     `ProjectSetup` polls it while the build tool runs and then kills the
+     tool's process tree. A cancelled call gets no response; a queued one
+     never starts; unknown or finished ids are ignored.
+   - State after cancelling: a check changes nothing (that environment's
+     kept results are dropped); a translation leaves the `.j2c-output`
+     marker (now written before translating, also after a failure) and the
+     files written so far, with the previous contents in the backup, and is
+     replaced next time without `force`; `j2c_fix` keeps the rounds whose
+     check finished and undoes the one being checked.
+   - Tests (`test-mcp-sessions.js`): progress of a check of `test/src` has
+     the token, increases, stays within `total`, and ends before the
+     response; `ping` is answered while `test/src` is being translated; a
+     cancelled translation stops (the next call is answered within a few
+     milliseconds, against about 2.5–4 s for a full one), gets no response,
+     leaves the marker without a `Makefile`, and the next translation
+     replaces it without `force`; a queued call cancelled gets no response;
+     a cancelled check stops a Gradle wrapper that sleeps for a minute
+     within 0.1 s; 2024-11-05 progress has no `message`; exactly one
+     response for every other request.
 9. **After the runtime:**
    - `j2c_run`: translate, build and run, and compare with the JVM.
    - An agent benchmark: Java projects with known problems, solved by an

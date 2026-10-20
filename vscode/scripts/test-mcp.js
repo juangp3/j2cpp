@@ -395,6 +395,13 @@ try {
 	for (const [id, key] of [[2, "prompts"], [3, "resources"], [4, "resourceTemplates"]]) {
 		assert(older.get(id).result[key].every((item) => item.title === undefined), key);
 	}
+	for (const value of ["many", "-1"]) {
+		const badCache = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root", root,
+			"--check-cache", value], { encoding: "utf8", input: "" });
+		assert.strictEqual(badCache.status, 2, badCache.stderr);
+		assert(badCache.stderr.includes("--check-cache needs a number of files"), badCache.stderr);
+		assert.strictEqual(badCache.stdout, "");
+	}
 
 	// A long-running server: incremental re-checks equal fresh checks, and
 	// progress, ping during a call, and cancellation

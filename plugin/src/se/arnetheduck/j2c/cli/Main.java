@@ -257,8 +257,8 @@ public class Main {
 			throw new IllegalArgumentException("MCP root is not a directory: "
 					+ root);
 		}
-		new McpServer(root.getCanonicalFile(), project, buildTool, cachedFiles).serve(
-				System.in, System.out);
+		new McpServer(root.getCanonicalFile(), project, buildTool, cachedFiles)
+				.serve(System.in, System.out);
 		return 0;
 	}
 

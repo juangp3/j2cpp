@@ -206,6 +206,29 @@ async function checkIncremental(cliJar, workspace, env) {
 		client.process.kill();
 		throw error;
 	}
+
+	// --check-cache bounds the files kept: over the limit nothing is kept,
+	// and 0 turns the cache off
+	for (const [limit, expected] of [["3", /re-checked 9 of 9/], ["0", null]]) {
+		const limited = new McpClient(cliJar, root, { env, args: ["--check-cache", limit] });
+		try {
+			for (const callId of [1, 2]) {
+				limited.call(callId, "j2c_check", { paths: ["src"] });
+				await limited.response(callId);
+			}
+			await limited.close();
+		} catch (error) {
+			limited.process.kill();
+			throw error;
+		}
+		const lines = statsLines(limited);
+		if (expected) {
+			assert.strictEqual(lines.length, 2, limited.stderr);
+			assert.match(lines[1], expected);
+		} else {
+			assert.deepStrictEqual(lines, []);
+		}
+	}
 	return rechecked;
 }
 

@@ -61,8 +61,9 @@ import se.arnetheduck.j2c.transform.SourceUnit;
  * the project build files. Any difference starts a new session, which checks
  * everything.</li>
  * <li>Every Java file under the source paths is read and hashed on each call.
- * A file's declarations, with method and initializer bodies left out, are
- * its API. A change inside bodies only re-checks that file. A changed API, an
+ * A file's tokens outside method and initializer bodies, without comments
+ * and whitespace, are its API. A change elsewhere only re-checks that file,
+ * since no other file's compile errors depend on it. A changed API, an
  * added or a deleted file also re-checks every file that mentions, as an
  * identifier anywhere in its text, a type declared in a re-checked file (and
  * its package, when the package appears or disappears), repeated until
@@ -72,7 +73,8 @@ import se.arnetheduck.j2c.transform.SourceUnit;
  * not find by name through the source path (secondary types, a package that
  * does not match the folder, a package also on the class path or in the
  * JDK, syntax errors), since a check from scratch always compiles those
- * alongside. When that set changes, everything is checked again.</li>
+ * alongside. Results are kept by that set, so a different selection does not
+ * reuse them.</li>
  * <li>A module-info.java or package-info.java change, a module-info.java on
  * the source path, or a type declared in more than one file checks
  * everything.</li>

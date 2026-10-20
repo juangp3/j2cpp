@@ -41,8 +41,11 @@ translates, what blocks the rest, and the JDK API the code uses that the
 J2C runtime lacks. The server's prompts `j2c-migrate` and `j2c-assess` appear
 among Copilot Chat's slash commands in VS Code versions that support MCP
 prompts.
-This needs a VS Code version with MCP support. See `docs/AGENTS.md` in the
-repository.
+This needs a VS Code version with MCP support. The server keeps check
+results between calls, so checking again after an edit compiles only the
+changed files and the files that use them; its calls report progress and can
+be cancelled. See `docs/AGENTS.md` in the repository (it also describes
+`j2c mcp --check-cache`).
 
 If the chosen output folder is not empty and was not created by J2C, the
 extension asks before translating, because translation moves the folder's

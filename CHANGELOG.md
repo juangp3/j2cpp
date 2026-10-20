@@ -168,6 +168,24 @@ C++20-targeted output.
   for Copilot's cloud coding agent (`agents/copilot/mcp-config.json`).
   `vscode/scripts/check-distribution.js` checks that they agree with the
   release version.
+- Faster re-checks in the MCP server: check results are kept between calls,
+  and a re-check compiles only the changed files and the files that may use
+  them (an edit inside method bodies compiles just that file), with the same
+  result as a fresh check. `j2c mcp --check-cache <files>` bounds what is
+  kept (default 20000 files, `0` turns it off). On joda-time, a re-check
+  after a body edit takes 0.13 s instead of 1.2 s (2.6 s from the command
+  line).
+- MCP progress and cancellation: tool calls run on a worker thread, so
+  `ping` and other requests are answered while one runs; a call with
+  `_meta.progressToken` gets `notifications/progress` (files checked, build
+  tool running, files translated) at most every 100 ms; and
+  `notifications/cancelled` stops a call at its next file or phase, stopping
+  the build tool, with no response. A cancelled translation leaves the files
+  written so far and the `.j2c-output` marker.
+- Problems are listed by file path in every check (they were in JDT's
+  order). The `.j2c-output` marker is written before translation starts, so
+  a failed or cancelled translation's partial output is replaced next time
+  without `--force`.
 
 ### Java language support
 
