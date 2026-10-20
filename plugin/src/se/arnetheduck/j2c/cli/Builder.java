@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import se.arnetheduck.j2c.transform.LineDirectives;
+
 /**
  * j2c build and the j2c_build tool: runs make in a translated output
  * directory (natively, or in WSL on Windows), and parses the GCC and Clang
@@ -460,33 +462,44 @@ final class Builder {
 		}
 	}
 
-	/** The generated line mapped to a Java line, or null when none is */
+	/**
+	 * The generated line mapped to a Java line, or null when none is. The
+	 * compiler names only the Java file, so the C++ file is looked for: the
+	 * unit being compiled, or for an error in an included file (the compiler
+	 * then names what included it), the headers generated from that Java
+	 * file first.
+	 */
 	private Location generated(String javaFile, int line, int column,
 			String unit, List<Location> included) {
 		List<String> candidates = new ArrayList<String>();
-		if (unit != null) {
-			candidates.add(unit);
-		}
-		for (Location location : included) {
-			candidates.add(location.file);
-		}
 		List<String> others = generatedFiles().get(javaFile);
-		if (others != null) {
-			// Headers first: an error in a unit's own lines names no include
+		if (others == null) {
+			others = Collections.emptyList();
+		}
+		if (!included.isEmpty()) {
 			for (String other : others) {
-				if (other.endsWith(".hpp") && !candidates.contains(other)) {
+				if (other.endsWith(".hpp")) {
 					candidates.add(other);
 				}
 			}
-			for (String other : others) {
-				if (!candidates.contains(other)) {
-					candidates.add(other);
-				}
+		}
+		if (unit != null && !candidates.contains(unit)) {
+			candidates.add(unit);
+		}
+		for (Location location : included) {
+			if (!candidates.contains(location.file)) {
+				candidates.add(location.file);
+			}
+		}
+		for (String other : others) {
+			if (!candidates.contains(other)) {
+				candidates.add(other);
 			}
 		}
 		for (String candidate : candidates) {
 			LineMap map = lineMap(candidate);
-			int physical = map == null ? -1 : map.physical(javaFile, line);
+			int physical = map == null ? -1 : map.physical(javaFile, line,
+					column);
 			if (physical > 0) {
 				return new Location(candidate, physical, column);
 			}
@@ -562,10 +575,12 @@ final class Builder {
 		 */
 		final String[] files;
 		final int[] lines;
+		final int[] lengths;
 
-		private LineMap(String[] files, int[] lines) {
+		private LineMap(String[] files, int[] lines, int[] lengths) {
 			this.files = files;
 			this.lines = lines;
+			this.lengths = lengths;
 		}
 
 		static LineMap read(Builder builder, File file) throws IOException {
@@ -577,13 +592,17 @@ final class Builder {
 			String[] physical = text.split("\r?\n", -1);
 			String[] files = new String[physical.length];
 			int[] lines = new int[physical.length];
+			int[] lengths = new int[physical.length];
 			String current = null;
 			int line = 1;
 			Map<String, String> resolved = new HashMap<String, String>();
 			for (int i = 0; i < physical.length; ++i) {
 				Matcher directive = DIRECTIVE.matcher(physical[i]);
-				// Blank lines are nobody's nearest line
-				files[i] = physical[i].trim().isEmpty() ? "" : current;
+				// Blank lines and access specifiers are nobody's line
+				files[i] = physical[i].trim().isEmpty()
+						|| LineDirectives.ACCESS_SPECIFIER.matcher(physical[i])
+								.matches() ? "" : current;
+				lengths[i] = physical[i].length();
 				lines[i] = line;
 				if (directive.matches()) {
 					// No diagnostic is ever on a directive itself
@@ -602,7 +621,7 @@ final class Builder {
 					++line;
 				}
 			}
-			return new LineMap(files, lines);
+			return new LineMap(files, lines, lengths);
 		}
 
 		List<String> javaFiles() {
@@ -615,14 +634,23 @@ final class Builder {
 			return java;
 		}
 
-		/** The first physical line the compiler puts at javaFile:line */
-		int physical(String javaFile, int line) {
+		/**
+		 * The first physical line the compiler puts at javaFile:line that is
+		 * long enough for column (several C++ lines can share a Java line)
+		 */
+		int physical(String javaFile, int line, int column) {
+			int first = -1;
 			for (int i = 0; i < files.length; ++i) {
 				if (javaFile.equals(files[i]) && lines[i] == line) {
-					return i + 1;
+					if (column <= lengths[i]) {
+						return i + 1;
+					}
+					if (first < 0) {
+						first = i + 1;
+					}
 				}
 			}
-			return -1;
+			return first;
 		}
 
 		/** The Java line of the closest mapped line before a C++ line */

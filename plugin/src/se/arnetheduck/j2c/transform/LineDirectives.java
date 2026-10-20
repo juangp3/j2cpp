@@ -3,6 +3,7 @@ package se.arnetheduck.j2c.transform;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.CompilationUnit;
@@ -23,10 +24,11 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
  * writers assemble files from. When a generated file is written, resolve
  * replaces them: every non-blank C++ line gets a Java line of the innermost
  * mark around its first code, so a C++ line maps to the Java statement it
- * came from. That is the statement's first line, or a later line of the same
- * statement when the C++ lines before it already count up to it (so the C++
- * of a statement spanning several Java lines needs no more directives, and
- * neither does a method's opening brace). Lines outside every mark
+ * came from. That is the statement's first line, or for its later C++ lines a
+ * later line of the same statement when the C++ lines before already count up
+ * to it (so the C++ of a statement spanning several Java lines needs no more
+ * directives, and neither do the lines of a block after its opening brace).
+ * Lines outside every mark
  * (includes, generated constructors, class literals and other boilerplate)
  * are mapped back to the C++ file and its real line numbers. A directive is
  * only written where the line numbering the compiler would assume is wrong.
@@ -43,6 +45,10 @@ public final class LineDirectives {
 	private static final char MARK = '\u0001';
 	private static final char MARK_END = '\u0002';
 	private static final String UNMARK = "" + MARK + MARK_END;
+
+	/** public:, protected: and private: lines in headers */
+	public static final Pattern ACCESS_SPECIFIER = Pattern.compile(
+			"\\s*(?:public|protected|private):\\s*");
 
 	private LineDirectives() {
 	}
@@ -130,6 +136,8 @@ public final class LineDirectives {
 		final String file;
 		final int line;
 		final int last;
+		/** Whether a C++ line was put at this mark */
+		boolean started;
 
 		Location(String file, int line, int last) {
 			this.file = file;
@@ -139,12 +147,13 @@ public final class LineDirectives {
 
 		/**
 		 * Whether a C++ line the compiler would put at file:presumed may stay
-		 * there: on the node's first line, or a later line of the node, which
-		 * keeps directives few where C++ lines follow the Java ones
+		 * there: on the node's first line, or, after the node's first C++
+		 * line, a later line of the node, which keeps directives few where
+		 * C++ lines follow the Java ones
 		 */
 		boolean accepts(String presumedFile, int presumed) {
-			return presumedFile.equals(file) && presumed >= line
-					&& presumed <= last;
+			return presumedFile.equals(file) && (presumed == line || started
+					&& presumed > line && presumed <= last);
 		}
 	}
 
@@ -209,8 +218,10 @@ public final class LineDirectives {
 
 			String content = line.toString();
 			String lineBreak = content.endsWith("\r\n") ? "\r\n" : "\n";
-			// Directives inside comments or continued lines would not apply
-			if (code && !inComment && !continued) {
+			// Directives inside comments or continued lines would not apply;
+			// access specifiers need no line of their own
+			if (code && !inComment && !continued
+					&& !ACCESS_SPECIFIER.matcher(content).matches()) {
 				// Code after boilerplate on the same line, such as an
 				// initializer after its field's name, takes the code's line
 				if (wanted == null) {
@@ -230,6 +241,9 @@ public final class LineDirectives {
 					++physical;
 					presumedFile = wanted.file;
 					presumedLine = wanted.line;
+				}
+				if (wanted != null) {
+					wanted.started = true;
 				}
 			}
 

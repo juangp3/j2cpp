@@ -281,7 +281,7 @@ try {
 	const readiness = reported.get(1).result;
 	assert.strictEqual(readiness.isError, false, JSON.stringify(readiness));
 	assert.strictEqual(readiness.structuredContent.command, "report");
-	assert.strictEqual(readiness.structuredContent.schemaVersion, 3);
+	assert.strictEqual(readiness.structuredContent.schemaVersion, 4);
 	assert.deepStrictEqual(readiness.structuredContent.totals.files, { total: 3, translatable: 1, percent: 33.3 });
 	assert.deepStrictEqual(readiness.structuredContent.blockers.byId.map((entry) => [entry.id, entry.count]),
 		[["J2C-COMPILE-ERROR", 1], ["J2C-LAMBDA-ANONYMOUS-THIS", 1], ["J2C-PATTERN-OUTSIDE-METHOD", 1]]);
