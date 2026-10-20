@@ -353,10 +353,39 @@ explicit.
      `0.6.1`, adding a changelog entry, and repeating steps 1–7.
    - Watch GitHub issues for the first week; label translator gaps separately
      from packaging bugs.
+9. **npm (user step).** Publish the tarball attached to the release, not a
+   rebuild, from an account that owns the `@juangp3` scope:
 
-**Gate:** GitHub artifacts and the Marketplace package come from the same tag
-and commit, verify against `SHA256SUMS`, install cleanly, and match the
-documented requirements.
+   ```sh
+   npm login
+   npm publish --access public juangp3-j2c-mcp-0.6.0.tgz
+   npx -y -p @juangp3/j2c-mcp@0.6.0 j2c --version
+   ```
+
+10. **MCP registry (user step).** After npm, from a checkout of the tag
+    (the registry checks that the npm package's `mcpName` matches):
+
+    ```sh
+    # mcp-publisher from https://github.com/modelcontextprotocol/registry/releases
+    mcp-publisher login github     # as juangp3, for the io.github.juangp3 namespace
+    mcp-publisher publish          # reads server.json
+    curl "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.juangp3/j2c"
+    ```
+
+11. **Claude Code plugin (user step).** The marketplace is this repository:
+    once the tag is on the default branch, check in a clean Claude Code
+    (`claude plugin validate .` first) that `/plugin marketplace add
+    juangp3/j2cpp` and `/plugin install j2c@j2cpp` load the skill and the
+    `j2c` server, and that `/mcp` lists its tools. Optionally submit the
+    plugin to Anthropic's plugin directory.
+12. **Copilot cloud agent (user step).** In a test repository, paste
+    `agents/copilot/mcp-config.json` into **Settings > Copilot > MCP servers**,
+    add `copilot-setup-steps.yml`, and assign an issue that needs
+    `j2c_check`; the session log should show the J2C tools.
+
+**Gate:** GitHub artifacts, the Marketplace package and the npm package come
+from the same tag and commit, verify against `SHA256SUMS`, install cleanly,
+and match the documented requirements.
 
 ## Phase 9 — Close translation gaps
 
@@ -1393,6 +1422,33 @@ the agent's work, ordered by value for effort:
    - Resources: the problem catalog, the runtime contract, and generated
      files.
    - Effort: 1–2 days.
+
+   **Done (2026-10-20):**
+   - `prompts/list` and `prompts/get`: `j2c-migrate` (`path`, `output`
+     (default `build/cpp`), `tests`: check, preview and apply fixes with the
+     user's consent, fix the rest by hand, translate, build) and `j2c-assess`
+     (`path`, `tests`: run `j2c_report` and summarize, changing nothing).
+     Unknown prompts and missing arguments are `-32602`.
+   - `resources/list`, `resources/templates/list` and `resources/read`
+     (`McpContent`): `j2c://problems` and `j2c://problems/{id}` (the catalog
+     as `j2c explain --format json`), `j2c://runtime` (`runtime/README.md`
+     and the types of the runtime's API by package, both bundled in the JAR
+     under `META-INF/j2c-runtime/`), and `j2c://output/{path}`: a file
+     inside the root and inside a directory with the `.j2c-output` marker
+     (text, or a base64 blob for build products, at most 8 MB). The list
+     shows the files of each translation made in the session. Unknown URIs
+     and missing files are `-32002`; paths outside the root or J2C's output
+     are `-32602`.
+   - `initialize` advertises `prompts` and `resources` (`subscribe` and
+     `listChanged` false) for all three protocol versions; `title` fields
+     (server, prompts, resources, templates) are sent only for 2025-06-18,
+     which added them.
+   - Tests: `test-mcp.js` lists and gets both prompts, an unknown prompt and
+     a missing argument, lists resources and templates, reads the catalog, an
+     id, an unknown id, the runtime and an unknown URI, lists and reads
+     translated files (also with `%2F`), and refuses a file without the
+     marker, a path outside the root, the marker itself and a missing file;
+     and checks that 2025-03-26 gets no titles.
 4. **Map C++ errors back to Java.** An option to emit `#line` directives, so
    compilers and debuggers report Java file and line numbers. A `j2c_build`
    tool runs `make` and returns errors mapped to Java. Effort: about one week.
@@ -1403,9 +1459,80 @@ the agent's work, ordered by value for effort:
    - JDK API use compared with runtime coverage, once the runtime exists.
 
    Effort: 2–3 days.
+
+   **Done (2026-10-20):**
+   - `j2c report [--format markdown|json]` takes `--check`'s inputs and
+     options (and `--runtime`) and exits with 0 whenever it prints a report;
+     the read-only `j2c_report` tool returns the JSON as structured content
+     and the Markdown as a second text block. JSON schema version 3.
+   - Translatable is defined by lines: a file, type or method is
+     translatable when no problem `--check` reports lies within it, so a
+     problem blocks its file, every type around it and the method around it.
+     Types are named type declarations (nested and local ones too); methods
+     are the methods and constructors they declare, not those of anonymous
+     classes (the lambdas rewritten into anonymous classes among them). The
+     report gets each unit's AST from the check (`Transformer.CheckListener`),
+     whose lines match the original source.
+   - Blockers by id (count, files, quick fixes, hint, first five locations)
+     and by package; with `--tests`, the `J2C-TEST-*` problems again as test
+     blockers.
+   - JDK use: references to `java.*`, `javax.*` and `jdk.*` types (type
+     names, calls, constructors, `super(...)` calls, fields), counted by
+     the receiver's type when it is a JDK type, and members keyed by erased
+     parameter types. Coverage is the runtime's API, generated from
+     `runtime/java` with bindings by `RuntimeApi` into `runtime/api.txt`
+     (453 types), bundled in the JAR; `--runtime <dir>` reads that runtime
+     instead. A member is provided when the type or a supertype in the
+     runtime declares it. Implicit uses (concatenation, boxing, enhanced
+     `for`) are not counted, and runtime methods that throw
+     `UnsupportedOperationException` count as provided.
+   - Next steps: an unresolved class path first, then `j2c fix --apply` for
+     the fixable problems, a hint per problem id left, the JDK members the
+     runtime lacks, and the command to run next.
+   - Tests: `test/report` (three files and a JUnit test); `test-cli.js`
+     checks the Markdown lines and the exact JSON (files 4/1, types 6/3,
+     methods 11/8 with tests; 11 JDK types, 10 provided; `LocalDate.now()`
+     missing), `runtime/api.txt` being current, `--runtime`, a clean file,
+     usage errors, and, when the corpus is cloned (or `J2C_CORPUS_ROOT`
+     points at one), semver4j (5 files, 11 types, 97 methods, all
+     translatable; `java.util.Stack` not in the runtime); `test-mcp.js`
+     checks `j2c_report`, root confinement and that it writes nothing.
 6. **Distribution.** Publish to the MCP registry, ship a Claude Code plugin
    bundling the skill and server configuration, and document configuration
    for Copilot's cloud coding agent. Effort: about 2 days.
+
+   **Prepared (2026-10-20); publishing is a manual step (Phase 8 steps 9–11):**
+   - MCP registry: `server.json` (schema 2025-12-11) as
+     `io.github.juangp3/j2c`, a GitHub namespace that `mcp-publisher login
+     github` proves. The package is npm, `@juangp3/j2c-mcp` (`agents/npm`):
+     the registry has no package type for a JAR, `mcpb` bundles need a
+     `.mcpb` with "mcp" in its name or repository and a manifest made for
+     Node, Python or binaries, and an OCI image would need a JRE and volume
+     mounts for the workspace. The npm package bundles the CLI JAR and a
+     Node launcher that runs it with `J2C_JAVA`, `JAVA_HOME` or `java` (bins
+     `j2c-mcp` and `j2c`), and claims the name with `mcpName`. Clients still
+     need Java 11+.
+   - Claude Code plugin: `agents/claude/plugin` (`.claude-plugin/plugin.json`,
+     `skills/j2c-translate/SKILL.md`, a copy of the maintained skill, and
+     `.mcp.json` running `npx -y @juangp3/j2c-mcp@<version> --root .`),
+     listed by `.claude-plugin/marketplace.json` (`j2cpp`), so users run
+     `/plugin marketplace add juangp3/j2cpp` and `/plugin install j2c@j2cpp`.
+     Layout checked against the Claude Code plugin and marketplace
+     references; `claude plugin validate` was not run (no working Claude
+     Code CLI on the development machine).
+   - Copilot cloud coding agent: `agents/copilot/mcp-config.json` (pasted in
+     the repository's Copilot MCP settings, with the tools to allow) and
+     `copilot-setup-steps.yml` (Java, Node.js and a C++ compiler), documented
+     in `docs/AGENTS.md`; the agent uses MCP tools only.
+   - `vscode/scripts/check-distribution.js` (`npm run test:distribution`,
+     run by `prepare.js` and by the release workflow with the tag's version)
+     checks that the files parse, that their versions match `pom.xml` and
+     `vscode/package.json`, that `server.json` and the npm package agree on
+     name, identifier and repository, that the plugin's skill is the
+     maintained one, and that the launcher starts the server from the JAR
+     with the tools the Copilot configuration allows. The release workflow
+     packs the npm package (`juangp3-j2c-mcp-<version>.tgz`, checked to hold
+     the same JAR) and attaches it to the draft release.
 7. **Faster re-checks.** Keep the parsed environment cached in the
    long-running MCP server, and re-check only changed files.
    Effort: 2–3 days.
@@ -1527,6 +1654,15 @@ the JVM's.
 - [ ] Agent tools checked with a real client: Copilot agent mode lists the
       J2C tools, and Claude Code completes the check, fix and translate
       workflow (Phase 11).
+- [x] Distribution files prepared and checked against the release version
+      (`server.json`, `@juangp3/j2c-mcp`, Claude Code plugin and
+      marketplace, Copilot cloud agent configuration; Phase 12 item 6).
+- [ ] npm package published from the release tarball, and the MCP registry
+      entry published with `mcp-publisher` (Phase 8 steps 9–10; user steps,
+      after the GitHub release).
+- [ ] Claude Code plugin installed from the marketplace and the Copilot
+      cloud agent configuration tried in a test repository (Phase 8 steps
+      11–12; user steps).
 - [x] Phase 9 gaps G1–G6 fixed and covered by fixtures, runtime smoke tests,
       and probes; G7 and G8 are documented as known limitations.
 

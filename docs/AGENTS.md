@@ -45,17 +45,36 @@ extension, add `.vscode/mcp.json`:
 
 ### Claude Code
 
-Download `j2c-cli-<version>.jar` from the GitHub release, then, from your
-project directory:
+The J2C plugin bundles the server and the
+[J2C skill](../agents/claude/skills/j2c-translate/SKILL.md), which teaches
+Claude the workflow below. It runs the server with
+`npx -y @juangp3/j2c-mcp@<version> --root .`, so it needs Node.js and Java 11
+or newer:
+
+```text
+/plugin marketplace add juangp3/j2cpp
+/plugin install j2c@j2cpp
+```
+
+Without the plugin, download `j2c-cli-<version>.jar` from the GitHub release,
+then, from your project directory:
 
 ```sh
 claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
 ```
 
 Add `--scope project` to share it with your team through the project's
-`.mcp.json`. The [J2C skill](../agents/claude/skills/j2c-translate/SKILL.md)
-teaches Claude the workflow below; copy its folder into `.claude/skills/` in
+`.mcp.json`. To use the skill alone, copy its folder into `.claude/skills/` in
 your project, or `~/.claude/skills/` for all projects.
+
+### The npm package
+
+`@juangp3/j2c-mcp` bundles the CLI JAR and runs it with the Java found in
+`J2C_JAVA`, `JAVA_HOME` or the `PATH`: `npx -y @juangp3/j2c-mcp` is
+`j2c mcp` (rooted at the working directory unless `--root` is given), and
+`npx -y -p @juangp3/j2c-mcp j2c <arguments>` is the CLI. It is the package the
+MCP registry entry (`io.github.juangp3/j2c`) names. On Windows, clients that
+start `npx` directly may need `"command": "cmd", "args": ["/c", "npx", ...]`.
 
 ### Claude Desktop and other MCP clients
 
@@ -72,6 +91,35 @@ Add a stdio server to the client's configuration; for Claude Desktop that is
   }
 }
 ```
+
+### Copilot cloud coding agent
+
+Copilot's cloud coding agent (the agent that works on issues and pull
+requests on GitHub) takes MCP servers from the repository's **Settings >
+Copilot > MCP servers** page, in its MCP configuration. Paste
+[`agents/copilot/mcp-config.json`](../agents/copilot/mcp-config.json):
+
+```json
+{
+  "mcpServers": {
+    "j2c": {
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "@juangp3/j2c-mcp@0.6.0", "--root", "."],
+      "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_explain", "j2c_capabilities"]
+    }
+  }
+}
+```
+
+The agent calls the listed tools without asking, so leave out `j2c_fix` and
+`j2c_translate` to keep it to the read-only ones. `--root .` roots J2C at the
+server's working directory; if the tools report paths outside the workspace
+root, give the checkout's absolute path instead. The agent uses MCP tools
+only, not prompts or resources. Its runner needs Java and Node.js (and a C++
+compiler to build the output): copy
+[`agents/copilot/copilot-setup-steps.yml`](../agents/copilot/copilot-setup-steps.yml)
+to `.github/workflows/copilot-setup-steps.yml`.
 
 ### Copilot instructions
 
@@ -90,6 +138,7 @@ source paths and the output directory must be inside it. Class path entries
 | `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
 | `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `projects`, `warnings` |
 | `j2c_fix` | With `apply: true` | The same as `j2c_check`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
+| `j2c_report` | No | The same as `j2c_check` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
 
@@ -181,9 +230,71 @@ The output directory must be empty or earlier J2C output, which carries a
 backup in the temporary folder. `force: true` allows any directory; agents
 should ask the user before using it.
 
+### Migration readiness report
+
+`j2c_report` (and `j2c report`) checks like `j2c_check` and summarizes the
+result for planning a migration:
+
+- `totals`: `files`, `types` and `methods`, each with `total`,
+  `translatable` and `percent` (one decimal). A file, type or method is
+  translatable when no problem `j2c_check` reports lies within its lines; a
+  problem blocks its file, every type around it (nested types are part of
+  the types around them) and the method around it. Types are the named type
+  declarations, including nested and local ones; methods are the methods and
+  constructors they declare (an anonymous class's methods belong to the
+  method around it).
+- `blockers`: `problemCount`, `filesWithProblems`, `fixable` (problems with
+  a quick fix), `byId` (most frequent first: `id`, `title`, `count`, `files`,
+  `fixable`, `hint`, and the first five `locations`), and `byPackage`
+  (`package`, `files`, `translatableFiles`, `problemCount`, `byId` counts).
+- `testBlockers`: the same for the `J2C-TEST-*` problems with `tests: true`
+  (they are also among the blockers), else `null`.
+- `jdk`: the JDK types (`java.*`, `javax.*`, `jdk.*`) the code references and
+  their members (methods as `name(Parameter, ...)`, constructors as
+  `<init>(...)`, fields by name), with `uses`, most used first, and whether
+  the J2C runtime provides them (`provided`); `runtime` is `bundled` (the
+  runtime's API in the JAR, generated from `runtime/`) or the `--runtime`
+  directory. A member is provided when the runtime type or one of its
+  supertypes declares it with the same erased parameter types. Without a
+  runtime every JDK class is a stub that fails at run time. Implicit uses
+  (string concatenation, boxing, enhanced `for`) are not counted. With
+  `--runtime`, JDK classes the runtime lacks are compile errors instead.
+- `nextSteps`: `text` and `command` (or `null`): an unresolved class path,
+  quick fixes to apply, problems to fix by hand with their hints, JDK members
+  missing from the runtime, and what to run next.
+
+The CLI prints Markdown by default (`--format json` for the shape above) and
+exits with 0 whenever it prints a report.
+
+## Prompts and resources
+
+The server has two prompts, which clients show as commands:
+
+- `j2c-migrate` (`path`, optional `output` (default `build/cpp`) and
+  `tests`): check, fix (previewing first), translate and build, fixing
+  problems in the Java source.
+- `j2c-assess` (`path`, optional `tests`): run `j2c_report` and summarize
+  readiness, blockers, runtime gaps and the work left, changing nothing.
+
+And these resources:
+
+| URI | Content |
+| --- | --- |
+| `j2c://problems` | Every problem ID with its explanation and hint (JSON, as `j2c explain --format json`) |
+| `j2c://problems/{id}` | One problem ID |
+| `j2c://runtime` | The bundled runtime's contract (`runtime/README.md`) and the types it provides, by package (Markdown) |
+| `j2c://output/{path}` | A translated file, by its path relative to the workspace root |
+
+`j2c://output/` serves only files inside the workspace root and inside an
+output directory with J2C's `.j2c-output` marker; anything else is an error.
+`resources/list` lists the catalog, the runtime, and the files of each
+translation made in the session; `resources/templates/list` has the two
+templates.
+
 ## Recommended workflow
 
-1. Call `j2c_capabilities` once to learn what is supported.
+1. Call `j2c_capabilities` once to learn what is supported. To plan a
+   migration first, call `j2c_report` (or use the `j2c-assess` prompt).
 2. Call `j2c_check` on the source folder.
 3. If problems have `fixes`, call `j2c_fix` to preview them, then `j2c_fix`
    with `apply: true` (ask the user first if they have not agreed to edits).
@@ -210,10 +321,13 @@ java -jar j2c-cli.jar --check --format json .        # a Maven or Gradle project
 java -jar j2c-cli.jar --output build/cpp --format json src/main/java
 java -jar j2c-cli.jar fix --format json src/main/java
 java -jar j2c-cli.jar fix --apply --format json src/main/java
+java -jar j2c-cli.jar report --format json src/main/java
 java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
 
+`j2c report [--format markdown|json]` takes the same inputs and options as
+`--check` (and `--runtime`) and prints the readiness report.
 `j2c fix` takes the same inputs and options as `--check` and prints the same
 result as `j2c_fix`; without `--format json` it prints the diff on stdout and
 a summary on stderr. It exits with 0 when no problem is left that needs
@@ -230,7 +344,7 @@ and 2 for invalid arguments. With `--format json`, invalid arguments produce
 `{"status": "usage-error", "message": ...}`. The JSON shapes are versioned
 by `schemaVersion`, which increases whenever a field is added, changed or
 removed; ignore fields you do not know. Version 2 added `fixes` to problems
-and the `fix` command.
+and the `fix` command; version 3 the `report` command.
 
 ## Safety
 
@@ -241,6 +355,9 @@ and the `fix` command.
   is shown (on stderr) only when it fails. Pass `buildTool: false` (or
   `--no-build-tool`) for untrusted projects. This is why `j2c_check` and
   `j2c_translate` (and `j2c_fix`) have `openWorldHint: true`.
+- `j2c_report`, the prompts and the resources write nothing; resources
+  read only the catalog, the runtime's description, and J2C's output inside
+  the root.
 - Only `j2c_translate` and `j2c_fix` with `apply: true` write, only inside
   the workspace root. `j2c_translate` never deletes: replaced output is moved
   to a backup. `j2c_fix` edits only the Java files with fixed problems.

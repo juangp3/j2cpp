@@ -133,10 +133,26 @@ method), `J2C-TEST-TIMEOUT` (the timeout removed) and
 problem lists its fixes as exact edits (`file`, a `range` with 1-based
 `line` and `column`, and `newText`).
 
+`j2c report` assesses a migration before you start it:
+
+```sh
+java -jar target/j2c-cli.jar report . > migration-report.md      # Markdown
+java -jar target/j2c-cli.jar report --format json src/main/java  # JSON
+```
+
+It takes the same inputs and options as `--check` (and `--runtime`) and shows
+the files, types and methods that translate as they are (no problem from
+`--check` lies within them), the blockers by problem ID and by package with
+their top locations and how many `j2c fix` can fix, test-feature blockers
+with `--tests`, the JDK types and members the code uses compared with what
+the J2C runtime provides (the rest would be stubs that fail at run time),
+and next steps.
+
 The CLI exits with status 0 on success (or a clean check), 1 when translation
 fails or a check finds problems, and 2 for invalid arguments. `j2c fix` exits
 with 0 when no problem is left that needs changes by hand (after applying,
-or that the preview cannot fix), else 1.
+or that the preview cannot fix), else 1. `j2c report` exits with 0 whenever
+it prints a report.
 
 ## Unit tests (JUnit to GoogleTest)
 
@@ -225,10 +241,18 @@ automatically for each workspace folder. For Claude Code:
 claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
 ```
 
+The tools are `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`,
+`j2c_explain` and `j2c_capabilities`; the server also has the prompts
+`j2c-migrate` and `j2c-assess`, and resources for the problem catalog, the
+runtime's contract and translated files.
+
 See [docs/AGENTS.md](docs/AGENTS.md) for setup in each client, the tool
 reference, and the recommended workflow. A ready-made
-[Claude Code skill](agents/claude/skills/j2c-translate/SKILL.md) and
-[Copilot instructions](agents/copilot/j2c.instructions.md) are included.
+[Claude Code skill](agents/claude/skills/j2c-translate/SKILL.md), a
+[Claude Code plugin](agents/claude/plugin) with the skill and the server,
+[Copilot instructions](agents/copilot/j2c.instructions.md) and a
+[configuration for Copilot's cloud coding agent](agents/copilot/mcp-config.json)
+are included.
 
 ## VS Code extension
 

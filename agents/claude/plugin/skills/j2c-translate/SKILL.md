@@ -6,8 +6,8 @@ description: Translate Java 17 code to C++20 with J2C, and make Java code transl
 # Translating Java to C++ with J2C
 
 J2C translates Java 17 source into C++20. Use its MCP tools (`j2c_check`,
-`j2c_fix`, `j2c_translate`, `j2c_explain`, `j2c_capabilities`) when they are
-available. Otherwise run the CLI with `--format json`
+`j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_explain`, `j2c_capabilities`)
+when they are available. Otherwise run the CLI with `--format json`
 (`java -jar j2c-cli.jar --check --format json <paths>`, and
 `java -jar j2c-cli.jar fix [--apply] --format json <paths>`), which prints
 one JSON object with the same fields.
@@ -17,6 +17,11 @@ one JSON object with the same fields.
 1. **Learn the limits once.** Call `j2c_capabilities`. Note `limitations`:
    translated programs need a C++ implementation of the JDK classes they use,
    so they compile and link but do not run on their own.
+   When the user asks whether or how much of the code can be translated,
+   call `j2c_report` (or run `j2c report`, Markdown by default): it gives
+   the share of files, types and methods that translate, the blockers by
+   problem id and package, how many `j2c_fix` can fix, and the JDK API the
+   code uses that the J2C runtime lacks. Summarize it; change nothing.
 2. **Check before translating.** Call `j2c_check` with the source folder. For
    a Maven or Gradle project, pass the project folder itself
    (`paths: ["."]`): J2C uses the build's source roots and gets the
@@ -67,4 +72,5 @@ one JSON object with the same fields.
 
 Tell the user which Java changes you made and why, the output directory, the
 number of generated files, and that the result needs a C++ runtime for the
-JDK classes it uses before it can run.
+JDK classes it uses before it can run (`j2c_report` lists the ones the J2C
+runtime lacks; the resource `j2c://runtime` describes what it provides).

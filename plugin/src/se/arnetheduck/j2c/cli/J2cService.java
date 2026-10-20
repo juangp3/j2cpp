@@ -659,7 +659,12 @@ final class J2cService {
 						+ "uses the build's source and test roots, and the dependency "
 						+ "class path from mvn or gradle (--project, --no-build-tool)",
 				"Mechanical fixes for some problems, as exact edits to the Java source "
-						+ "(fixes in JSON output, j2c fix, the j2c_fix tool)"));
+						+ "(fixes in JSON output, j2c fix, the j2c_fix tool)",
+				"A migration readiness report: translatable files, types and methods, "
+						+ "blockers by problem id and package, and JDK API use compared "
+						+ "with the J2C runtime (j2c report, the j2c_report tool)",
+				"MCP prompts (j2c-migrate, j2c-assess) and resources (the problem "
+						+ "catalog, the runtime contract, translated files)"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

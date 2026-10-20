@@ -15,7 +15,11 @@ Guidance for AI coding agents (and people) changing this repository. For
 - `plugin/src/se/arnetheduck/j2c/cli/`: the CLI.
   - `Main` parses arguments.
   - `J2cService` is shared by the CLI and MCP.
-  - `McpServer` is the `j2c mcp` server; `Json` is its JSON reader and writer.
+  - `McpServer` is the `j2c mcp` server, `McpContent` its prompts and
+    resources; `Json` is its JSON reader and writer.
+  - `Report` is `j2c report` and `j2c_report`; `RuntimeApi` reads the
+    runtime's API, generated into `runtime/api.txt` (regenerate it when
+    `runtime/java` changes: `test-cli.js` fails when it is stale).
 - `plugin/src/se/arnetheduck/j2c/resources/`: C++ helpers and the Makefile
   template, copied into generated projects.
 - `vscode/`: the extension (`extension.js`) and its scripts.
@@ -29,6 +33,10 @@ Guidance for AI coding agents (and people) changing this repository. For
   plus hand-written C++ natives and hooks; `test/runtime/` holds programs CI
   runs against it and compares with `java`.
 - `licenses/`: notices for bundled dependencies, checked against the build.
+- `agents/`: agent guidance and distribution: the Claude Code skill and
+  plugin, Copilot instructions and cloud agent configuration, and the npm
+  package (`agents/npm`) that the MCP registry's `server.json` names.
+  `vscode/scripts/check-distribution.js` checks them against the version.
 - `docs/PUBLISHING_PLAN.md`: release plan, translation gaps (Phase 9), and
   roadmap.
 
@@ -49,6 +57,7 @@ cd vscode && npm ci && npm run vscode:prepublish
    translation.
 3. `test-extension.js`, the extension logic with a mocked `vscode` module.
 4. `test-mcp.js`, an MCP protocol session.
+5. `check-distribution.js`, the MCP registry, npm and plugin files.
 
 If VS Code's Java extension has this repository open, it compiles into
 Maven's `target/classes` (with errors left in as "Unresolved compilation
@@ -57,8 +66,8 @@ before `mvn -q package` when the editor is open; `mvn clean` would also
 delete the corpus cache in `target/corpus`.
 
 Each can also be run alone (`npm run test:cli`, `test:extension`,
-`test:mcp`, `test:licenses`) once the JAR exists. `npm run probe` translates
-`test/probes` and fails when an outcome changes.
+`test:mcp`, `test:licenses`, `test:distribution`) once the JAR exists.
+`npm run probe` translates `test/probes` and fails when an outcome changes.
 
 The JUnit fixtures (`test/junit`, and `test/junit-runtime` for assertions on
 JDK objects) record each test's outcome and JUnit's failure message in

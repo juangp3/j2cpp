@@ -144,6 +144,30 @@ C++20-targeted output.
   exits with 0 when no problem needs changes by hand, else 1. The MCP server
   adds a `j2c_fix` tool (preview by default, `apply: true` writes), and the
   VS Code extension offers the fixes as quick fixes on J2C diagnostics.
+- Migration readiness report: `j2c report [--format markdown|json] <paths>`
+  (the same inputs and options as `--check`, plus `--runtime`) and the
+  read-only `j2c_report` MCP tool show the files, types and methods that
+  translate (those with no problem from `--check` within them) with
+  percentages, the blockers by problem ID and by package with their top
+  locations and quick-fix counts, test-feature blockers with `--tests`, the
+  JDK types and members the code uses (by use count) compared with what the
+  J2C runtime provides, and next steps. The Markdown reads on GitHub; the
+  command exits with 0 whenever the report is produced. The bundled
+  runtime's API is generated into `runtime/api.txt` and shipped in the JAR.
+  JSON schema version 3.
+- MCP prompts and resources: the `j2c-migrate` (check, fix, translate,
+  build) and `j2c-assess` (report and summarize) prompts, and the resources
+  `j2c://problems`, `j2c://problems/{id}`, `j2c://runtime` (the runtime's
+  contract and types) and `j2c://output/{path}` (translated files inside an
+  output directory with J2C's marker, under the workspace root).
+- Distribution, ready to publish: `server.json` for the MCP registry
+  (`io.github.juangp3/j2c`), the npm package `@juangp3/j2c-mcp` it names
+  (`npx @juangp3/j2c-mcp`, bundling the CLI JAR; attached to the release),
+  a Claude Code plugin (`agents/claude/plugin`, with the skill and the
+  server) listed in `.claude-plugin/marketplace.json`, and a configuration
+  for Copilot's cloud coding agent (`agents/copilot/mcp-config.json`).
+  `vscode/scripts/check-distribution.js` checks that they agree with the
+  release version.
 
 ### Java language support
 
