@@ -46,6 +46,16 @@
 				</includes>
 			</resource>
 			<resource>
+				<!-- The bundled runtime's API and contract, for j2c report and
+					the MCP j2c://runtime resource -->
+				<directory>runtime</directory>
+				<targetPath>META-INF/j2c-runtime</targetPath>
+				<includes>
+					<include>api.txt</include>
+					<include>README.md</include>
+				</includes>
+			</resource>
+			<resource>
 				<directory>licenses</directory>
 				<targetPath>META-INF/j2c-licenses/licenses</targetPath>
 			</resource>

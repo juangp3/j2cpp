@@ -28,6 +28,10 @@ public class Main {
 			+ "[--classpath <paths>] [--encoding <charset>] [--tests] "
 			+ "[--project <auto|none|directory>] [--no-build-tool] "
 			+ "<java-file-or-source-directory-or-project>..." + NL
+			+ "       j2c report [--format <markdown|json>] [--sourcepath <paths>] "
+			+ "[--classpath <paths>] [--encoding <charset>] [--tests] "
+			+ "[--runtime <directory>] [--project <auto|none|directory>] "
+			+ "[--no-build-tool] <java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
@@ -41,6 +45,9 @@ public class Main {
 			+ "them (make test)." + NL
 			+ "fix shows the mechanical fixes of problems as a unified diff; "
 			+ "--apply writes them into the Java files." + NL
+			+ "report prints a migration readiness report: how much translates, "
+			+ "what blocks the rest, and the JDK API used compared with the J2C "
+			+ "runtime (Markdown, or --format json)." + NL
 			+ "--runtime translates against a J2C runtime directory instead of "
 			+ "the running JDK: java/ holds its Java sources, cpp/ its C++ natives "
 			+ "and hooks (see runtime/README.md)." + NL
@@ -59,7 +66,7 @@ public class Main {
 		boolean json = isJson(args);
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;
-		if (json || "fix".equals(command)) {
+		if (json || "fix".equals(command) || "report".equals(command)) {
 			// The translator reports progress on stdout; keep it for JSON
 			// and for diffs
 			System.setOut(System.err);
@@ -108,7 +115,7 @@ public class Main {
 	private static String command(String[] args) {
 		if (args.length > 0
 				&& ("explain".equals(args[0]) || "capabilities".equals(args[0])
-						|| "fix".equals(args[0]))) {
+						|| "fix".equals(args[0]) || "report".equals(args[0]))) {
 			return args[0];
 		}
 		for (String arg : args) {
@@ -133,6 +140,9 @@ public class Main {
 		}
 		if (args.length > 0 && "fix".equals(args[0])) {
 			return fix(args, stdout, json);
+		}
+		if (args.length > 0 && "report".equals(args[0])) {
+			return report(args, json ? stdout : utf8(stdout));
 		}
 
 		J2cService.Request request = new J2cService.Request();
@@ -298,6 +308,59 @@ public class Main {
 			}
 		}
 		return result.remaining.isEmpty() ? 0 : 1;
+	}
+
+	/**
+	 * Prints the migration readiness report, as Markdown or JSON. Exits with 0
+	 * whenever the report was produced, blockers or not.
+	 */
+	private static int report(String[] args, PrintStream stdout)
+			throws Exception {
+		J2cService.Request request = new J2cService.Request();
+		boolean json = false;
+		List<String> inputs = new ArrayList<String>();
+		for (int i = 1; i < args.length; i++) {
+			String arg = args[i];
+			if ("--format".equals(arg)) {
+				String format = value(args, ++i, arg);
+				if (!"markdown".equals(format) && !"json".equals(format)) {
+					throw new IllegalArgumentException("Invalid --format value: "
+							+ format + " (expected markdown or json)");
+				}
+				json = "json".equals(format);
+			} else if ("--sourcepath".equals(arg)) {
+				request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--classpath".equals(arg)) {
+				request.classPaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--sealed-types".equals(arg)) {
+				request.sealedTypes = sealedTypes(value(args, ++i, arg));
+			} else if ("--encoding".equals(arg)) {
+				request.encoding = charset(value(args, ++i, arg));
+			} else if ("--tests".equals(arg)) {
+				request.tests = true;
+			} else if ("--runtime".equals(arg)) {
+				request.runtime = new File(value(args, ++i, arg));
+			} else if ("--project".equals(arg)) {
+				request.project = project(value(args, ++i, arg), true);
+			} else if ("--no-build-tool".equals(arg)) {
+				request.buildTool = false;
+			} else if (arg.startsWith("-")) {
+				throw new IllegalArgumentException("Unknown report option: " + arg);
+			} else {
+				request.inputs.add(new File(arg));
+				inputs.add(arg);
+			}
+		}
+
+		Report report = new Report(new J2cService(null), new File("."));
+		Report.Result result = report.run(request);
+		if (json) {
+			stdout.println(Json.write(report.json(result, inputs)));
+		} else {
+			stdout.print(report.markdown(result, inputs));
+			stdout.flush();
+		}
+		return 0;
 	}
 
 	private static int explain(String[] args, PrintStream stdout, boolean json) {

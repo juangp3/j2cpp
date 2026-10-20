@@ -44,9 +44,10 @@ final class J2cService {
 	/**
 	 * Version of the JSON shapes produced below, raised whenever a field is
 	 * added, changed or removed. 2 added problem fixes, the fix command, and
-	 * the project setup fields (projects, warnings, buildTools).
+	 * the project setup fields (projects, warnings, buildTools); 3 the report
+	 * command.
 	 */
-	static final int SCHEMA_VERSION = 2;
+	static final int SCHEMA_VERSION = 3;
 
 	static final class Request {
 		final List<File> inputs = new ArrayList<File>();
@@ -117,13 +118,20 @@ final class J2cService {
 	}
 
 	CheckResult check(Request request) throws Exception {
+		return check(request, null);
+	}
+
+	/** A check that also hands each unit's AST to the listener (the report) */
+	CheckResult check(Request request, Transformer.CheckListener listener)
+			throws Exception {
 		Prepared prepared = prepare(request, false);
 		// Checking writes nothing, so the output root is never used
 		Transformer checker = new Transformer(prepared.project, "check",
 				new Path(new File(".").getAbsolutePath()), request.sealedTypes);
 		checker.setTests(request.tests);
 		CheckResult result = new CheckResult(checker.check(
-				new NullProgressMonitor(), prepared.units), prepared.units.length);
+				new NullProgressMonitor(), listener, prepared.units),
+				prepared.units.length);
 		result.projects = projects;
 		return result;
 	}
@@ -504,7 +512,7 @@ final class J2cService {
 	}
 
 	/** Detected builds, and warnings such as an unresolved class path */
-	private static void putProjects(Map<String, Object> json,
+	static void putProjects(Map<String, Object> json,
 			List<ProjectSetup.Project> projects) {
 		List<Object> list = new ArrayList<Object>();
 		List<Problem> warnings = new ArrayList<Problem>();
@@ -630,8 +638,8 @@ final class J2cService {
 		Map<String, Object> json = header("capabilities");
 		json.put("javaSourceLevel", "17");
 		json.put("cppStandard", "c++20");
-		json.put("commands", Arrays.asList("translate", "check", "fix", "explain",
-				"capabilities", "mcp"));
+		json.put("commands", Arrays.asList("translate", "check", "fix", "report",
+				"explain", "capabilities", "mcp"));
 		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
 				ProjectSetup.GRADLE));
 		json.put("supportedFeatures", Arrays.asList(

@@ -446,15 +446,35 @@ public class Transformer {
 	 */
 	public List<Problem> check(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
+		return check(monitor, null, units);
+	}
+
+	/** Receives each checked unit, with its parsed AST and its problems */
+	public interface CheckListener {
+		void checked(SourceUnit source, CompilationUnit ast,
+				List<Problem> problems) throws Exception;
+	}
+
+	/**
+	 * Like {@link #check(IProgressMonitor, SourceUnit...)}, also handing each
+	 * unit's AST (of the source after lambda rewriting, which keeps line
+	 * numbers) to the listener, when it is not null
+	 */
+	public List<Problem> check(IProgressMonitor monitor,
+			final CheckListener listener, SourceUnit... units) throws Exception {
 		selection.addAll(Arrays.asList(units));
 		final List<Problem> problems = new ArrayList<Problem>();
 		project.parse(Arrays.asList(units), monitor,
 				new SourceProject.UnitHandler() {
 					@Override
 					public void accept(SourceUnit source, CompilationUnit ast)
-							throws IOException {
-						problems.addAll(QuickFixes.addFixes(project, source,
-								problems(source, ast)));
+							throws Exception {
+						List<Problem> found = QuickFixes.addFixes(project,
+								source, problems(source, ast));
+						problems.addAll(found);
+						if (listener != null) {
+							listener.checked(source, ast, found);
+						}
 					}
 				});
 		return problems;

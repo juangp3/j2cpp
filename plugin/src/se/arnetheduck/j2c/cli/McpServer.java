@@ -160,6 +160,22 @@ final class McpServer {
 						Boolean.TRUE.equals(arguments.get("apply")));
 				return result(id, toolResult(fixer.json(result), false));
 			}
+			case "j2c_report": {
+				Report report = new Report(service, root);
+				List<String> inputs = strings(arguments, "paths", true);
+				Report.Result result = report.run(request(arguments, false));
+				Map<String, Object> toolResult = toolResult(report.json(result,
+						inputs), false);
+				// The same report as Markdown, for people reading along
+				Map<String, Object> markdown = new LinkedHashMap<String, Object>();
+				markdown.put("type", "text");
+				markdown.put("text", report.markdown(result, inputs));
+				List<Object> content = new ArrayList<Object>(
+						(List<?>) toolResult.get("content"));
+				content.add(markdown);
+				toolResult.put("content", content);
+				return result(id, toolResult);
+			}
 			case "j2c_explain":
 				return result(id, toolResult(J2cService.explainJson(optionalString(
 						arguments, "id")), false));
@@ -307,6 +323,16 @@ final class McpServer {
 						+ "left. Problems without a fix are returned with their hints.",
 				// Like j2c_check, it may run the project's build tool
 				fixSchema, false, true, true));
+		tools.add(tool("j2c_report", "Migration readiness report",
+				"Reports how much of the Java code translates (files, types and "
+						+ "methods with no problem from j2c_check), the blockers by "
+						+ "problem id and package with top locations and quick-fix "
+						+ "counts, test-feature blockers with tests, the JDK types and "
+						+ "members the code uses compared with what the J2C runtime "
+						+ "provides, and next steps. Writes nothing. Returns JSON and "
+						+ "the same report as Markdown.",
+				// Like j2c_check, it may run the project's build tool
+				inputSchema(false), true, false, true));
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
