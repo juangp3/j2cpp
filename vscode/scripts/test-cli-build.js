@@ -337,4 +337,4 @@ function checkBuild(runCli, tempDirectory) {
 	checkRealBuild(runCli, tempDirectory);
 }
 
-module.exports = { checkBuild };
+module.exports = { checkBuild, writeFakeMake };

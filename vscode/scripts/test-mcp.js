@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const projects = require("./test-cli-projects");
 const sessions = require("./test-mcp-sessions");
+const { writeFakeMake } = require("./test-cli-build");
 
 const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
@@ -104,7 +105,7 @@ try {
 
 	const tools = responses.get(2).result.tools;
 	assert.deepStrictEqual(tools.map((tool) => tool.name),
-		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_explain", "j2c_capabilities"]);
+		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_build", "j2c_explain", "j2c_capabilities"]);
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
 	assert.strictEqual(byName.get("j2c_check").annotations.readOnlyHint, true);
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
@@ -132,6 +133,17 @@ try {
 	}
 	assert.strictEqual(init.capabilities.resources.subscribe, false);
 	assert.strictEqual(init.serverInfo.title, "J2C Java to C++");
+	// j2c_build writes only build products into the output directory, and
+	// never runs Maven or Gradle
+	const buildTool = byName.get("j2c_build");
+	assert.strictEqual(buildTool.annotations.readOnlyHint, false);
+	assert.strictEqual(buildTool.annotations.destructiveHint, false);
+	assert.strictEqual(buildTool.annotations.openWorldHint, false);
+	assert.deepStrictEqual(buildTool.inputSchema.required, ["output"]);
+	assert.deepStrictEqual(buildTool.inputSchema.properties.target.enum, ["all", "mains", "tests"]);
+	assert.strictEqual(buildTool.inputSchema.properties.jobs.type, "integer");
+	assert.strictEqual(buildTool.inputSchema.properties.buildTool, undefined);
+	assert.strictEqual(byName.get("j2c_translate").inputSchema.properties.lineDirectives.type, "boolean");
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -394,6 +406,66 @@ try {
 	assert.strictEqual(older.get(1).result.serverInfo.title, undefined);
 	for (const [id, key] of [[2, "prompts"], [3, "resources"], [4, "resourceTemplates"]]) {
 		assert(older.get(id).result[key].every((item) => item.title === undefined), key);
+	}
+
+	// j2c_build runs make (a stub here) in earlier J2C output and maps the
+	// compiler's errors to Java through the #line directives
+	const stubDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "j2c-mcp-make-"));
+	try {
+		const make = writeFakeMake(stubDirectory);
+		const canned = path.join(stubDirectory, "make-output.txt");
+		const argsFile = path.join(stubDirectory, "make-args.json");
+		fs.mkdirSync(path.join(root, "lines"));
+		fs.mkdirSync(path.join(root, "built"));
+		const javaPath = ["..", "src", "demo", "Hi.java"].join("/");
+		fs.writeFileSync(canned, [
+			"Compile src/demo/Hi.cpp",
+			`${javaPath}:5:10: error: 'f' was not declared in this scope`,
+			""
+		].join("\n"));
+		const outsideBefore = fs.readdirSync(outside);
+		const builds = session([
+			call(1, "j2c_translate", { paths: [hi], output: "lines", lineDirectives: true }),
+			call(2, "j2c_build", { output: "lines", target: "mains", jobs: 2 }),
+			call(3, "j2c_build", { output: "src" }),
+			call(4, "j2c_build", { output: outside }),
+			call(5, "j2c_build", { output: "lines", target: "test" }),
+			call(6, "j2c_build", { output: "lines", jobs: "many" }),
+			call(7, "j2c_build", { paths: [hi], output: "built" }),
+			call(8, "j2c_build", { paths: [hi], output: outside })
+		], { env: { J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_OUTPUT: canned, J2C_FAKE_MAKE_ARGS: argsFile } });
+		const linesReport = builds.get(1).result.structuredContent;
+		assert.strictEqual(linesReport.lineDirectives, true);
+		assert(fs.readFileSync(path.join(root, "lines", "src", "demo", "Hi.cpp"), "utf8").includes(` "${javaPath}"`));
+
+		const failed = builds.get(2).result;
+		assert.strictEqual(failed.isError, false, "A failed build is data, not a tool failure");
+		const report = failed.structuredContent;
+		assert.strictEqual(report.command, "build");
+		assert.strictEqual(report.status, "failed");
+		assert.strictEqual(report.exitCode, 2);
+		assert.strictEqual(report.translated, false);
+		assert.deepStrictEqual(report.makeCommand, [make, "-k", "-j2", "--output-sync=target", "mains"]);
+		const [error] = report.diagnostics;
+		assert.deepStrictEqual(error.java, { file: path.join(root, "src", "demo", "Hi.java"), line: 5 });
+		assert.strictEqual(error.cpp.file, path.join(root, "lines", "src", "demo", "Hi.cpp"));
+		assert.strictEqual(error.mapped, "line-directive");
+		for (const id of [3, 4, 5, 6, 8]) {
+			const refused = builds.get(id).result;
+			assert.strictEqual(refused.isError, true, `${id}: ${JSON.stringify(refused)}`);
+			assert.strictEqual(refused.structuredContent.status, "usage-error", JSON.stringify(refused));
+		}
+		assert(builds.get(3).result.structuredContent.message.includes("Not a J2C output directory"));
+		assert(builds.get(4).result.structuredContent.message.includes("outside the workspace root"));
+		assert(builds.get(8).result.structuredContent.message.includes("outside the workspace root"));
+		assert.deepStrictEqual(fs.readdirSync(outside), outsideBefore);
+		// With paths it translates first, with directives
+		const translatedBuild = builds.get(7).result.structuredContent;
+		assert.strictEqual(translatedBuild.translated, true, JSON.stringify(translatedBuild));
+		assert(translatedBuild.generatedFiles.includes("src/demo/Hi.cpp"));
+		assert(fs.readFileSync(path.join(root, "built", "src", "demo", "Hi.cpp"), "utf8").includes("#line "));
+	} finally {
+		fs.rmSync(stubDirectory, { recursive: true, force: true });
 	}
 	for (const value of ["many", "-1"]) {
 		const badCache = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root", root,
