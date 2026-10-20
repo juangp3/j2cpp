@@ -1,0 +1,14 @@
+{
+  "name": "j2c",
+  "displayName": "J2C Java to C++",
+  "version": "0.6.0",
+  "description": "Translate Java 17 code to C++20 with J2C: the J2C MCP server (check, fix, report, translate) and a skill for the workflow.",
+  "author": {
+    "name": "Juan Guedes Pereira",
+    "url": "https://github.com/juangp3"
+  },
+  "homepage": "https://github.com/juangp3/j2cpp",
+  "repository": "https://github.com/juangp3/j2cpp",
+  "license": "EPL-1.0",
+  "keywords": ["java", "c++", "translation", "migration", "mcp"]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@juangp3/j2c-mcp",
+  "version": "0.6.0",
+  "description": "J2C as an MCP server: check Java 17 code for translation problems, fix them, and translate it to C++20.",
+  "mcpName": "io.github.juangp3/j2c",
+  "license": "EPL-1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juangp3/j2cpp.git",
+    "directory": "agents/npm"
+  },
+  "homepage": "https://github.com/juangp3/j2cpp",
+  "keywords": [
+    "mcp",
+    "java",
+    "c++",
+    "translator",
+    "j2c"
+  ],
+  "bin": {
+    "j2c-mcp": "bin/j2c-mcp.js",
+    "j2c": "bin/j2c.js"
+  },
+  "files": [
+    "bin/",
+    "lib/j2c-cli.jar",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.txt"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepack": "node scripts/prepack.js"
+  }
+}

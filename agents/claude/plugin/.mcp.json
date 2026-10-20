@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "j2c": {
+      "command": "npx",
+      "args": ["-y", "@juangp3/j2c-mcp@0.6.0", "--root", "."]
+    }
+  }
+}

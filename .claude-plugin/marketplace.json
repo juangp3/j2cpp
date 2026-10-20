@@ -1,0 +1,16 @@
+{
+  "name": "j2cpp",
+  "description": "J2C, a Java 17 to C++20 translator, for Claude Code",
+  "owner": {
+    "name": "Juan Guedes Pereira",
+    "url": "https://github.com/juangp3"
+  },
+  "plugins": [
+    {
+      "name": "j2c",
+      "source": "./agents/claude/plugin",
+      "description": "The J2C MCP server (check, fix, report, translate) and a skill for translating Java to C++",
+      "category": "development"
+    }
+  ]
+}

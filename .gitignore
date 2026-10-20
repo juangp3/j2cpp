@@ -10,3 +10,8 @@ test/bin/
 vscode/CHANGELOG.md
 vscode/licenses/
 .claude/worktrees/
+# Copied in by agents/npm/scripts/prepack.js
+agents/npm/lib/
+agents/npm/LICENSE
+agents/npm/THIRD-PARTY-NOTICES.txt
+agents/npm/*.tgz

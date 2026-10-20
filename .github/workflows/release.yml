@@ -39,6 +39,8 @@ jobs:
           test "$tag" = "$maven"
           grep -q "^## $tag " CHANGELOG.md
           echo "version=$tag" >> "$GITHUB_OUTPUT"
+      - name: Check MCP registry, npm and Claude Code plugin files
+        run: node vscode/scripts/check-distribution.js --version "${GITHUB_REF_NAME#v}"
       - name: Install extension build dependencies
         working-directory: vscode
         run: npm ci
@@ -53,6 +55,10 @@ jobs:
           cp target/j2c-cli.jar "dist/j2c-cli-$VERSION.jar"
           cp "vscode/j2c-$VERSION.vsix" "dist/j2c-$VERSION.vsix"
           cmp target/j2c-cli.jar <(unzip -p "dist/j2c-$VERSION.vsix" extension/lib/j2c-cli.jar)
+          # The npm package the MCP registry's server.json names, with the
+          # same JAR; published by hand with npm publish (Phase 8)
+          (cd agents/npm && npm pack --pack-destination ../../dist)
+          cmp target/j2c-cli.jar <(tar -xOzf "dist/juangp3-j2c-mcp-$VERSION.tgz" package/lib/j2c-cli.jar)
           (cd dist && sha256sum * > SHA256SUMS)
           cat dist/SHA256SUMS
       - name: Write release notes
@@ -77,6 +83,8 @@ jobs:
           - \`j2c-cli-$VERSION.jar\`: standalone CLI (\`java -jar j2c-cli-$VERSION.jar --help\`).
           - \`j2c-$VERSION.vsix\`: VS Code extension with the same CLI bundled
             (\`code --install-extension j2c-$VERSION.vsix\`).
+          - \`juangp3-j2c-mcp-$VERSION.tgz\`: the npm package of the MCP server
+            (\`npx @juangp3/j2c-mcp\`), with the same CLI.
           - \`SHA256SUMS\`: verify downloads with \`sha256sum -c SHA256SUMS\`.
 
           Third-party license notices are in \`THIRD-PARTY-NOTICES.txt\` and
@@ -97,4 +105,5 @@ jobs:
             --notes-file dist/notes.md \
             "dist/j2c-cli-$VERSION.jar" \
             "dist/j2c-$VERSION.vsix" \
+            "dist/juangp3-j2c-mcp-$VERSION.tgz" \
             dist/SHA256SUMS

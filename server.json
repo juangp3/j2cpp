@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.juangp3/j2c",
+  "title": "J2C Java to C++",
+  "description": "Check Java 17 code for C++ translation problems, fix them, and translate it to C++20.",
+  "repository": {
+    "url": "https://github.com/juangp3/j2cpp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/juangp3/j2cpp",
+  "version": "0.6.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@juangp3/j2c-mcp",
+      "version": "0.6.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--root",
+          "description": "Workspace root: every input, source path and output must be inside it (default: the working directory)",
+          "format": "filepath",
+          "valueHint": "directory",
+          "default": "."
+        }
+      ]
+    }
+  ]
+}
