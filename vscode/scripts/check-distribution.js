@@ -63,6 +63,7 @@ assert.strictEqual(npmPackage.license, readJson("vscode/package.json").license);
 for (const bin of Object.values(npmPackage.bin)) {
 	const file = path.join(repositoryRoot, "agents", "npm", bin);
 	assert(fs.existsSync(file), `agents/npm: missing ${bin}`);
+	assert(!fs.readFileSync(file, "utf8").includes("\r"), `agents/npm/${bin}: CR line ends break the shebang on Unix`);
 	const syntax = childProcess.spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
 	assert.strictEqual(syntax.status, 0, syntax.stderr);
 }
@@ -94,20 +95,39 @@ assert(entry, `marketplace.json: no entry for plugin ${plugin.name}`);
 assert.strictEqual(entry.source, "./agents/claude/plugin");
 assert(!entry.version, "marketplace.json: the version comes from plugin.json");
 
-// The launcher starts the MCP server from the built JAR
+// Copilot cloud coding agent: the sample configuration and setup steps run
+// this version
+const copilot = readJson("agents/copilot/mcp-config.json").mcpServers.j2c;
+assert(copilot, "agents/copilot/mcp-config.json: a j2c server");
+assert(["local", "stdio"].includes(copilot.type), "agents/copilot/mcp-config.json: a local server");
+assert(copilot.args.includes(`${npmPackage.name}@${version}`),
+	`agents/copilot/mcp-config.json must run ${npmPackage.name}@${version}`);
+assert(Array.isArray(copilot.tools) && copilot.tools.length > 0, "agents/copilot/mcp-config.json: tools");
+assert(fs.readFileSync(path.join(repositoryRoot, "agents", "copilot", "copilot-setup-steps.yml"), "utf8")
+	.includes(`${npmPackage.name}@${version}`), `agents/copilot/copilot-setup-steps.yml must use ${version}`);
+
+// The launcher starts the MCP server from the built JAR, which has the tools
+// the Copilot configuration enables
 if (fs.existsSync(cliJar)) {
 	const launched = childProcess.spawnSync(process.execPath, [
 		path.join(repositoryRoot, "agents", "npm", npmPackage.bin["j2c-mcp"]), "--root", repositoryRoot
 	], {
 		encoding: "utf8",
-		input: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize",
-			params: { protocolVersion: "2025-06-18", capabilities: {} } }) + "\n",
+		input: [
+			{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {} } },
+			{ jsonrpc: "2.0", id: 2, method: "tools/list" }
+		].map((message) => JSON.stringify(message)).join("\n") + "\n",
 		env: { ...process.env, J2C_JAR: cliJar }
 	});
 	assert.strictEqual(launched.status, 0, launched.stderr);
-	const response = JSON.parse(launched.stdout.trim());
+	const responses = launched.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+	const response = responses[0];
 	assert.strictEqual(response.result.serverInfo.name, "j2c");
 	assert.strictEqual(response.result.serverInfo.version, version);
+	const tools = responses[1].result.tools.map((tool) => tool.name);
+	for (const tool of copilot.tools) {
+		assert(tool === "*" || tools.includes(tool), `agents/copilot/mcp-config.json: no tool ${tool}`);
+	}
 	const missingJava = childProcess.spawnSync(process.execPath, [
 		path.join(repositoryRoot, "agents", "npm", npmPackage.bin.j2c), "--version"
 	], { encoding: "utf8", env: { ...process.env, J2C_JAR: cliJar, J2C_JAVA: path.join(repositoryRoot, "no-such-java") } });
