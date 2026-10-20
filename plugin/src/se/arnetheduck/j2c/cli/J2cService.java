@@ -2,6 +2,7 @@ package se.arnetheduck.j2c.cli;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,9 +46,10 @@ final class J2cService {
 	 * Version of the JSON shapes produced below, raised whenever a field is
 	 * added, changed or removed. 2 added problem fixes, the fix command, and
 	 * the project setup fields (projects, warnings, buildTools); 3 the report
-	 * command.
+	 * command; 4 the build command (Builder.json) and lineDirectives in
+	 * translate results.
 	 */
-	static final int SCHEMA_VERSION = 3;
+	static final int SCHEMA_VERSION = 4;
 
 	static final class Request {
 		final List<File> inputs = new ArrayList<File>();
@@ -92,6 +94,8 @@ final class J2cService {
 		final List<String> generatedFiles;
 		final int fileCount;
 		List<ProjectSetup.Project> projects = Collections.emptyList();
+		/** Whether the C++ has #line directives */
+		boolean lineDirectives;
 
 		TranslateResult(File output, List<String> generatedFiles, int fileCount) {
 			this.output = output;
@@ -235,6 +239,36 @@ final class J2cService {
 		TranslateResult result = new TranslateResult(output, generated,
 				prepared.units.length);
 		result.projects = projects;
+		result.lineDirectives = request.lineDirectives;
+		return result;
+	}
+
+	/**
+	 * Translates the request's inputs, if it has any, then runs make in its
+	 * output directory, which must otherwise be earlier J2C output
+	 */
+	Builder.Result build(Request request, Builder.Options options,
+			PrintStream log) throws Exception {
+		return build(request, options, log, Progress.NONE);
+	}
+
+	/** The same, reporting progress and stopping when cancelled */
+	Builder.Result build(Request request, Builder.Options options,
+			PrintStream log, Progress progress) throws Exception {
+		File output = request.output;
+		if (output == null) {
+			throw new IllegalArgumentException("Missing output directory");
+		}
+		TranslateResult translation = null;
+		if (!request.inputs.isEmpty()) {
+			translation = translate(request, progress);
+		} else {
+			requireInsideRoot(output, "Output directory");
+			Builder.requireBuildable(output);
+		}
+		Builder.Result result = Builder.build(output, options, log, progress);
+		result.translated = translation != null;
+		result.translation = translation;
 		return result;
 	}
 
@@ -571,6 +605,7 @@ final class J2cService {
 			}
 		}
 		json.put("testFiles", tests);
+		json.put("lineDirectives", result.lineDirectives);
 		json.put("problems", Collections.emptyList());
 		putProjects(json, result.projects);
 		return json;
@@ -712,7 +747,7 @@ final class J2cService {
 		json.put("javaSourceLevel", "17");
 		json.put("cppStandard", "c++20");
 		json.put("commands", Arrays.asList("translate", "check", "fix", "report",
-				"explain", "capabilities", "mcp"));
+				"build", "explain", "capabilities", "mcp"));
 		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
 				ProjectSetup.GRADLE));
 		json.put("supportedFeatures", Arrays.asList(
@@ -737,7 +772,10 @@ final class J2cService {
 						+ "blockers by problem id and package, and JDK API use compared "
 						+ "with the J2C runtime (j2c report, the j2c_report tool)",
 				"MCP prompts (j2c-migrate, j2c-assess) and resources (the problem "
-						+ "catalog, the runtime contract, translated files)"));
+						+ "catalog, the runtime contract, translated files)",
+				"#line directives in the generated C++ (--line-directives), and a "
+						+ "build command (j2c build, the j2c_build tool) reporting "
+						+ "compiler errors at their Java files and lines"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

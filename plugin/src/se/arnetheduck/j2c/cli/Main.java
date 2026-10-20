@@ -32,6 +32,10 @@ public class Main {
 			+ "[--classpath <paths>] [--encoding <charset>] [--tests] "
 			+ "[--runtime <directory>] [--project <auto|none|directory>] "
 			+ "[--no-build-tool] <java-file-or-source-directory-or-project>..." + NL
+			+ "       j2c build --output <directory> [--make <program>] "
+			+ "[--wsl <auto|always|never>] [--wsl-distro <name>] "
+			+ "[--target <target>] [--jobs <n>] [--format <text|json>] "
+			+ "[translation options and inputs]" + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
@@ -59,6 +63,12 @@ public class Main {
 			+ "build for the given inputs; none turns detection off." + NL
 			+ "--no-build-tool never runs Maven or Gradle (a cached class path is "
 			+ "still used)." + NL
+			+ "--line-directives adds #line directives to the generated C++, so "
+			+ "compilers and debuggers name Java files and lines." + NL
+			+ "build translates the inputs with --line-directives (or, without "
+			+ "inputs, uses earlier J2C output), runs make (in WSL on Windows when "
+			+ "make is missing), and reports the compiler's errors at their Java "
+			+ "lines." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents; --check-cache keeps the check results of up to "
 			+ "that many files between calls (default "
@@ -69,7 +79,8 @@ public class Main {
 		boolean json = isJson(args);
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;
-		if (json || "fix".equals(command) || "report".equals(command)) {
+		if (json || "fix".equals(command) || "report".equals(command)
+				|| "build".equals(command)) {
 			// The translator reports progress on stdout; keep it for JSON
 			// and for diffs
 			System.setOut(System.err);
@@ -118,7 +129,8 @@ public class Main {
 	private static String command(String[] args) {
 		if (args.length > 0
 				&& ("explain".equals(args[0]) || "capabilities".equals(args[0])
-						|| "fix".equals(args[0]) || "report".equals(args[0]))) {
+						|| "fix".equals(args[0]) || "report".equals(args[0])
+						|| "build".equals(args[0]))) {
 			return args[0];
 		}
 		for (String arg : args) {
@@ -146,6 +158,9 @@ public class Main {
 		}
 		if (args.length > 0 && "report".equals(args[0])) {
 			return report(args, json ? stdout : utf8(stdout));
+		}
+		if (args.length > 0 && "build".equals(args[0])) {
+			return build(args, stdout, json);
 		}
 
 		J2cService.Request request = new J2cService.Request();
@@ -378,6 +393,112 @@ public class Main {
 			stdout.flush();
 		}
 		return 0;
+	}
+
+	/**
+	 * Translates (when inputs are given) and builds with make, reporting the
+	 * compiler's diagnostics at their Java lines. Exits with 0 when make
+	 * succeeds, else 1.
+	 */
+	private static int build(String[] args, PrintStream stdout, boolean json)
+			throws Exception {
+		J2cService.Request request = new J2cService.Request();
+		request.lineDirectives = true;
+		Builder.Options options = new Builder.Options();
+		for (int i = 1; i < args.length; i++) {
+			String arg = args[i];
+			if ("--output".equals(arg)) {
+				request.output = new File(value(args, ++i, arg));
+			} else if ("--make".equals(arg)) {
+				options.make = value(args, ++i, arg);
+			} else if ("--wsl".equals(arg)) {
+				options.wsl = value(args, ++i, arg);
+			} else if ("--wsl-distro".equals(arg)) {
+				options.wslDistro = value(args, ++i, arg);
+			} else if ("--target".equals(arg)) {
+				options.target = value(args, ++i, arg);
+			} else if ("--jobs".equals(arg)) {
+				options.jobs = jobs(value(args, ++i, arg));
+			} else if ("--format".equals(arg)) {
+				format(value(args, ++i, arg));
+			} else if ("--sourcepath".equals(arg)) {
+				request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--classpath".equals(arg)) {
+				request.classPaths.addAll(pathList(value(args, ++i, arg)));
+			} else if ("--name".equals(arg)) {
+				request.name = value(args, ++i, arg);
+			} else if ("--sealed-types".equals(arg)) {
+				request.sealedTypes = sealedTypes(value(args, ++i, arg));
+			} else if ("--encoding".equals(arg)) {
+				request.encoding = charset(value(args, ++i, arg));
+			} else if ("--force".equals(arg)) {
+				request.force = true;
+			} else if ("--tests".equals(arg)) {
+				request.tests = true;
+			} else if ("--runtime".equals(arg)) {
+				request.runtime = new File(value(args, ++i, arg));
+			} else if ("--project".equals(arg)) {
+				request.project = project(value(args, ++i, arg), true);
+			} else if ("--no-build-tool".equals(arg)) {
+				request.buildTool = false;
+			} else if (arg.startsWith("-")) {
+				throw new IllegalArgumentException("Unknown build option: " + arg);
+			} else {
+				request.inputs.add(new File(arg));
+			}
+		}
+		if (request.output == null) {
+			throw new IllegalArgumentException("Missing --output directory");
+		}
+
+		J2cService service = new J2cService(null);
+		Builder.Result result;
+		try {
+			result = service.build(request, options, System.err);
+		} catch (TranslationException e) {
+			if (!json) {
+				throw e;
+			}
+			stdout.println(Json.write(J2cService.failedJson("build",
+					e.problems(), service.projects())));
+			return 1;
+		} catch (Builder.BuildException e) {
+			if (json) {
+				stdout.println(Json.write(J2cService.errorJson("build", "error",
+						e.getMessage())));
+			} else {
+				System.err.println("J2C build failed: " + e.getMessage());
+			}
+			return 1;
+		}
+		if (json) {
+			stdout.println(Json.write(Builder.json(result)));
+		} else {
+			int errors = 0;
+			for (Builder.Diagnostic diagnostic : result.diagnostics) {
+				stdout.println(Builder.text(diagnostic));
+				if (diagnostic.severity.equals("error")) {
+					++errors;
+				}
+			}
+			stdout.println(result.exitCode == 0 ? "J2C build: ok"
+					: "J2C build failed: make exited with " + result.exitCode
+							+ ", " + errors + " error(s)");
+		}
+		return result.exitCode == 0 ? 0 : 1;
+	}
+
+	static int jobs(String value) {
+		try {
+			int jobs = Integer.parseInt(value);
+			if (jobs > 0) {
+				return jobs;
+			}
+		} catch (NumberFormatException e) {
+			// Reported below
+		}
+		throw new IllegalArgumentException("Invalid --jobs value: " + value
+				+ " (expected a positive number)");
 	}
 
 	private static int explain(String[] args, PrintStream stdout, boolean json) {

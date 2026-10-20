@@ -55,7 +55,8 @@ final class McpServer {
 			+ "source folders, fix each reported problem in the Java source using "
 			+ "its hint (j2c_explain gives details), check again until no problems "
 			+ "remain (j2c_fix previews or applies the mechanical fixes some "
-			+ "problems carry), then call j2c_translate with an output directory. Paths are "
+			+ "problems carry), then call j2c_translate with an output directory, and "
+			+ "j2c_build to compile it and get C++ errors at their Java lines. Paths are "
 			+ "relative to the workspace root. A Maven or Gradle project folder "
 			+ "(such as \".\") can be passed directly: its source roots and "
 			+ "dependency class path are detected. Translated code still needs a C++ "
@@ -450,6 +451,9 @@ final class McpServer {
 		} catch (TranslationException e) {
 			return result(id, toolResult(J2cService.failedJson(command,
 					e.problems(), service.projects()), true));
+		} catch (Builder.BuildException e) {
+			return result(id, toolResult(J2cService.errorJson(command, "error",
+					e.getMessage()), true));
 		} catch (Exception e) {
 			e.printStackTrace(System.err);
 			return result(id, toolResult(J2cService.errorJson(command, "error",
@@ -556,6 +560,43 @@ final class McpServer {
 				return toolResult;
 			}
 		});
+		register(new Tool(tool("j2c_build", "Build translated C++",
+				"Runs make in a J2C output directory (in WSL on Windows when make "
+						+ "is missing) and returns the compiler's errors and warnings "
+						+ "mapped to Java files and lines, with the C++ location of "
+						+ "each, the exit code and the end of the log. With paths, "
+						+ "translates them into the output directory first, with "
+						+ "#line directives, like j2c_translate; otherwise the output "
+						+ "directory must be earlier J2C output (translate it with "
+						+ "lineDirectives: true for Java lines). Writes only inside "
+						+ "the output directory.",
+				buildSchema(), false, false, false)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				J2cService.Request request = buildRequest(arguments);
+				Builder.Options options = new Builder.Options();
+				String target = optionalString(arguments, "target");
+				if (target != null && !BUILD_TARGETS.contains(target)) {
+					throw new IllegalArgumentException("target must be one of "
+							+ BUILD_TARGETS);
+				}
+				options.target = target;
+				Object jobs = arguments.get("jobs");
+				if (jobs != null) {
+					if (!(jobs instanceof Long)) {
+						throw new IllegalArgumentException("jobs must be an integer");
+					}
+					options.jobs = Main.jobs(jobs.toString());
+				}
+				Builder.Result result = service.build(request, options,
+						System.err, progress);
+				if (result.translation != null) {
+					content.translated(result.translation);
+				}
+				return Builder.json(result);
+			}
+		});
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
@@ -578,6 +619,28 @@ final class McpServer {
 				return J2cService.capabilitiesJson();
 			}
 		});
+	}
+
+	/**
+	 * j2c_build: the output directory, and the Java inputs translated into
+	 * it first when paths is given. The build tool is never run, so the
+	 * tool stays closed-world; j2c_translate resolves a project's class path.
+	 */
+	private J2cService.Request buildRequest(Map<?, ?> arguments) {
+		J2cService.Request request;
+		if (arguments.get("paths") != null) {
+			request = request(arguments, true);
+		} else {
+			request = new J2cService.Request();
+			String output = optionalString(arguments, "output");
+			if (output == null) {
+				throw new IllegalArgumentException("Missing output directory");
+			}
+			request.output = resolve(output);
+		}
+		request.buildTool = false;
+		request.lineDirectives = true;
+		return request;
 	}
 
 	private J2cService.Request request(Map<?, ?> arguments, boolean writes) {
@@ -623,6 +686,8 @@ final class McpServer {
 			request.output = resolve(output);
 			request.name = optionalString(arguments, "name");
 			request.force = Boolean.TRUE.equals(arguments.get("force"));
+			request.lineDirectives = Boolean.TRUE.equals(arguments
+					.get("lineDirectives"));
 		}
 		return request;
 	}
@@ -676,6 +741,33 @@ final class McpServer {
 	}
 
 
+	/** make targets j2c_build may build; test would run the program */
+	private static final List<String> BUILD_TARGETS = Arrays.asList("all",
+			"mains", "tests");
+
+	private static Map<String, Object> buildSchema() {
+		Map<String, Object> schema = inputSchema(true);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> properties = (Map<String, Object>) schema
+				.get("properties");
+		properties.remove("buildTool");
+		properties.remove("lineDirectives");
+		properties.put("paths", array("Java files, source folders, or Maven or "
+				+ "Gradle project folders to translate first, relative to the "
+				+ "workspace root; omit to build earlier J2C output. Maven and "
+				+ "Gradle are not run: a cached class path is used, so call "
+				+ "j2c_translate first when dependencies must be resolved"));
+		Map<String, Object> target = property("string",
+				"make target: all (default, the libraries), mains (programs with a "
+						+ "main method) or tests (GoogleTest binary, not run)");
+		target.put("enum", BUILD_TARGETS);
+		properties.put("target", target);
+		properties.put("jobs", property("integer",
+				"Parallel compile jobs (default: one per processor)"));
+		schema.put("required", Collections.singletonList("output"));
+		return schema;
+	}
+
 	private static Map<String, Object> inputSchema(boolean translate) {
 		Map<String, Object> properties = new LinkedHashMap<String, Object>();
 		properties.put("paths", array("Java files, source folders, or Maven or "
@@ -713,6 +805,9 @@ final class McpServer {
 					"Project name used in the Makefile (default: output directory name)"));
 			properties.put("force", property("boolean",
 					"Translate into a non-empty directory that J2C did not create"));
+			properties.put("lineDirectives", property("boolean",
+					"Add #line directives, so compiler errors and debuggers name "
+							+ "Java files and lines (see j2c_build)"));
 			required.add("output");
 		}
 		return schema(properties, required);
