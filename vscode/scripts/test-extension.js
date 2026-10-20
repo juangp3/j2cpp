@@ -31,7 +31,7 @@ function createHarness(options = {}) {
 	const config = options.config || {};
 	const sourcePathConfig = options.javaSourcePaths || [];
 
-	const diagnostics = {
+	const diagnosticCollection = () => ({
 		entries: new Map(),
 		clear() {
 			this.entries.clear();
@@ -40,7 +40,9 @@ function createHarness(options = {}) {
 			this.entries.set(uri.fsPath, fileDiagnostics);
 		},
 		dispose() {}
-	};
+	});
+	const diagnostics = diagnosticCollection();
+	const buildDiagnostics = diagnosticCollection();
 
 	const vscode = {
 		Diagnostic: class {
@@ -48,7 +50,17 @@ function createHarness(options = {}) {
 				Object.assign(this, { range, message, severity });
 			}
 		},
-		DiagnosticSeverity: { Error: 0, Warning: 1 },
+		DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2 },
+		DiagnosticRelatedInformation: class {
+			constructor(location, message) {
+				Object.assign(this, { location, message });
+			}
+		},
+		Location: class {
+			constructor(uri, range) {
+				Object.assign(this, { uri, range });
+			}
+		},
 		EventEmitter: class {
 			constructor() {
 				this.listeners = [];
@@ -86,8 +98,8 @@ function createHarness(options = {}) {
 		},
 		languages: {
 			createDiagnosticCollection: (name) => {
-				assert.strictEqual(name, "j2c");
-				return diagnostics;
+				assert(name === "j2c" || name === "j2c-build", name);
+				return name === "j2c" ? diagnostics : buildDiagnostics;
 			},
 			registerCodeActionsProvider: (selector, provider, metadata) => {
 				codeActionProviders.push({ selector, provider, metadata });
@@ -262,6 +274,7 @@ function createHarness(options = {}) {
 		config,
 		context,
 		diagnostics,
+		buildDiagnostics,
 		mcpProviders,
 		errors,
 		information,
@@ -489,7 +502,7 @@ async function testJsonReportPublishesDiagnostics() {
 	const input = makeFile(path.join(root, "src", "Anonymous.java"));
 	const bundledJar = makeFile(path.join(tempDirectory, "json extension", "lib", "j2c-cli.jar"));
 	const report = {
-		schemaVersion: 2,
+		schemaVersion: 3,
 		tool: "j2c",
 		command: "check",
 		status: "problems",
@@ -553,7 +566,7 @@ async function testQuickFixesFromJsonReport() {
 		fixes
 	});
 	const report = {
-		schemaVersion: 2,
+		schemaVersion: 3,
 		tool: "j2c",
 		command: "check",
 		status: "problems",
@@ -729,7 +742,7 @@ async function testProjectSetting() {
 	// A class path warning becomes a warning on the build file, which does
 	// not count as a problem
 	const report = {
-		schemaVersion: 2,
+		schemaVersion: 3,
 		tool: "j2c",
 		command: "check",
 		status: "ok",
@@ -764,6 +777,124 @@ async function testProjectSetting() {
 	assert(log.includes("warning: Maven was not found [J2C-PROJECT-CLASSPATH-UNRESOLVED]"), log);
 }
 
+// j2c.lineDirectives adds --line-directives to translations, not checks
+async function testLineDirectivesSetting() {
+	const root = path.join(tempDirectory, "line directives workspace");
+	const input = makeFile(path.join(root, "src", "Sample.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "line directives extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		config: { lineDirectives: true },
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		outputDirectory: path.join(tempDirectory, "line directives output"),
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.translate")({ fsPath: input });
+	await harness.commands.get("j2c.check")({ fsPath: input });
+	assert(harness.spawned[0][1].includes("--line-directives"), JSON.stringify(harness.spawned[0][1]));
+	assert(!harness.spawned[1][1].includes("--line-directives"), "Checks write no C++");
+}
+
+// J2C: Build Translated C++ runs j2c build in a J2C output directory and
+// shows the compiler's errors at their Java lines, apart from check problems
+async function testBuildPublishesMappedDiagnostics() {
+	const root = path.join(tempDirectory, "build workspace");
+	const java = makeFile(path.join(root, "src", "demo", "Counter.java"));
+	const output = path.join(root, "cpp");
+	makeFile(path.join(output, ".j2c-output"));
+	const cpp = makeFile(path.join(output, "src", "demo", "Counter.cpp"));
+	const header = makeFile(path.join(output, "ext", "src", "java", "lang", "Object.hpp"));
+	const bundledJar = makeFile(path.join(tempDirectory, "build extension", "lib", "j2c-cli.jar"));
+	const extensionPath = path.dirname(path.dirname(bundledJar));
+	const location = (file, line, column) => column ? { file, line, column } : { file, line };
+	const diagnostic = (severity, message, javaLocation, cppLocation, mapped, notes = []) => ({
+		severity, message, java: javaLocation, cpp: cppLocation, mapped, context: null, includedFrom: [], notes
+	});
+	const report = {
+		schemaVersion: 3,
+		tool: "j2c",
+		command: "build",
+		status: "failed",
+		exitCode: 2,
+		output,
+		translated: false,
+		diagnostics: [
+			diagnostic("error", "'x' was not declared in this scope", location(java, 12), location(cpp, 34, 15),
+				"line-directive", [diagnostic("note", "suggested alternative: 'step'", location(java, 11), location(cpp, 33, 10), "line-directive")]),
+			diagnostic("warning", "unused variable 'c'", location(java, 18), location(cpp, 51, 5), "nearest"),
+			diagnostic("error", "missing.hpp: No such file or directory", null, location(header, 3, 10), "none"),
+			diagnostic("error", "cannot find -lmissing", null, null, "none")
+		],
+		summary: { errors: 3, warnings: 1 },
+		log: [],
+		logTruncated: false
+	};
+	const harness = createHarness({
+		config: { "build.make": "gmake", "build.wslDistribution": "Ubuntu" },
+		extensionPath,
+		spawnOutcome: { code: 1, stdout: `${JSON.stringify(report)}\n`, stderr: "Compile src/demo/Counter.cpp\n" },
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.build")({ fsPath: output });
+
+	assert.deepStrictEqual(harness.spawned[0][1], ["-jar", bundledJar, "build", "--output", output,
+		"--format", "json", "--make", "gmake", "--wsl", "auto", "--wsl-distro", "Ubuntu"]);
+	assert.deepStrictEqual(harness.spawned[0][2], { cwd: root, windowsHide: true });
+	const [mapped] = harness.buildDiagnostics.entries.get(java);
+	assert.strictEqual(mapped.range.startLine, 11);
+	assert.strictEqual(mapped.severity, 0);
+	assert.strictEqual(mapped.source, "j2c build");
+	assert(mapped.message.startsWith("'x' was not declared in this scope"), mapped.message);
+	assert(mapped.message.includes(`C++: ${cpp}:34:15`), mapped.message);
+	assert.strictEqual(mapped.relatedInformation[0].location.uri.fsPath, java);
+	assert.strictEqual(mapped.relatedInformation[0].location.range.startLine, 10);
+	// Generated code without a directive stays in C++, naming the nearest
+	// Java line; files without directives are C++ only
+	const cppDiagnostics = harness.buildDiagnostics.entries.get(cpp);
+	assert.strictEqual(cppDiagnostics[0].severity, 1);
+	assert.strictEqual(cppDiagnostics[0].range.startLine, 50);
+	assert.strictEqual(cppDiagnostics[0].range.startCharacter, 4);
+	assert(cppDiagnostics[0].message.includes(`Nearest Java line: ${java}:18`));
+	assert.strictEqual(harness.buildDiagnostics.entries.get(header)[0].range.startLine, 2);
+	assert.strictEqual(harness.buildDiagnostics.entries.size, 3, "A diagnostic without a location is only logged");
+	assert.strictEqual(harness.diagnostics.entries.size, 0, "Check problems are kept apart");
+	assert(harness.errors[0].includes("Build failed with 3 error(s)"), JSON.stringify(harness.errors));
+	const log = harness.outputs[0].lines.join("");
+	assert(log.includes(`${java}:12: error: 'x' was not declared in this scope`), log);
+	assert(log.includes("error: cannot find -lmissing"), log);
+	assert(log.includes("Compile src/demo/Counter.cpp"), log);
+
+	// A clean build replaces them
+	const clean = { ...report, status: "ok", exitCode: 0, diagnostics: [], summary: { errors: 0, warnings: 0 } };
+	const succeeded = createHarness({
+		extensionPath,
+		spawnOutcome: { code: 0, stdout: `${JSON.stringify(clean)}\n` },
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await succeeded.commands.get("j2c.build")({ fsPath: output });
+	assert.deepStrictEqual(succeeded.spawned[0][1].slice(-2), ["--wsl", "auto"]);
+	assert(succeeded.information[0].includes("Build succeeded"), JSON.stringify(succeeded.information));
+
+	// A folder that is not J2C output asks for one, and is refused
+	const notOutput = path.join(root, "src");
+	const refused = createHarness({
+		extensionPath,
+		outputDirectory: notOutput,
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await refused.commands.get("j2c.build")({ fsPath: notOutput });
+	assert.strictEqual(refused.spawned.length, 0);
+	assert(refused.errors[0].includes("is not J2C output"), JSON.stringify(refused.errors));
+
+	// make could not be run: the CLI's message is shown
+	const unavailable = createHarness({
+		extensionPath,
+		spawnOutcome: { code: 1, stdout: `${JSON.stringify({ schemaVersion: 3, tool: "j2c", command: "build", status: "error", message: "Could not run make" })}\n` },
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await unavailable.commands.get("j2c.build")({ fsPath: output });
+	assert(unavailable.errors[0].includes("Build could not run (exit code 1): Could not run make"), JSON.stringify(unavailable.errors));
+}
+
 // Menu "when" clauses may only use context keys VS Code defines: an
 // unknown key is silently false and hides the menu item
 function testMenuContextKeys() {
@@ -777,7 +908,7 @@ function testMenuContextKeys() {
 			}
 		}
 	}
-	for (const command of ["j2c.translate", "j2c.check"]) {
+	for (const command of ["j2c.translate", "j2c.check", "j2c.build"]) {
 		const item = explorer.find((candidate) => candidate.command === command);
 		assert.ok(item.when.includes("explorerResourceIsFolder"), `${command} is not offered on folders`);
 	}
@@ -810,6 +941,8 @@ async function main() {
 		await testTestsSettingPassesFlag();
 		await testProjectSetting();
 		await testNoTargetIsReported();
+		await testLineDirectivesSetting();
+		await testBuildPublishesMappedDiagnostics();
 		testMenuContextKeys();
 		console.log("Extension configuration and failure checks passed");
 		process.exitCode = 0;

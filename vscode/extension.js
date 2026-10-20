@@ -17,8 +17,11 @@ const quickFixes = new Map();
 function activate(context) {
 	const output = vscode.window.createOutputChannel("J2C");
 	const diagnostics = vscode.languages.createDiagnosticCollection("j2c");
-	const session = { context, output, diagnostics };
-	context.subscriptions.push(output, diagnostics);
+	// C++ compiler diagnostics from J2C: Build Translated C++, kept apart
+	// from the translation problems that checks replace
+	const buildDiagnostics = vscode.languages.createDiagnosticCollection("j2c-build");
+	const session = { context, output, diagnostics, buildDiagnostics };
+	context.subscriptions.push(output, diagnostics, buildDiagnostics);
 	context.subscriptions.push(vscode.commands.registerCommand(
 		"j2c.translate",
 		(target) => translate(session, target)
@@ -26,6 +29,10 @@ function activate(context) {
 	context.subscriptions.push(vscode.commands.registerCommand(
 		"j2c.check",
 		(target) => check(session, target)
+	));
+	context.subscriptions.push(vscode.commands.registerCommand(
+		"j2c.build",
+		(target) => build(session, target)
 	));
 	registerMcpServer(context);
 	registerQuickFixes(context);
@@ -183,6 +190,151 @@ async function check(session, target) {
 	});
 }
 
+/**
+ * Runs make in a J2C output directory through the CLI (j2c build) and shows
+ * the compiler's errors in the Problems panel, at their Java lines when the
+ * output was translated with j2c.lineDirectives
+ */
+async function build(session, target) {
+	if (running) {
+		vscode.window.showWarningMessage(
+			"J2C: A translation or check is already running."
+		);
+		return;
+	}
+	let outputDirectory = typeof target === "string" ? target
+		: target && target.fsPath ? target.fsPath : undefined;
+	if (!outputDirectory || !fs.existsSync(path.join(outputDirectory, OUTPUT_MARKER))) {
+		const outputSelection = await vscode.window.showOpenDialog({
+			canSelectFiles: false,
+			canSelectFolders: true,
+			canSelectMany: false,
+			openLabel: "Build this J2C output directory"
+		});
+		if (!outputSelection || outputSelection.length === 0) {
+			return;
+		}
+		outputDirectory = outputSelection[0].fsPath;
+	}
+	if (!fs.existsSync(path.join(outputDirectory, OUTPUT_MARKER))) {
+		vscode.window.showErrorMessage(
+			`J2C: ${outputDirectory} is not J2C output. Translate into it first `
+			+ "(with j2c.lineDirectives for errors at Java lines)."
+		);
+		return;
+	}
+
+	const configuration = vscode.workspace.getConfiguration("j2c");
+	const cliJar = cliJarPath(configuration, session.context);
+	if (!fs.existsSync(cliJar)) {
+		vscode.window.showErrorMessage(
+			`J2C CLI jar not found: ${cliJar}. Build/package the extension or set j2c.cliJar.`
+		);
+		return;
+	}
+	const args = ["-jar", cliJar, "build", "--output", outputDirectory, "--format", "json"];
+	const make = configuration.get("build.make", "");
+	if (make) {
+		args.push("--make", make);
+	}
+	args.push("--wsl", configuration.get("build.wsl", "auto"));
+	const distribution = configuration.get("build.wslDistribution", "");
+	if (distribution) {
+		args.push("--wsl-distro", distribution);
+	}
+	const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(outputDirectory));
+	const invocation = {
+		args,
+		cwd: workspaceFolder ? workspaceFolder.uri.fsPath : outputDirectory,
+		executable: configuration.get("javaExecutable", "java"),
+		outputDirectory,
+		targets: [outputDirectory],
+		publish: (report) => publishBuild(session.buildDiagnostics, report)
+	};
+	await execute(session, invocation, "Building translated C++", (result, errors, report) => {
+		if (result.code === 0) {
+			vscode.window.showInformationMessage(
+				`J2C: Build succeeded${report && report.summary && report.summary.warnings
+					? ` with ${report.summary.warnings} warning(s)` : ""}.`
+			);
+		} else if (report && report.status === "failed") {
+			vscode.window.showErrorMessage(
+				`J2C: Build failed with ${errors} error(s). See the Problems panel and the J2C output channel.`
+			);
+		} else {
+			vscode.window.showErrorMessage(
+				`J2C: Build could not run (exit code ${result.code})${errorDetail(report)}. See the J2C output channel.`
+			);
+		}
+	});
+}
+
+/**
+ * Replaces the build diagnostics with a j2c build report's: at the Java line
+ * when the compiler's location maps to one through #line directives (or as
+ * the nearest Java line before generated code), else at the C++ location.
+ * Returns the number of errors.
+ */
+function publishBuild(buildDiagnostics, report) {
+	const byFile = new Map();
+	let errors = 0;
+	for (const entry of report.diagnostics || []) {
+		if (entry.severity === "error") {
+			errors++;
+		}
+		const located = buildDiagnosticLocation(entry);
+		if (!located) {
+			continue;
+		}
+		const diagnostic = new vscode.Diagnostic(located.range, buildMessage(entry),
+			buildSeverity(entry.severity));
+		diagnostic.source = "j2c build";
+		const related = (entry.notes || []).map((note) => buildDiagnosticLocation(note))
+			.map((location, index) => location && new vscode.DiagnosticRelatedInformation(
+				new vscode.Location(vscode.Uri.file(location.file), location.range),
+				buildMessage(entry.notes[index])))
+			.filter(Boolean);
+		if (related.length > 0) {
+			diagnostic.relatedInformation = related;
+		}
+		addDiagnostic(byFile, located.file, diagnostic);
+	}
+	buildDiagnostics.clear();
+	for (const [file, fileDiagnostics] of byFile) {
+		buildDiagnostics.set(vscode.Uri.file(file), fileDiagnostics);
+	}
+	return errors;
+}
+
+function buildDiagnosticLocation(entry) {
+	if (entry.java && entry.mapped === "line-directive") {
+		const line = Math.max(entry.java.line - 1, 0);
+		return { file: entry.java.file, range: new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER) };
+	}
+	if (entry.cpp) {
+		const line = Math.max(entry.cpp.line - 1, 0);
+		const column = Math.max((entry.cpp.column || 1) - 1, 0);
+		return { file: entry.cpp.file, range: new vscode.Range(line, column, line, Number.MAX_SAFE_INTEGER) };
+	}
+	return undefined;
+}
+
+function buildMessage(entry) {
+	let message = entry.context ? `${entry.message} (${entry.context})` : entry.message;
+	if (entry.java && entry.mapped === "line-directive" && entry.cpp) {
+		message += `\nC++: ${entry.cpp.file}:${entry.cpp.line}${entry.cpp.column ? `:${entry.cpp.column}` : ""}`;
+	} else if (entry.java && entry.mapped === "nearest") {
+		message += `\nNearest Java line: ${entry.java.file}:${entry.java.line}`;
+	}
+	return message;
+}
+
+function buildSeverity(severity) {
+	return severity === "error" ? vscode.DiagnosticSeverity.Error
+		: severity === "warning" ? vscode.DiagnosticSeverity.Warning
+			: vscode.DiagnosticSeverity.Information;
+}
+
 function errorDetail(report) {
 	return report && report.message ? `: ${report.message}` : "";
 }
@@ -287,6 +439,9 @@ async function prepare(session, target, writesOutput) {
 	if (configuration.get("tests", false)) {
 		args.push("--tests");
 	}
+	if (writesOutput && configuration.get("lineDirectives", false)) {
+		args.push("--line-directives");
+	}
 	args.push(...project.args);
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
@@ -364,7 +519,7 @@ async function execute(session, invocation, title, onComplete) {
 					output.append(result.stdout);
 				}
 				const problems = report
-					? publishReport(diagnostics, report)
+					? (invocation.publish ? invocation.publish(report) : publishReport(diagnostics, report))
 					: publishText(diagnostics, result.text);
 				onComplete(result, problems, report);
 			} catch (error) {
@@ -406,6 +561,10 @@ function logReport(output, report) {
 	}
 	for (const problem of report.problems || []) {
 		output.appendLine(`${problem.file}:${problem.line}:${problem.column}: ${problem.message} [${problem.id}]`);
+	}
+	for (const diagnostic of report.diagnostics || []) {
+		const at = diagnostic.java || diagnostic.cpp;
+		output.appendLine(`${at ? `${at.file}:${at.line}: ` : ""}${diagnostic.severity}: ${diagnostic.message}`);
 	}
 	if (report.generatedFiles) {
 		output.appendLine(`Generated ${report.generatedFiles.length} files in ${report.output}`);

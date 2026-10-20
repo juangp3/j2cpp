@@ -39,6 +39,7 @@
   "activationEvents": [
     "onCommand:j2c.translate",
     "onCommand:j2c.check",
+    "onCommand:j2c.build",
     "onMcpCollection:j2c"
   ],
   "contributes": {
@@ -50,6 +51,10 @@
       {
         "command": "j2c.check",
         "title": "J2C: Check Translatability"
+      },
+      {
+        "command": "j2c.build",
+        "title": "J2C: Build Translated C++"
       }
     ],
     "menus": {
@@ -72,6 +77,11 @@
         {
           "command": "j2c.check",
           "when": "resourceLangId == java || explorerResourceIsFolder",
+          "group": "navigation"
+        },
+        {
+          "command": "j2c.build",
+          "when": "explorerResourceIsFolder",
           "group": "navigation"
         }
       ]
@@ -114,12 +124,33 @@
         "j2c.mcp.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Offer J2C's check, translate, fix, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
+          "description": "Offer J2C's check, translate, fix, build, explain and capabilities tools to AI agents (such as Copilot agent mode) as an MCP server for each workspace folder. Requires a VS Code version with MCP support."
         },
         "j2c.tests": {
           "type": "boolean",
           "default": false,
           "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath, unless the workspace is a Maven or Gradle project (see j2c.project)."
+        },
+        "j2c.lineDirectives": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add #line directives to the generated C++, so compiler errors (J2C: Build Translated C++) and debuggers such as gdb refer to Java files and lines."
+        },
+        "j2c.build.make": {
+          "type": "string",
+          "default": "",
+          "description": "The make program J2C: Build Translated C++ runs. Defaults to make (or J2C_MAKE)."
+        },
+        "j2c.build.wsl": {
+          "type": "string",
+          "enum": ["auto", "always", "never"],
+          "default": "auto",
+          "description": "Where J2C: Build Translated C++ runs make on Windows: auto uses WSL when make is not on the PATH."
+        },
+        "j2c.build.wslDistribution": {
+          "type": "string",
+          "default": "",
+          "description": "The WSL distribution to build in (with GNU make and a C++20 compiler). Defaults to WSL's default distribution (or J2C_WSL_DISTRO)."
         },
         "j2c.project": {
           "type": "string",
