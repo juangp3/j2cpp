@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
@@ -67,6 +68,34 @@ public class FileUtil {
 		FileOutputStream fos = new FileOutputStream(target);
 		return new PrintWriter(new OutputStreamWriter(fos,
 				StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * Opens a generated file whose LineDirectives marks are replaced by #line
+	 * directives when it is closed; linePath is the file's quoted path in
+	 * them. Without a linePath it is open(target).
+	 */
+	public static PrintWriter open(File target, final String linePath)
+			throws FileNotFoundException {
+		final PrintWriter file = open(target);
+		if (linePath == null) {
+			return file;
+		}
+		final StringWriter text = new StringWriter();
+		return new PrintWriter(text) {
+			private boolean closed;
+
+			@Override
+			public void close() {
+				super.close();
+				if (closed) {
+					return;
+				}
+				closed = true;
+				file.print(LineDirectives.resolve(text.toString(), linePath));
+				file.close();
+			}
+		};
 	}
 
 	public static void writeResource(String name, File target)

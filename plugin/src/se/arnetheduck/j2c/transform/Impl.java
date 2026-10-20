@@ -1,5 +1,6 @@
 package se.arnetheduck.j2c.transform;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -54,8 +55,9 @@ public class Impl {
 		String extras = getExtras();
 
 		try {
-			out = FileUtil.open(TransformUtil.implPath(root, type, suffix)
-					.toFile());
+			File file = TransformUtil.implPath(root, type, suffix)
+					.toFile();
+			out = FileUtil.open(file, ctx.linePath(file));
 
 			if (type.getJavaElement() != null) {
 				println("// Generated from " + type.getJavaElement().getPath());

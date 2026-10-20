@@ -184,6 +184,8 @@ public class Main {
 				request.project = project(value(args, ++i, arg), true);
 			} else if ("--no-build-tool".equals(arg)) {
 				request.buildTool = false;
+			} else if ("--line-directives".equals(arg)) {
+				request.lineDirectives = true;
 			} else if (arg.startsWith("-")) {
 				throw new IllegalArgumentException("Unknown option: " + arg);
 			} else {

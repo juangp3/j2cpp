@@ -857,6 +857,9 @@ public class ImplWriter extends TransformWriter {
 			}
 		}
 
+		// Before the hoisted patterns and boxing calls printed below
+		markLine(node);
+
 		if (node instanceof Statement) {
 			hoistPatterns((Statement) node);
 		}
@@ -1089,6 +1092,12 @@ public class ImplWriter extends TransformWriter {
 
 	@Override
 	public void postVisit(ASTNode node) {
+		closeVisit(node);
+		// After everything closeVisit printed
+		super.postVisit(node);
+	}
+
+	private void closeVisit(ASTNode node) {
 		if (patternBlocks.remove(node)) {
 			indent--;
 			printlni("}");

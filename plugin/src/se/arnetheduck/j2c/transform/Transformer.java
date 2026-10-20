@@ -60,6 +60,8 @@ public class Transformer {
 	private boolean tests;
 	private final List<JUnitSupport.TestClass> testClasses = new ArrayList<JUnitSupport.TestClass>();
 	private boolean junitAssertions;
+	/** Whether generated C++ carries #line directives (see LineDirectives) */
+	private boolean lineDirectives;
 
 	private final Stats direct = new Stats();
 	private final Stats deps = new Stats();
@@ -135,6 +137,24 @@ public class Transformer {
 
 	public boolean translatesTests() {
 		return tests;
+	}
+
+	/** Emit #line directives mapping the generated C++ to the Java source */
+	public void setLineDirectives(boolean lineDirectives) {
+		this.lineDirectives = lineDirectives;
+	}
+
+	public boolean lineDirectives() {
+		return lineDirectives;
+	}
+
+	/**
+	 * The quoted path of a generated file in its #line directives, or null
+	 * without them
+	 */
+	public String linePath(File generated) {
+		return lineDirectives ? LineDirectives.quote(LineDirectives.path(
+				generated, root.toFile())) : null;
 	}
 
 	/** Called when a JUnit assertion was translated into j2c_junit.hpp */
@@ -394,6 +414,12 @@ public class Transformer {
 							throws Exception {
 						recordParameterNames(ast);
 						currentAST = ast.getAST();
+						if (lineDirectives) {
+							// The original file, also for rewritten lambdas,
+							// whose rewrite keeps every line in place
+							ast.setProperty(LineDirectives.FILE_PROPERTY,
+									linePath(source.file()));
+						}
 						if (selection.contains(source)) {
 							cur = sel;
 						} else {

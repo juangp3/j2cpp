@@ -2,6 +2,7 @@ package se.arnetheduck.j2c.transform;
 
 import java.io.PrintWriter;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -71,6 +72,9 @@ public abstract class TransformWriter extends ASTVisitor {
 	protected int indent;
 
 	protected PrintWriter out;
+
+	/** Nodes whose C++ is in a LineDirectives mark, innermost last */
+	private final List<ASTNode> marked = new ArrayList<ASTNode>();
 
 	protected TransformWriter(Transformer ctx, final UnitInfo unitInfo,
 			TypeInfo typeInfo) {
@@ -178,6 +182,42 @@ public abstract class TransformWriter extends ASTVisitor {
 
 		if (parens) {
 			print(")");
+		}
+	}
+
+	@Override
+	public boolean preVisit2(ASTNode node) {
+		markLine(node);
+		return true;
+	}
+
+	@Override
+	public void postVisit(ASTNode node) {
+		unmarkLine(node);
+	}
+
+	/**
+	 * With --line-directives, starts a mark giving the node's C++ its Java
+	 * line; called before anything is printed for the node
+	 */
+	protected void markLine(ASTNode node) {
+		if (!ctx.lineDirectives() || out == null
+				|| !marked.isEmpty() && marked.get(marked.size() - 1) == node
+				|| !LineDirectives.marks(node)) {
+			return;
+		}
+		String mark = LineDirectives.mark(node);
+		if (mark != null) {
+			print(mark);
+			marked.add(node);
+		}
+	}
+
+	/** Ends the node's mark; called after everything printed for it */
+	protected void unmarkLine(ASTNode node) {
+		if (!marked.isEmpty() && marked.get(marked.size() - 1) == node) {
+			marked.remove(marked.size() - 1);
+			print(LineDirectives.unmark());
 		}
 	}
 

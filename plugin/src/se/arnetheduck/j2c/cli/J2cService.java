@@ -71,6 +71,8 @@ final class J2cService {
 		String project = PROJECT_AUTO;
 		/** Whether the build tool may be run to resolve the class path */
 		boolean buildTool = true;
+		/** Emit #line directives so C++ diagnostics name Java lines */
+		boolean lineDirectives;
 	}
 
 	static final class CheckResult {
@@ -215,6 +217,7 @@ final class J2cService {
 		Transformer transformer = new Transformer(prepared.project, name,
 				new Path(output.getPath()), request.sealedTypes);
 		transformer.setTests(request.tests);
+		transformer.setLineDirectives(request.lineDirectives);
 		if (request.runtime != null) {
 			transformer.setRuntimeCpp(new File(request.runtime, "cpp"));
 		}

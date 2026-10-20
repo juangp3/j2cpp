@@ -1,5 +1,6 @@
 package se.arnetheduck.j2c.transform;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -95,7 +96,8 @@ public class Header {
 		String extras = getExtras(closures, hasClinit, hasInit, nested);
 
 		try {
-			out = FileUtil.open(TransformUtil.headerPath(root, type).toFile());
+			File file = TransformUtil.headerPath(root, type).toFile();
+			out = FileUtil.open(file, ctx.linePath(file));
 
 			println("// Generated from "
 					+ (type.getJavaElement() == null ? type.getQualifiedName()
