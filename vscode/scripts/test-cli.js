@@ -90,7 +90,7 @@ function checkQuickFixes() {
 	const checked = runCli(["--check", "--format", "json", sources]);
 	assert.strictEqual(checked.status, 1, checked.stderr);
 	const report = JSON.parse(checked.stdout);
-	assert.strictEqual(report.schemaVersion, 2);
+	assert.strictEqual(report.schemaVersion, 3);
 	assert.strictEqual(report.summary.problemCount, 11);
 	const problems = problemsByLocation(report);
 	const declaration = [24, 5, 24, 5, "var self = this;\n\t\t\t\t"];
@@ -255,6 +255,167 @@ function checkQuickFixes() {
 	assert.strictEqual(noInput.status, 2);
 	assert.strictEqual(JSON.parse(noInput.stdout).status, "usage-error");
 	assert.strictEqual(JSON.parse(noInput.stdout).command, "fix");
+}
+
+/**
+ * j2c report: translatable files, types and methods, blockers, and JDK use
+ * compared with the bundled runtime's API, as Markdown and JSON.
+ */
+function checkReadinessReport() {
+	const reportRoot = path.join(repositoryRoot, "test", "report");
+	const sources = path.join(reportRoot, "src");
+	const tests = path.join(reportRoot, "tests");
+	const junitApi = path.join(repositoryRoot, "test", "junit-api");
+
+	// The bundled runtime API is generated from runtime/java and kept current
+	const api = childProcess.spawnSync("java", ["-cp", cliJar,
+		"se.arnetheduck.j2c.cli.RuntimeApi", path.join(repositoryRoot, "runtime")],
+	{ encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+	assert.strictEqual(api.status, 0, api.stderr);
+	assert.strictEqual(
+		fs.readFileSync(path.join(repositoryRoot, "runtime", "api.txt"), "utf8").replace(/\r\n/g, "\n"),
+		api.stdout.replace(/\r\n/g, "\n"),
+		"runtime/api.txt is stale: regenerate it as its header says");
+
+	// Markdown by default, with only the report on stdout
+	const markdown = runCli(["report", "src"], { cwd: reportRoot });
+	assert.strictEqual(markdown.status, 0, markdown.stderr);
+	assert(markdown.stdout.startsWith("# J2C migration readiness report\n"), markdown.stdout);
+	for (const line of [
+		"Input: `src` (3 Java file(s)).",
+		"| Files | 3 | 1 | 33.3% |",
+		"| Types | 5 | 3 | 60.0% |",
+		"| Methods | 9 | 7 | 77.8% |",
+		"3 problem(s) in 2 file(s); 2 can be fixed automatically with `j2c fix`.",
+		"| `J2C-COMPILE-ERROR`: Java compile error | 1 | 1 | 0 |",
+		"| `J2C-LAMBDA-ANONYMOUS-THIS`: Lambda uses this inside an anonymous class | 1 | 1 | 1 |",
+		"- `src/shop/ui/Panel.java:19:25`: ",
+		"- `src/shop/model/Item.java:8:28`: ",
+		"| `shop.model` | 1 | 0 | 2 | `J2C-COMPILE-ERROR` 1, `J2C-PATTERN-OUTSIDE-METHOD` 1 |",
+		"| `shop` | 1 | 1 | 0 |  |",
+		"provides 9 of 10 JDK types and 15 of 16 members the code uses (22 of 23 uses)",
+		"| `java.lang.String` | 13 | 4 | yes |",
+		"| `java.time.LocalDate` | 1 | 1 | no (stub) |",
+		"| `java.time.LocalDate.now()` | 1 |",
+		"   j2c fix --apply src",
+		"   j2c --check src"
+	]) {
+		assert(markdown.stdout.includes(line), `Missing ${JSON.stringify(line)} in:\n${markdown.stdout}`);
+	}
+	assert(!markdown.stdout.includes("## Test blockers"));
+
+	// JSON, with tests: exact counts
+	const sourcePath = [sources, tests, junitApi].join(path.delimiter);
+	const jsonRun = runCli(["report", "--format", "json", "--tests", "--sourcepath", sourcePath,
+		sources, tests]);
+	assert.strictEqual(jsonRun.status, 0, jsonRun.stderr);
+	const report = JSON.parse(jsonRun.stdout);
+	assert.strictEqual(report.schemaVersion, 3);
+	assert.strictEqual(report.command, "report");
+	assert.strictEqual(report.status, "problems");
+	assert.strictEqual(report.files, 4);
+	assert.strictEqual(report.tests, true);
+	assert.deepStrictEqual(report.totals, {
+		files: { total: 4, translatable: 1, percent: 25 },
+		types: { total: 6, translatable: 3, percent: 50 },
+		methods: { total: 11, translatable: 8, percent: 72.7 }
+	});
+	assert.strictEqual(report.blockers.problemCount, 4);
+	assert.strictEqual(report.blockers.filesWithProblems, 3);
+	assert.strictEqual(report.blockers.fixable, 3);
+	assert.deepStrictEqual(report.blockers.byId.map((entry) =>
+		[entry.id, entry.count, entry.files, entry.fixable, entry.locations.map((location) =>
+			`${path.basename(location.file)}:${location.line}:${location.column}`)]), [
+		["J2C-COMPILE-ERROR", 1, 1, 0, ["Item.java:17:10"]],
+		["J2C-LAMBDA-ANONYMOUS-THIS", 1, 1, 1, ["Panel.java:19:25"]],
+		["J2C-PATTERN-OUTSIDE-METHOD", 1, 1, 1, ["Item.java:8:28"]],
+		["J2C-TEST-TIMEOUT", 1, 1, 1, ["MainTest.java:16:7"]]
+	]);
+	assert(report.blockers.byId[0].hint.includes("--classpath"));
+	assert.deepStrictEqual(report.blockers.byPackage.map((entry) =>
+		[entry.package, entry.files, entry.translatableFiles, entry.problemCount, entry.byId]), [
+		["shop.model", 1, 0, 2, { "J2C-COMPILE-ERROR": 1, "J2C-PATTERN-OUTSIDE-METHOD": 1 }],
+		["shop", 2, 1, 1, { "J2C-TEST-TIMEOUT": 1 }],
+		["shop.ui", 1, 0, 1, { "J2C-LAMBDA-ANONYMOUS-THIS": 1 }]
+	]);
+	assert.deepStrictEqual(report.testBlockers.byId.map((entry) => [entry.id, entry.count]),
+		[["J2C-TEST-TIMEOUT", 1]]);
+	const jdk = report.jdk;
+	assert.deepStrictEqual([jdk.runtime, jdk.typesUsed, jdk.typesProvided, jdk.membersUsed,
+		jdk.membersProvided, jdk.memberUses, jdk.memberUsesProvided],
+	["bundled", 11, 10, 17, 16, 25, 24]);
+	const jdkTypes = new Map(jdk.types.map((type) => [type.type, type]));
+	assert.deepStrictEqual(jdk.types.slice(0, 2).map((type) => [type.type, type.uses]),
+		[["java.lang.String", 13], ["java.util.List", 11]], "Sorted by uses");
+	assert.deepStrictEqual(jdkTypes.get("java.util.List").members, [
+		{ member: "add(Object)", uses: 3, provided: true },
+		{ member: "size()", uses: 3, provided: true },
+		{ member: "clear()", uses: 1, provided: true },
+		{ member: "get(int)", uses: 1, provided: true }
+	]);
+	assert.deepStrictEqual(jdkTypes.get("java.util.ArrayList").members,
+		[{ member: "<init>()", uses: 2, provided: true }]);
+	assert.deepStrictEqual(jdkTypes.get("java.lang.System").members,
+		[{ member: "out", uses: 3, provided: true }]);
+	assert.deepStrictEqual(jdkTypes.get("java.util.Arrays").members,
+		[{ member: "asList(Object[])", uses: 2, provided: true }]);
+	assert.deepStrictEqual([jdkTypes.get("java.time.LocalDate").provided, jdkTypes.get("java.time.LocalDate").members],
+		[false, [{ member: "now()", uses: 1, provided: false }]]);
+	assert.deepStrictEqual(report.nextSteps.map((step) => step.command), [
+		`j2c fix --apply --tests ${sources.includes(" ") ? `"${sources}"` : sources} ${tests.includes(" ") ? `"${tests}"` : tests}`,
+		null,
+		null,
+		`j2c --check --tests ${sources.includes(" ") ? `"${sources}"` : sources} ${tests.includes(" ") ? `"${tests}"` : tests}`
+	]);
+	assert(report.nextSteps[0].text.includes("J2C-TEST-TIMEOUT (1)"));
+	assert(report.nextSteps[2].text.includes("java.time.LocalDate.now()"));
+	assert.deepStrictEqual([report.projects, report.warnings], [[], []]);
+
+	const testsMarkdown = runCli(["report", "--tests", "--sourcepath", sourcePath, sources, tests]);
+	assert(testsMarkdown.stdout.includes("## Test blockers"), testsMarkdown.stdout);
+	assert(testsMarkdown.stdout.includes("| `J2C-TEST-TIMEOUT`: "), testsMarkdown.stdout);
+
+	// A clean input: everything translates, and the next step is translating
+	const clean = JSON.parse(runCli(["report", "--format", "json",
+		path.join(sources, "shop", "Main.java")]).stdout);
+	assert.strictEqual(clean.status, "ok");
+	assert.deepStrictEqual(clean.totals.methods, { total: 2, translatable: 2, percent: 100 });
+	assert.strictEqual(clean.testBlockers, null);
+	assert(clean.nextSteps[clean.nextSteps.length - 1].command.startsWith("j2c --output <directory> "));
+
+	// Against a runtime directory, its own API is compared, and JDK classes it
+	// lacks are compile errors
+	const withRuntime = JSON.parse(runCli(["report", "--format", "json", "--runtime",
+		path.join(repositoryRoot, "runtime"), sources]).stdout);
+	assert.strictEqual(withRuntime.jdk.runtime, path.join(repositoryRoot, "runtime"));
+	assert(withRuntime.jdk.types.every((type) => type.provided), JSON.stringify(withRuntime.jdk));
+	assert(withRuntime.blockers.byId.some((entry) => entry.id === "J2C-COMPILE-ERROR" && entry.count > 1));
+
+	// Usage errors
+	const badFormat = runCli(["report", "--format", "text", sources]);
+	assert.strictEqual(badFormat.status, 2);
+	assert(badFormat.stderr.includes("expected markdown or json"));
+	const noInput = runCli(["report", "--format", "json"]);
+	assert.strictEqual(noInput.status, 2);
+	assert.deepStrictEqual([JSON.parse(noInput.stdout).command, JSON.parse(noInput.stdout).status],
+		["report", "usage-error"]);
+	assert(runCli(["report", "--output", tempDirectory, sources]).stderr.includes("Unknown report option: --output"));
+
+	// A real project, when the corpus has been cloned (npm run corpus)
+	// J2C_CORPUS_ROOT points at another checkout's target/corpus, such as from a worktree
+	const semver = path.join(process.env.J2C_CORPUS_ROOT || path.join(repositoryRoot, "target", "corpus"),
+		"src", "semver4j", "src", "main", "java");
+	if (fs.existsSync(semver)) {
+		const corpus = JSON.parse(runCli(["report", "--format", "json", "--project", "none", semver]).stdout);
+		const checked = JSON.parse(runCli(["--check", "--format", "json", "--project", "none", semver]).stdout);
+		assert.strictEqual(corpus.blockers.problemCount, checked.summary.problemCount);
+		assert.strictEqual(corpus.totals.files.total, checked.files);
+		assert.deepStrictEqual(corpus.totals.files, { total: 5, translatable: 5, percent: 100 });
+		assert.deepStrictEqual([corpus.totals.types.total, corpus.totals.methods.total], [11, 97]);
+		assert.strictEqual(corpus.jdk.types.find((type) => type.type === "java.util.Stack").provided, false);
+	} else {
+		console.log("Skipping the corpus report check: run npm run corpus -- --project semver4j first");
+	}
 }
 
 try {
@@ -606,7 +767,7 @@ try {
 	const jsonCheck = runCli(["--check", "--format", "json", unsupportedSource]);
 	assert.strictEqual(jsonCheck.status, 1, jsonCheck.stderr);
 	const checkReport = JSON.parse(jsonCheck.stdout);
-	assert.strictEqual(checkReport.schemaVersion, 2);
+	assert.strictEqual(checkReport.schemaVersion, 3);
 	assert.deepStrictEqual(checkReport.problems.map((problem) => [problem.id, problem.fixes.length]),
 		[["J2C-COMPILE-ERROR", 0], ["J2C-PATTERN-OUTSIDE-METHOD", 1]],
 		"The pattern problem has a fix; the compile error has none");
@@ -640,12 +801,14 @@ try {
 	assert.strictEqual(capabilities.version, extensionVersion);
 	assert.strictEqual(capabilities.javaSourceLevel, "17");
 	assert(capabilities.commands.includes("fix"));
+	assert(capabilities.commands.includes("report"));
 	assert.deepStrictEqual(
 		capabilities.problemIds,
 		allExplained.problems.map((entry) => entry.id)
 	);
 
 	checkQuickFixes();
+	checkReadinessReport();
 
 	// Translation refuses to move aside a directory J2C did not create
 	const guarded = path.join(tempDirectory, "guarded output");

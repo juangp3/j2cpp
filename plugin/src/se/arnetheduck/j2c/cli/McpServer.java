@@ -35,7 +35,11 @@ final class McpServer {
 			+ "relative to the workspace root. A Maven or Gradle project folder "
 			+ "(such as \".\") can be passed directly: its source roots and "
 			+ "dependency class path are detected. Translated code still needs a C++ "
-			+ "implementation of the JDK classes it uses (see j2c_capabilities).";
+			+ "implementation of the JDK classes it uses (see j2c_capabilities). "
+			+ "j2c_report assesses how much translates and what blocks the rest; "
+			+ "the resources hold the problem catalog (j2c://problems), the "
+			+ "runtime's contract and API (j2c://runtime), and translated files "
+			+ "(j2c://output/{path}).";
 
 	private final File root;
 	private final J2cService service;
@@ -52,6 +56,17 @@ final class McpServer {
 		this.service = new J2cService(root);
 		this.project = project;
 		this.buildTool = buildTool;
+		this.content = new McpContent(root, service);
+	}
+
+	/** Prompts and resources */
+	private final McpContent content;
+	/** The version agreed in initialize */
+	private String protocolVersion = PROTOCOL_VERSIONS.get(0);
+
+	/** Whether titles may be sent: 2025-06-18 added them */
+	private boolean titles() {
+		return "2025-06-18".compareTo(protocolVersion) <= 0;
 	}
 
 	void serve(InputStream in, PrintStream rawOut) throws IOException {
@@ -105,6 +120,29 @@ final class McpServer {
 			return result(id, tools);
 		case "tools/call":
 			return callTool(id, params);
+		case "prompts/list":
+			return result(id, McpContent.promptList(titles()));
+		case "prompts/get":
+			try {
+				return result(id, McpContent.prompt(params));
+			} catch (IllegalArgumentException e) {
+				return error(id, -32602, e.getMessage());
+			}
+		case "resources/list":
+			return result(id, content.resourceList(titles()));
+		case "resources/templates/list":
+			return result(id, McpContent.templateList(titles()));
+		case "resources/read":
+			try {
+				return result(id, content.read(params));
+			} catch (McpContent.NotFound e) {
+				return error(id, -32002, e.getMessage());
+			} catch (IllegalArgumentException e) {
+				return error(id, -32602, e.getMessage());
+			} catch (Exception e) {
+				e.printStackTrace(System.err);
+				return error(id, -32603, "Internal error: " + e.getMessage());
+			}
 		default:
 			return notification ? null : error(id, -32601, "Method not found: "
 					+ method);
@@ -115,15 +153,28 @@ final class McpServer {
 		Object requested = params.get("protocolVersion");
 		String version = PROTOCOL_VERSIONS.contains(requested) ? (String) requested
 				: PROTOCOL_VERSIONS.get(0);
+		protocolVersion = version;
 
 		Map<String, Object> capabilities = new LinkedHashMap<String, Object>();
 		Map<String, Object> tools = new LinkedHashMap<String, Object>();
 		tools.put("listChanged", false);
 		capabilities.put("tools", tools);
+		// Prompts and resources (with templates) are in every supported
+		// version; the list never changes on its own, and nothing is
+		// subscribable
+		Map<String, Object> prompts = new LinkedHashMap<String, Object>();
+		prompts.put("listChanged", false);
+		capabilities.put("prompts", prompts);
+		Map<String, Object> resources = new LinkedHashMap<String, Object>();
+		resources.put("subscribe", false);
+		resources.put("listChanged", false);
+		capabilities.put("resources", resources);
 
 		Map<String, Object> serverInfo = new LinkedHashMap<String, Object>();
 		serverInfo.put("name", "j2c");
-		serverInfo.put("title", "J2C Java to C++");
+		if (titles()) {
+			serverInfo.put("title", "J2C Java to C++");
+		}
 		serverInfo.put("version", J2cService.version());
 
 		Map<String, Object> result = new LinkedHashMap<String, Object>();
@@ -151,6 +202,7 @@ final class McpServer {
 			case "j2c_translate": {
 				J2cService.TranslateResult result = service.translate(request(
 						arguments, true));
+				content.translated(result);
 				return result(id, toolResult(J2cService.translateJson(result),
 						false));
 			}

@@ -102,7 +102,7 @@ try {
 
 	const tools = responses.get(2).result.tools;
 	assert.deepStrictEqual(tools.map((tool) => tool.name),
-		["j2c_check", "j2c_translate", "j2c_fix", "j2c_explain", "j2c_capabilities"]);
+		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_explain", "j2c_capabilities"]);
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
 	assert.strictEqual(byName.get("j2c_check").annotations.readOnlyHint, true);
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
@@ -120,6 +120,16 @@ try {
 	assert.deepStrictEqual(byName.get("j2c_fix").inputSchema.required, ["paths"]);
 	assert.strictEqual(byName.get("j2c_fix").inputSchema.properties.apply.type, "boolean");
 	assert.strictEqual(byName.get("j2c_fix").annotations.openWorldHint, true);
+	assert.strictEqual(byName.get("j2c_report").annotations.readOnlyHint, true);
+	assert.strictEqual(byName.get("j2c_report").annotations.destructiveHint, false);
+	assert.deepStrictEqual(byName.get("j2c_report").inputSchema.required, ["paths"]);
+	assert.strictEqual(byName.get("j2c_report").inputSchema.properties.output, undefined);
+	// Prompts and resources are advertised in every protocol version
+	for (const capability of ["tools", "prompts", "resources"]) {
+		assert.strictEqual(init.capabilities[capability].listChanged, false, capability);
+	}
+	assert.strictEqual(init.capabilities.resources.subscribe, false);
+	assert.strictEqual(init.serverInfo.title, "J2C Java to C++");
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -254,6 +264,135 @@ try {
 	assert.strictEqual(fs.readFileSync(outsideFixable, "utf8"), original);
 	// apply must be a boolean; anything else previews, like an omitted one
 	assert.strictEqual(fixes.get(6).result.structuredContent.applied, false);
+
+	// j2c_report: the readiness report as JSON and Markdown, read-only
+	const reportRoot = path.join(tempDirectory, "report root");
+	fs.cpSync(path.join(repositoryRoot, "test", "report"), reportRoot, { recursive: true });
+	fs.mkdirSync(path.join(reportRoot, "out"));
+	const reportFile = path.join(reportRoot, "src", "shop", "ui", "Panel.java");
+	const reportBefore = fs.readFileSync(reportFile, "utf8");
+	const reported = session([
+		call(1, "j2c_report", { paths: ["src"] }),
+		call(2, "j2c_report", { paths: [outside] }),
+		call(3, "j2c_report", {})
+	], { root: reportRoot });
+	const readiness = reported.get(1).result;
+	assert.strictEqual(readiness.isError, false, JSON.stringify(readiness));
+	assert.strictEqual(readiness.structuredContent.command, "report");
+	assert.strictEqual(readiness.structuredContent.schemaVersion, 3);
+	assert.deepStrictEqual(readiness.structuredContent.totals.files, { total: 3, translatable: 1, percent: 33.3 });
+	assert.deepStrictEqual(readiness.structuredContent.blockers.byId.map((entry) => [entry.id, entry.count]),
+		[["J2C-COMPILE-ERROR", 1], ["J2C-LAMBDA-ANONYMOUS-THIS", 1], ["J2C-PATTERN-OUTSIDE-METHOD", 1]]);
+	assert.strictEqual(readiness.structuredContent.jdk.typesUsed, 10);
+	assert.deepStrictEqual(JSON.parse(readiness.content[0].text), readiness.structuredContent);
+	assert.strictEqual(readiness.content.length, 2);
+	assert(readiness.content[1].text.startsWith("# J2C migration readiness report\n"));
+	// Markdown names files relative to the workspace root
+	assert(readiness.content[1].text.includes("- `src/shop/ui/Panel.java:19:25`: "), readiness.content[1].text);
+	assert.strictEqual(fs.readFileSync(reportFile, "utf8"), reportBefore, "The report writes nothing");
+	assert.strictEqual(reported.get(2).result.isError, true);
+	assert(reported.get(2).result.structuredContent.message.includes("outside the workspace root"));
+	assert.strictEqual(reported.get(3).result.isError, true);
+	assert.strictEqual(reported.get(3).result.structuredContent.message, "Missing paths");
+
+	// Prompts and resources, with titles only from 2025-06-18 on
+	fs.writeFileSync(path.join(reportRoot, "notes.txt"), "not generated");
+	fs.writeFileSync(path.join(outside, "secret.txt"), "outside");
+	const mainSource = path.join("src", "shop", "Main.java");
+	const content = session([
+		{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {} } },
+		{ jsonrpc: "2.0", id: 2, method: "prompts/list" },
+		{ jsonrpc: "2.0", id: 3, method: "prompts/get", params: { name: "j2c-migrate", arguments: { path: "src", tests: "true" } } },
+		{ jsonrpc: "2.0", id: 4, method: "prompts/get", params: { name: "j2c-assess", arguments: { path: "src" } } },
+		{ jsonrpc: "2.0", id: 5, method: "prompts/get", params: { name: "j2c-unknown", arguments: { path: "src" } } },
+		{ jsonrpc: "2.0", id: 6, method: "prompts/get", params: { name: "j2c-migrate", arguments: {} } },
+		{ jsonrpc: "2.0", id: 7, method: "resources/list" },
+		{ jsonrpc: "2.0", id: 8, method: "resources/templates/list" },
+		{ jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "j2c://problems" } },
+		{ jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "j2c://problems/J2C-TEST-TIMEOUT" } },
+		{ jsonrpc: "2.0", id: 11, method: "resources/read", params: { uri: "j2c://problems/J2C-NO-SUCH-ID" } },
+		{ jsonrpc: "2.0", id: 12, method: "resources/read", params: { uri: "j2c://runtime" } },
+		{ jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "j2c://unknown" } },
+		call(14, "j2c_translate", { paths: [mainSource], output: "out" }),
+		{ jsonrpc: "2.0", id: 15, method: "resources/list" },
+		{ jsonrpc: "2.0", id: 16, method: "resources/read", params: { uri: "j2c://output/out/src/shop/Main.cpp" } },
+		{ jsonrpc: "2.0", id: 17, method: "resources/read", params: { uri: "j2c://output/out%2FMakefile" } },
+		{ jsonrpc: "2.0", id: 18, method: "resources/read", params: { uri: "j2c://output/notes.txt" } },
+		{ jsonrpc: "2.0", id: 19, method: "resources/read", params: { uri: "j2c://output/../outside/secret.txt" } },
+		{ jsonrpc: "2.0", id: 20, method: "resources/read", params: { uri: "j2c://output/out/.j2c-output" } },
+		{ jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "j2c://output/out/missing.cpp" } },
+		{ jsonrpc: "2.0", id: 22, method: "resources/read", params: {} }
+	], { root: reportRoot });
+	const prompts = content.get(2).result.prompts;
+	assert.deepStrictEqual(prompts.map((prompt) => [prompt.name, prompt.title,
+		prompt.arguments.map((argument) => `${argument.name}${argument.required ? "!" : ""}`)]), [
+		["j2c-migrate", "Migrate Java to C++", ["path!", "output", "tests"]],
+		["j2c-assess", "Assess a Java to C++ migration", ["path!", "tests"]]
+	]);
+	const migrate = content.get(3).result;
+	assert.strictEqual(migrate.messages.length, 1);
+	assert.strictEqual(migrate.messages[0].role, "user");
+	const migrateText = migrate.messages[0].content.text;
+	for (const step of ["j2c_check with paths: [\"src\"], tests: true", "j2c_fix", "apply: true",
+		"j2c_translate with paths: [\"src\"], output: \"build/cpp\", tests: true", "make -C build/cpp"]) {
+		assert(migrateText.includes(step), `${step} missing from ${migrateText}`);
+	}
+	assert(content.get(4).result.messages[0].content.text.includes("j2c_report with paths: [\"src\"]."));
+	assert.strictEqual(content.get(5).error.code, -32602);
+	assert(content.get(5).error.message.includes("Unknown prompt"));
+	assert.strictEqual(content.get(6).error.code, -32602);
+	assert(content.get(6).error.message.includes("path"));
+
+	assert.deepStrictEqual(content.get(7).result.resources.map((resource) => [resource.uri, resource.title, resource.mimeType]), [
+		["j2c://problems", "J2C problem catalog", "application/json"],
+		["j2c://runtime", "J2C runtime contract", "text/markdown"]
+	]);
+	assert.deepStrictEqual(content.get(8).result.resourceTemplates.map((template) => template.uriTemplate),
+		["j2c://problems/{id}", "j2c://output/{path}"]);
+	const catalog = JSON.parse(content.get(9).result.contents[0].text);
+	assert.strictEqual(catalog.command, "explain");
+	assert(catalog.problems.some((problem) => problem.id === "J2C-LAMBDA-ANONYMOUS-THIS"));
+	const timeout = JSON.parse(content.get(10).result.contents[0].text);
+	assert.deepStrictEqual(timeout.problems.map((problem) => problem.id), ["J2C-TEST-TIMEOUT"]);
+	assert.strictEqual(content.get(11).error.code, -32002);
+	const runtimeText = content.get(12).result.contents[0].text;
+	assert.strictEqual(content.get(12).result.contents[0].mimeType, "text/markdown");
+	assert(runtimeText.startsWith("# J2C runtime\n"), runtimeText.slice(0, 100));
+	assert(runtimeText.includes("## Types the runtime provides"));
+	assert(runtimeText.includes("\n### `java.util`\n"));
+	assert(/ArrayList \(\d+\)/.test(runtimeText));
+	assert.strictEqual(content.get(13).error.code, -32002);
+	assert.strictEqual(content.get(14).result.isError, false, JSON.stringify(content.get(14).result));
+	const listed = content.get(15).result.resources.map((resource) => resource.uri);
+	assert(listed.includes("j2c://output/out/src/shop/Main.cpp"), listed.join("\n"));
+	assert(listed.includes("j2c://output/out/Makefile"));
+	assert(!listed.includes("j2c://output/out/.j2c-output"));
+	const generated = content.get(16).result.contents[0];
+	assert.strictEqual(generated.mimeType, "text/x-c++src");
+	assert.strictEqual(generated.text, fs.readFileSync(path.join(reportRoot, "out", "src", "shop", "Main.cpp"), "utf8"));
+	assert.strictEqual(content.get(17).result.contents[0].mimeType, "text/x-makefile");
+	// Only J2C's output, inside the root, can be read
+	for (const id of [18, 19, 20]) {
+		assert.strictEqual(content.get(id).error.code, -32602, JSON.stringify(content.get(id)));
+	}
+	assert(content.get(18).error.message.includes(".j2c-output"));
+	assert(content.get(19).error.message.includes("outside the workspace root"));
+	assert.strictEqual(content.get(21).error.code, -32002);
+	assert.strictEqual(content.get(22).error.code, -32602);
+
+	// Older protocol versions get no titles
+	const older = session([
+		{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {} } },
+		{ jsonrpc: "2.0", id: 2, method: "prompts/list" },
+		{ jsonrpc: "2.0", id: 3, method: "resources/list" },
+		{ jsonrpc: "2.0", id: 4, method: "resources/templates/list" }
+	], { root: reportRoot });
+	assert.strictEqual(older.get(1).result.protocolVersion, "2025-03-26");
+	assert(older.get(1).result.capabilities.prompts && older.get(1).result.capabilities.resources);
+	assert.strictEqual(older.get(1).result.serverInfo.title, undefined);
+	for (const [id, key] of [[2, "prompts"], [3, "resources"], [4, "resourceTemplates"]]) {
+		assert(older.get(id).result[key].every((item) => item.title === undefined), key);
+	}
 
 	console.log("MCP server checks passed");
 } finally {
