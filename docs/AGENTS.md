@@ -296,7 +296,8 @@ notes on it (`severity: "note"`), `includedFrom` the include chain, and
 linker errors have `cpp: null` when they name no file. Java columns are not
 known; `cpp.column` is the compiler's. `log` is the end of `make`'s output
 (`logTruncated` when longer). A failed build is a normal result, not a tool
-error.
+error. With a `progressToken`, progress names each file compiled;
+cancelling the call stops `make` and the compilers it started.
 
 On Windows, `make` runs in WSL when it is not on the `PATH` (it needs GNU
 make and g++ 13 or newer there); set `J2C_WSL=always|never`,

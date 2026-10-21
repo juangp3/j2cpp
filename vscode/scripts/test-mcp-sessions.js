@@ -365,6 +365,57 @@ async function checkBuildToolCancellation(cliJar, workspace, env) {
 	}
 }
 
+/**
+ * j2c_build reports each compiled file as progress, and a cancel stops make
+ * and what it started (a stub make that waits a minute)
+ */
+async function checkBuildCancellation(cliJar, workspace, env) {
+	const { writeFakeMake } = require("./test-cli-build");
+	const root = path.join(workspace, "slow make");
+	const output = path.join(root, "out");
+	fs.mkdirSync(output, { recursive: true });
+	fs.writeFileSync(path.join(output, ".j2c-output"), "");
+	fs.writeFileSync(path.join(output, "Makefile"), "");
+	const stub = path.join(workspace, "slow make stub");
+	fs.mkdirSync(stub);
+	const make = writeFakeMake(stub);
+	const canned = path.join(stub, "output.txt");
+	fs.writeFileSync(canned, "Compile src/demo/A.cpp\nCompile src/demo/B.cpp\n");
+	const pidFile = path.join(stub, "make.pid");
+	const client = new McpClient(cliJar, root, {
+		env: { ...env, J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_OUTPUT: canned,
+			J2C_FAKE_MAKE_ARGS: path.join(stub, "args.json"), J2C_FAKE_MAKE_PID: pidFile }
+	});
+	try {
+		client.call(1, "j2c_build", { output: "out" }, { progressToken: "make" });
+		await client.until(() => client.progress("make").some((message) =>
+			/^Compiled src\/demo\/[AB]\.cpp$/.test(message.params.message)), "a compiled file");
+		const messages = client.progress("make").map((message) => message.params.message);
+		// Progress is sent at most every 100 ms, so B may replace A
+		assert(/^Running .* in /.test(messages[0]), JSON.stringify(messages));
+		const pid = Number(fs.readFileSync(pidFile, "utf8"));
+		const cancelledAt = Date.now();
+		client.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 } });
+		client.call(2, "j2c_capabilities", {});
+		const capabilities = await client.response(2);
+		const stopTime = capabilities.receivedAt - cancelledAt;
+		assert(stopTime < 15000, `make was stopped after ${stopTime} ms`);
+		await client.close();
+		assert.strictEqual(client.responses(1).length, 0, "A cancelled call gets no response");
+		let running = true;
+		try {
+			process.kill(pid, 0);
+		} catch (error) {
+			running = false;
+		}
+		assert(!running, "The stub make was stopped");
+		return stopTime;
+	} catch (error) {
+		client.process.kill();
+		throw error;
+	}
+}
+
 /** Before 2025-03-26, progress notifications have no message */
 async function checkOldProgress(cliJar, workspace, env) {
 	const root = path.join(workspace, "progress");
@@ -383,6 +434,7 @@ async function checkOldProgress(cliJar, workspace, env) {
 }
 
 module.exports = {
+	checkBuildCancellation,
 	checkBuildToolCancellation,
 	checkIncremental,
 	checkOldProgress,

@@ -132,15 +132,26 @@ function checkLineDirectives(runCli, tempDirectory) {
 	assert.strictEqual(presumedAt(lines, lambdaClass, "::class_()").file, lambdaClass);
 }
 
-/** A make that prints J2C_FAKE_MAKE_OUTPUT and exits with 2 */
+/**
+ * A make that prints J2C_FAKE_MAKE_OUTPUT and exits with 2; with
+ * J2C_FAKE_MAKE_PID it writes its process id there, prints after half a
+ * second, and waits a minute
+ */
 function writeFakeMake(directory) {
 	const script = path.join(directory, "fake-make.js");
 	fs.writeFileSync(script, [
 		"const fs = require(\"fs\");",
 		"if (process.argv.includes(\"--version\")) { console.log(\"GNU Make 4.3\"); process.exit(0); }",
 		"fs.writeFileSync(process.env.J2C_FAKE_MAKE_ARGS, JSON.stringify(process.argv.slice(2)));",
-		"process.stdout.write(fs.readFileSync(process.env.J2C_FAKE_MAKE_OUTPUT, \"utf8\"));",
-		"process.exit(2);",
+		"const text = fs.readFileSync(process.env.J2C_FAKE_MAKE_OUTPUT, \"utf8\");",
+		"if (process.env.J2C_FAKE_MAKE_PID) {",
+		"\tfs.writeFileSync(process.env.J2C_FAKE_MAKE_PID, String(process.pid));",
+		"\tsetTimeout(() => process.stdout.write(text), 500);",
+		"\tsetTimeout(() => process.exit(2), 60000);",
+		"} else {",
+		"\tprocess.stdout.write(text);",
+		"\tprocess.exit(2);",
+		"}",
 		""
 	].join("\n"));
 	if (isWindows) {

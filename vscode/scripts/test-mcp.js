@@ -487,6 +487,8 @@ try {
 	await sessions.checkOldProgress(cliJar, tempDirectory, sessionEnv);
 	const gradleStop = await sessions.checkBuildToolCancellation(cliJar, tempDirectory, sessionEnv);
 	console.log(`Cancelled check stopped the build tool in ${gradleStop} ms`);
+	const makeStop = await sessions.checkBuildCancellation(cliJar, tempDirectory, sessionEnv);
+	console.log(`Cancelled build stopped make in ${makeStop} ms`);
 
 	console.log("MCP server checks passed");
 } finally {
