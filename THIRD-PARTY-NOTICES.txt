@@ -4,6 +4,13 @@ when built from source). J2C's own code is licensed under the Eclipse Public
 License 1.0 (see `LICENSE`). Each bundled dependency remains under its own
 license, and is redistributed in unmodified binary form.
 
+The J2C runtime that the CLI JAR also contains (`META-INF/j2c-runtime/`,
+selected with `--runtime bundled` and extracted to J2C's cache directory) is
+not a third-party dependency: its Java sources and C++ natives and hooks
+(`runtime/` in the source repository) are J2C's own code under the Eclipse
+Public License 1.0, written from the Java SE API specification. It contains
+no OpenJDK code.
+
 License texts
 -------------
 

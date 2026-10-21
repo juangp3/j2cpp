@@ -110,7 +110,34 @@ for (const name of ["about.html", "META-INF/LICENSE", "META-INF/NOTICE"]) {
 	assert(!entries.has(name), `CLI JAR contains an unattributed shaded ${name}`);
 }
 
+// The bundled J2C runtime is J2C's own code (EPL-1.0, see
+// THIRD-PARTY-NOTICES.txt): every packaged file comes from runtime/, and
+// none carries another copyright or license, such as OpenJDK's
+const runtimeDirectory = path.join(repositoryRoot, "runtime");
+const jarRuntimePrefix = "META-INF/j2c-runtime/";
+const runtimeFiles = filesUnder(runtimeDirectory)
+	.map((file) => path.relative(runtimeDirectory, file).split(path.sep).join("/"))
+	.filter((file) => file.startsWith("java/") || file.startsWith("cpp/")
+		|| ["api.txt", "README.md", "required-classes.txt"].includes(file))
+	.sort();
+const jarRuntimeFiles = [...entries]
+	.filter((name) => name.startsWith(jarRuntimePrefix) && !name.endsWith("/"))
+	.map((name) => name.slice(jarRuntimePrefix.length))
+	.sort();
+assert.deepStrictEqual(jarRuntimeFiles, runtimeFiles,
+	"The CLI JAR's bundled runtime does not match runtime/");
+assert(runtimeFiles.includes("java/java/lang/Object.java"), "No bundled runtime");
+const foreignNotice = /copyright|GNU General Public|GPL|Classpath exception|Oracle and\/or its affiliates|OpenJDK/i;
+for (const file of runtimeFiles.filter((name) => name.startsWith("java/") || name.startsWith("cpp/"))) {
+	const text = fs.readFileSync(path.join(runtimeDirectory, ...file.split("/")), "utf8");
+	const notice = text.match(foreignNotice);
+	assert(!notice, `runtime/${file} carries a foreign notice: ${notice && notice[0]}`);
+}
+assert(/It contains\s+no OpenJDK code\./.test(fs.readFileSync(noticesFile, "utf8")),
+	"THIRD-PARTY-NOTICES.txt must state the bundled runtime's license");
+
 console.log(
 	`License inventory matches ${resolved.length} runtime dependencies; ` +
-	`${expectedJarEntries.length} license files are bundled in the CLI JAR.`
+	`${expectedJarEntries.length} license files and the ${runtimeFiles.length} files of ` +
+	"the J2C runtime (EPL-1.0) are bundled in the CLI JAR."
 );
