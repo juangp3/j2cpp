@@ -264,7 +264,7 @@ type, and custom messages are not shown. Other forms (`assertAll`,
 method:
 
 ```sh
-java -jar target/j2c-cli.jar test --output generated --runtime runtime \
+java -jar target/j2c-cli.jar test --output generated --runtime bundled \
   --sourcepath src/main/java:src/test/java src/main/java src/test/java
 java -jar target/j2c-cli.jar test --output generated --format json \
   --filter CounterTest,ParserTest.parsesEmpty src/main/java src/test/java

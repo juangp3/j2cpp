@@ -69,8 +69,9 @@ C++20-targeted output.
   safe. The output equals `--runtime` with the checkout's `runtime/`.
   `--runtime <directory>` is unchanged, and the CLI still translates
   without a runtime by default. See `docs/RUNTIME.md`.
-- The MCP tools `j2c_check`, `j2c_translate`, `j2c_fix`, `j2c_report` and
-  `j2c_build` take `runtime` (`"bundled"` or a directory).
+- The MCP tools `j2c_check`, `j2c_translate`, `j2c_fix`, `j2c_report`,
+  `j2c_build` and `j2c_test` take `runtime` (`"bundled"` or a directory),
+  and `j2c build` and `j2c test` take `--runtime bundled`.
 - VS Code: the `j2c.runtime` setting, **`bundled` by default**, so Check and
   Translate use the J2C runtime and translated programs run. This changes
   the extension's output: `java.*` comes from the runtime, so code using JDK

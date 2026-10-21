@@ -487,7 +487,7 @@ java -jar j2c-cli.jar fix --format json src/main/java
 java -jar j2c-cli.jar fix --apply --format json src/main/java
 java -jar j2c-cli.jar report --format json src/main/java
 java -jar j2c-cli.jar build --output build/cpp --format json src/main/java
-java -jar j2c-cli.jar test --output build/cpp --format json --runtime runtime src/main/java src/test/java
+java -jar j2c-cli.jar test --output build/cpp --format json --runtime bundled src/main/java src/test/java
 java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
