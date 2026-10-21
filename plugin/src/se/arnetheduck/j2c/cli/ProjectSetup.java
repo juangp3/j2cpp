@@ -815,12 +815,20 @@ final class ProjectSetup {
 
 	// The cache
 
-	/** The cache file for the project's current build files, or null */
-	private static File cacheFile(Project project, boolean tests) {
+	/**
+	 * J2C's cache directory: J2C_CACHE_DIR, else ~/.j2c/cache. It holds the
+	 * resolved class paths and the extracted bundled runtime.
+	 */
+	static File cacheDirectory() {
 		String configured = System.getenv("J2C_CACHE_DIR");
-		File directory = configured != null && !configured.isEmpty() ? new File(
+		return configured != null && !configured.isEmpty() ? new File(
 				configured) : new File(System.getProperty("user.home"), ".j2c"
 				+ File.separator + "cache");
+	}
+
+	/** The cache file for the project's current build files, or null */
+	private static File cacheFile(Project project, boolean tests) {
+		File directory = cacheDirectory();
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			update(digest, "j2c-classpath-1\n" + project.buildTool + "\n"

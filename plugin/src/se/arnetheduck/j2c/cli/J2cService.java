@@ -567,6 +567,20 @@ final class J2cService {
 		return root == null ? sourceFile.getParentFile() : root;
 	}
 
+	/**
+	 * A --runtime value: "bundled" (the runtime packaged in the JAR,
+	 * extracted to the cache directory) or a runtime directory, resolved
+	 * against base when relative and base is not null
+	 */
+	static File runtime(String value, File base) throws IOException {
+		if (BundledRuntime.NAME.equals(value)) {
+			return BundledRuntime.directory();
+		}
+		File directory = new File(value);
+		return directory.isAbsolute() || base == null ? directory : new File(
+				base, value);
+	}
+
 	static String version() {
 		String version = J2cService.class.getPackage()
 				.getImplementationVersion();

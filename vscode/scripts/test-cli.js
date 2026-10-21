@@ -598,6 +598,8 @@ try {
 	const notRuntime = runCli(["--runtime", tempDirectory, "--check", path.join(repositoryRoot, "test", "runtime", "hello")]);
 	assert.strictEqual(notRuntime.status, 2);
 	assert(notRuntime.stderr.includes("Not a J2C runtime"), notRuntime.stderr);
+	// --runtime bundled: the same runtime, packaged in the JAR
+	require("./test-cli-runtime").checkBundledRuntime(runCli, tempDirectory, cliJar);
 
 	// A surrogate escape followed by a hex digit splits the C++ literal (G44)
 	const textSource = fs.readFileSync(path.join(repositoryRoot, "test", "runtime", "text", "Text.java"), "utf8");

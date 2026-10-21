@@ -1,6 +1,7 @@
 package se.arnetheduck.j2c.cli;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
@@ -21,7 +22,7 @@ public class Main {
 	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "[--format <text|json>] [--force] [--tests] [--runtime <directory>] "
+			+ "[--format <text|json>] [--force] [--tests] [--runtime <bundled|directory>] "
 			+ "[--project <auto|none|directory>] [--no-build-tool] "
 			+ "<java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c fix [--apply] [--format <text|json>] [--sourcepath <paths>] "
@@ -30,7 +31,7 @@ public class Main {
 			+ "<java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c report [--format <markdown|json>] [--sourcepath <paths>] "
 			+ "[--classpath <paths>] [--encoding <charset>] [--tests] "
-			+ "[--runtime <directory>] [--project <auto|none|directory>] "
+			+ "[--runtime <bundled|directory>] [--project <auto|none|directory>] "
 			+ "[--no-build-tool] <java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c build --output <directory> [--make <program>] "
 			+ "[--wsl <auto|always|never>] [--wsl-distro <name>] "
@@ -56,9 +57,10 @@ public class Main {
 			+ "report prints a migration readiness report: how much translates, "
 			+ "what blocks the rest, and the JDK API used compared with the J2C "
 			+ "runtime (Markdown, or --format json)." + NL
-			+ "--runtime translates against a J2C runtime directory instead of "
-			+ "the running JDK: java/ holds its Java sources, cpp/ its C++ natives "
-			+ "and hooks (see runtime/README.md)." + NL
+			+ "--runtime translates against a J2C runtime instead of the running "
+			+ "JDK: bundled is the one packaged in J2C (extracted to the cache "
+			+ "directory), or a directory whose java/ holds its Java sources and "
+			+ "cpp/ its C++ natives and hooks (see runtime/README.md)." + NL
 			+ "--project auto (the default) treats an input directory with a "
 			+ "pom.xml, build.gradle or settings.gradle as a Maven or Gradle "
 			+ "project: its source roots (and test roots with --tests) are "
@@ -207,7 +209,7 @@ public class Main {
 			} else if ("--tests".equals(arg)) {
 				request.tests = true;
 			} else if ("--runtime".equals(arg)) {
-				request.runtime = new File(value(args, ++i, arg));
+				request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 			} else if ("--project".equals(arg)) {
 				request.project = project(value(args, ++i, arg), true);
 			} else if ("--no-build-tool".equals(arg)) {
@@ -317,7 +319,7 @@ public class Main {
 			} else if ("--tests".equals(arg)) {
 				request.tests = true;
 			} else if ("--runtime".equals(arg)) {
-				request.runtime = new File(value(args, ++i, arg));
+				request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 			} else if ("--project".equals(arg)) {
 				request.project = project(value(args, ++i, arg), true);
 			} else if ("--no-build-tool".equals(arg)) {
@@ -384,7 +386,7 @@ public class Main {
 			} else if ("--tests".equals(arg)) {
 				request.tests = true;
 			} else if ("--runtime".equals(arg)) {
-				request.runtime = new File(value(args, ++i, arg));
+				request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 			} else if ("--project".equals(arg)) {
 				request.project = project(value(args, ++i, arg), true);
 			} else if ("--no-build-tool".equals(arg)) {
@@ -475,7 +477,8 @@ public class Main {
 	 * the tests target.
 	 */
 	private static int buildOption(String[] args, int i,
-			J2cService.Request request, Builder.Options options, boolean build) {
+			J2cService.Request request, Builder.Options options, boolean build)
+			throws IOException {
 		String arg = args[i];
 		if ("--output".equals(arg)) {
 			request.output = new File(value(args, ++i, arg));
@@ -506,7 +509,7 @@ public class Main {
 		} else if (build && "--tests".equals(arg)) {
 			request.tests = true;
 		} else if ("--runtime".equals(arg)) {
-			request.runtime = new File(value(args, ++i, arg));
+			request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 		} else if ("--project".equals(arg)) {
 			request.project = project(value(args, ++i, arg), true);
 		} else if ("--no-build-tool".equals(arg)) {

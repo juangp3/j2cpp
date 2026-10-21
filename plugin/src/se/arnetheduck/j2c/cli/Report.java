@@ -134,8 +134,10 @@ final class Report {
 	Result run(J2cService.Request request, Progress progress) throws Exception {
 		final Result result = new Result();
 		result.tests = request.tests;
-		result.runtime = request.runtime != null ? RuntimeApi
-				.fromDirectory(request.runtime) : RuntimeApi.bundled();
+		// The bundled runtime's API is packaged with it, as "bundled"
+		result.runtime = request.runtime == null
+				|| BundledRuntime.isBundled(request.runtime) ? RuntimeApi
+				.bundled() : RuntimeApi.fromDirectory(request.runtime);
 		final Map<File, FileInfo> files = new TreeMap<File, FileInfo>();
 		result.check = service.check(request, new Transformer.CheckListener() {
 			@Override
@@ -846,7 +848,7 @@ final class Report {
 		if (result.runtime == null && !result.jdk.isEmpty()) {
 			steps.add(new String[] {
 					"No runtime API is available to compare JDK use with; pass "
-							+ "--runtime with the J2C runtime directory.", null });
+							+ "--runtime with a J2C runtime directory.", null });
 		} else if (!missing.isEmpty()) {
 			StringBuilder top = new StringBuilder();
 			for (int i = 0; i < missing.size() && i < 3; ++i) {
@@ -863,8 +865,8 @@ final class Report {
 		if (problems.isEmpty()) {
 			steps.add(new String[] {
 					"Everything translates: translate into an empty directory and "
-							+ "build with make -C <directory>; add --runtime with the J2C "
-							+ "runtime directory to run against the runtime.",
+							+ "build with make -C <directory>; add --runtime bundled to run "
+							+ "against the J2C runtime.",
 					"j2c --output <directory>" + arguments });
 		} else {
 			steps.add(new String[] {
@@ -1046,9 +1048,10 @@ final class Report {
 		if (result.runtime == null) {
 			md.append("No runtime API was available to compare with.\n\n");
 		} else {
-			md.append("The J2C runtime (`--runtime`")
-					.append("bundled".equals(result.runtime.source) ? ""
-							: " `" + result.runtime.source + "`")
+			md.append("The J2C runtime (`--runtime ")
+					.append(BundledRuntime.NAME.equals(result.runtime.source)
+							? BundledRuntime.NAME : result.runtime.source)
+					.append('`')
 					.append(") provides ").append(summary.typesProvided).append(" of ")
 					.append(summary.types).append(" JDK types and ")
 					.append(summary.membersProvided).append(" of ")

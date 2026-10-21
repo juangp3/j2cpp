@@ -46,13 +46,17 @@
 				</includes>
 			</resource>
 			<resource>
-				<!-- The bundled runtime's API and contract, for j2c report and
-					the MCP j2c://runtime resource -->
+				<!-- The bundled runtime (BundledRuntime, extracted for
+					runtime bundled), and its API and contract for j2c report
+					and the MCP j2c://runtime resource -->
 				<directory>runtime</directory>
 				<targetPath>META-INF/j2c-runtime</targetPath>
 				<includes>
 					<include>api.txt</include>
 					<include>README.md</include>
+					<include>required-classes.txt</include>
+					<include>java/**</include>
+					<include>cpp/**</include>
 				</includes>
 			</resource>
 			<resource>

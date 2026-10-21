@@ -44,7 +44,7 @@ import se.arnetheduck.j2c.transform.SourceUnit;
  * for fields. j2c report compares the JDK API a program uses with it.
  *
  * The bundled runtime's API is generated into runtime/api.txt (packaged in
- * the JAR) by running this class's main with the runtime directory:
+ * the JAR with the runtime, see BundledRuntime) by running this class's main with the runtime directory:
  *
  * <pre>
  * java -cp target/j2c-cli.jar se.arnetheduck.j2c.cli.RuntimeApi runtime &gt; runtime/api.txt
@@ -52,9 +52,10 @@ import se.arnetheduck.j2c.transform.SourceUnit;
  */
 final class RuntimeApi {
 	/** The bundled runtime's API inside the JAR */
-	static final String RESOURCE = "/META-INF/j2c-runtime/api.txt";
+	static final String RESOURCE = "/" + BundledRuntime.PREFIX + "api.txt";
 	/** The bundled runtime's README inside the JAR */
-	static final String README_RESOURCE = "/META-INF/j2c-runtime/README.md";
+	static final String README_RESOURCE = "/" + BundledRuntime.PREFIX
+			+ "README.md";
 
 	private static final String HEADER = "# J2C runtime API: the types and non-private members of runtime/java,\n"
 			+ "# which j2c report compares the JDK API a program uses with.\n"
@@ -65,7 +66,7 @@ final class RuntimeApi {
 	private final Map<String, List<String>> supertypes = new TreeMap<String, List<String>>();
 	/** Binary type name to its member keys */
 	private final Map<String, Set<String>> members = new TreeMap<String, Set<String>>();
-	/** Where it came from: "bundled" or the runtime directory */
+	/** Where it came from: BundledRuntime.NAME or the runtime directory */
 	final String source;
 
 	private RuntimeApi(String source) {
@@ -80,7 +81,7 @@ final class RuntimeApi {
 		}
 		try {
 			return read(new InputStreamReader(in, StandardCharsets.UTF_8),
-					"bundled");
+					BundledRuntime.NAME);
 		} finally {
 			in.close();
 		}
