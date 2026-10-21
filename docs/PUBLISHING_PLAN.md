@@ -864,6 +864,20 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   does for C++ keywords. Tested by `Java17Features.errnoNames` (built in
   CI) and `test-cli.js`.
 
+#### G62 — Found while bundling the runtime
+
+- **G62, include order that depends on where sources are** (fixed
+  2026-10-21): JDT puts the compilation unit's path into the keys of
+  generic source types (`Ljava/util/C:\...\HashMap~HashMap<TK;TV;>;`), and
+  `BindingComparator` ordered dependencies, and so includes, by those keys.
+  The same runtime in two directories, or a runtime against
+  `LambdaDesugarer`'s temporary `j2c-desugar` directory, then gave a
+  different include order (43 files of `test/runtime/hello`). The
+  comparator now compares unit paths by file name and uses the full key
+  only to break ties. Only include order changes (none in `test/src`'s
+  output); tested by `test-cli-runtime.js`, which translates with copies of
+  the runtime before and after `j2c-desugar` in the temporary folder.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of

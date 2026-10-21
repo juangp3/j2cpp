@@ -11,6 +11,7 @@
 const assert = require("assert");
 const childProcess = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
@@ -58,8 +59,8 @@ function checkBundledRuntime(runCli, tempDirectory, cliJar) {
 	const env = { ...process.env, J2C_CACHE_DIR: cache };
 	const withCache = { env };
 
-	// The same output as the runtime directory, apart from nothing: the
-	// generated code never names the runtime's location
+	// The same output as the runtime directory: the generated code never
+	// names the runtime's location
 	const bundledOutput = path.join(tempDirectory, "bundled runtime output");
 	const directoryOutput = path.join(tempDirectory, "directory runtime output");
 	fs.mkdirSync(bundledOutput);
@@ -79,6 +80,27 @@ function checkBundledRuntime(runCli, tempDirectory, cliJar) {
 			`${file} differs between --runtime bundled and --runtime runtime`);
 	}
 	const extracted = assertExtracted(cache);
+
+	// Nor where the runtime is: JDT keys of generic source types hold their
+	// file's path, which once ordered includes differently for runtimes in
+	// the temporary folder before and after LambdaDesugarer's j2c-desugar
+	// directory there
+	for (const prefix of ["j2c-a runtime ", "j2c-z runtime "]) {
+		const copy = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+		try {
+			fs.cpSync(runtimeDirectory, copy, { recursive: true });
+			const copyOutput = fs.mkdtempSync(path.join(tempDirectory, "copied runtime output "));
+			const copied = runCli(["--runtime", copy, "--name", "hello", "--output", copyOutput, hello]);
+			assert.strictEqual(copied.status, 0, copied.stderr || copied.stdout);
+			assert.deepStrictEqual(relativeFiles(copyOutput), outputFiles);
+			for (const file of outputFiles) {
+				assert(fs.readFileSync(path.join(copyOutput, file)).equals(fs.readFileSync(path.join(bundledOutput, file))),
+					`${file} depends on the runtime's location (${copy})`);
+			}
+		} finally {
+			fs.rmSync(copy, { recursive: true, force: true });
+		}
+	}
 
 	// Reused as it is: nothing is written again
 	const marker = path.join(extracted, ".j2c-runtime");

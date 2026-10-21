@@ -78,6 +78,9 @@ C++20-targeted output.
   classes it does not provide (such as `java.time`) now gets
   `J2C-COMPILE-ERROR` problems instead of stubs. Set `j2c.runtime` to
   `none` for the previous behavior, or to a runtime directory.
+- The order of includes in generated files no longer depends on the
+  directory the sources are in (JDT puts it into the keys of generic source
+  types), so a runtime gives the same output wherever it is.
 - `j2c report` names the runtime it compares with as `--runtime bundled`
   when no runtime directory is given.
 - `make J2C_GC=boehm` links a program with the Boehm garbage collector,
