@@ -244,7 +244,13 @@ async function checkProgressAndCancellation(cliJar, workspace, env) {
 	fs.cpSync(path.join(repositoryRoot, "test", "src"), path.join(root, "src"), { recursive: true });
 	if (javaMajorVersion() < 17) {
 		// Records need java.lang.Record from a JDK 17 system library
-		fs.rmSync(path.join(root, "src", "se", "arnetheduck", "j2c", "test", "Java17Records.java"));
+		const fixtures = path.join(root, "src", "se", "arnetheduck", "j2c", "test");
+		for (const name of fs.readdirSync(fixtures).filter((file) => file.endsWith(".java"))) {
+			const source = fs.readFileSync(path.join(fixtures, name), "utf8");
+			if (/^\s*(?:(?:public|protected|private|static|final|sealed)\s+)*record\s+\w+\s*[(<]/m.test(source)) {
+				fs.rmSync(path.join(fixtures, name));
+			}
+		}
 	}
 	fs.mkdirSync(path.join(root, "big out"));
 	fs.mkdirSync(path.join(root, "small out"));
