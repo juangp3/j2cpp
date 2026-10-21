@@ -1368,6 +1368,12 @@ public class ImplWriter extends TransformWriter {
 			printlni("clinit();");
 		}
 
+		if (parent instanceof MethodDeclaration
+				&& Modifier.isSynchronized(((MethodDeclaration) parent)
+						.getModifiers())) {
+			printSynchronizedMethod((MethodDeclaration) parent);
+		}
+
 		visitAll(node.statements());
 
 		indent--;
@@ -3489,13 +3495,28 @@ public class ImplWriter extends TransformWriter {
 
 	private int sc;
 
+	/**
+	 * A synchronized method holds the monitor of this, or of its class when
+	 * static, until the body exits, normally or by an exception
+	 */
+	private void printSynchronizedMethod(MethodDeclaration node) {
+		if (Modifier.isStatic(node.getModifiers())) {
+			hardDep(node.getAST().resolveWellKnownType("java.lang.Class"));
+			printlni("synchronized synchronized_method_(class_());");
+		} else {
+			printlni("synchronized synchronized_method_(this);");
+		}
+		deps.setNeedsSynchronized();
+	}
+
 	@Override
 	public boolean visit(SynchronizedStatement node) {
 		printlni("{");
 		indent++;
 		printi("synchronized synchronized_" + sc + "(");
 		hardDep(node.getExpression().resolveTypeBinding());
-		node.getExpression().accept(this);
+		// synchronized (null) throws NullPointerException, as in Java
+		npcAccept(node.getExpression());
 		println(");");
 		printi();
 		node.getBody().accept(this);

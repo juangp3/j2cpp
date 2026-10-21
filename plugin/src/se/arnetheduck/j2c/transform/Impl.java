@@ -168,7 +168,10 @@ public class Impl {
 		}
 
 		if (clinit != null) {
-			println(i1 + "static bool in_cl_init = false;");
+			// Per thread: a thread that is initializing the class sees it
+			// as initialized when it recurses, as in Java, and the others
+			// wait for the initializer on the guard of clinit_instance
+			println(i1 + "static thread_local bool in_cl_init = false;");
 			println("struct clinit_ {");
 			println(i1 + "clinit_() {");
 			println(i1 + i1 + "in_cl_init = true;");
