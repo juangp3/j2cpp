@@ -232,9 +232,20 @@ async function checkIncremental(cliJar, workspace, env) {
 	return rechecked;
 }
 
+function javaMajorVersion() {
+	const version = childProcess.spawnSync("java", ["-version"], { encoding: "utf8" });
+	const match = `${version.stdout}\n${version.stderr}`.match(/version "(?:1\.)?(\d+)/);
+	assert(match, `Unable to determine Java version: ${version.stderr}`);
+	return Number(match[1]);
+}
+
 async function checkProgressAndCancellation(cliJar, workspace, env) {
 	const root = path.join(workspace, "progress");
 	fs.cpSync(path.join(repositoryRoot, "test", "src"), path.join(root, "src"), { recursive: true });
+	if (javaMajorVersion() < 17) {
+		// Records need java.lang.Record from a JDK 17 system library
+		fs.rmSync(path.join(root, "src", "se", "arnetheduck", "j2c", "test", "Java17Records.java"));
+	}
 	fs.mkdirSync(path.join(root, "big out"));
 	fs.mkdirSync(path.join(root, "small out"));
 	write(root, "small/demo/Small.java", ["package demo;", "public class Small {}"]);
