@@ -1452,6 +1452,71 @@ the agent's work, ordered by value for effort:
 4. **Map C++ errors back to Java.** An option to emit `#line` directives, so
    compilers and debuggers report Java file and line numbers. A `j2c_build`
    tool runs `make` and returns errors mapped to Java. Effort: about one week.
+
+   **Done (2026-10-21):**
+   - `--line-directives` (`lineDirectives` in `j2c_translate`,
+     `j2c.lineDirectives` in VS Code). The writers wrap the C++ of every
+     statement, method, field, field initializer and enum constant in marks
+     with its Java line (`TransformWriter.preVisit2`/`postVisit`; in
+     `ImplWriter` before hoisted patterns and boxing calls), which survive
+     the buffers files are assembled from; `LineDirectives.resolve` replaces
+     them when `Impl` or `Header` writes a file. Each non-blank C++ line
+     gets the Java line of the innermost mark around its first code (a line
+     starting with boilerplate, such as a field name before its initializer,
+     takes the first mark on it); later C++ lines of the same node may
+     count on within the node's Java lines, so most statements need one
+     directive. Boilerplate outside every mark is mapped back to the C++
+     file at its real line (`#line <next line> "src/.../Foo.cpp"`), chosen
+     over the nearest Java line so errors in generated helpers stay
+     findable; directives are only written where the compiler's numbering
+     would be wrong, never inside block comments, continued lines or before
+     access specifiers. Paths are relative to the output directory (where
+     `make` runs, also in WSL), absolute on another drive.
+   - Lambdas: `LambdaDesugarer` keeps every line in place (replacements keep
+     the original line breaks), so the rewritten AST's line numbers are the
+     original ones; the CompilationUnit property names the original file.
+     Generated helpers (`Array.hpp`, `j2c_array.cpp`, stubs of classes
+     without source, the Makefile, GoogleTest wrappers) have no directives.
+   - Without the option the output is byte-identical: checked on the whole
+     `test/src` tree against the previous JAR (and by `test-cli.js`, which
+     also checks that removing the directives gives the plain output).
+   - `j2c build --output <dir> [inputs]` (`Builder`): translates with
+     directives, or requires the `.j2c-output` marker; runs `make -k -jN`
+     (`--output-sync=target` with GNU make 4 and more than one job) with
+     `LC_ALL=C`, natively or `wsl [-d distro] -- env LC_ALL=C make -C
+     /mnt/...` on Windows when `make` is missing (`--make`, `--wsl`,
+     `--wsl-distro`, `--target`, `--jobs`, `J2C_MAKE`, `J2C_WSL`,
+     `J2C_WSL_DISTRO`); parses GCC and Clang `file:line[:col]: severity:`
+     lines, notes and instantiation backtraces (nested as `notes`),
+     `In file included from` chains, `In function` context lines and `ld`
+     errors. A Java location is matched back to its generated line through
+     the files' directives (the unit being compiled, from the Makefile's
+     `Compile` line, or with an include chain the headers first, using the
+     column to choose between C++ lines of one Java line); a C++ location
+     gets the nearest Java line before it (`mapped: "nearest"`). JSON
+     schema version 4. `j2c_build` (not read-only, not destructive,
+     closed-world: never runs Maven or Gradle; targets `all`, `mains`,
+     `tests`), and **J2C: Build Translated C++** in VS Code with its own
+     diagnostic collection, notes as related information.
+   - Tests: `test-cli-build.js` (run by `test:cli`): directives only add
+     lines over the whole `test/src` translation, every directive back to a
+     generated file names its real next line and every Java path exists,
+     statements, declarations and lambda bodies (desugared) at their Java
+     lines, no directives in helpers; parsing against a stub `make` with
+     canned GCC output (statement, note, header warning with include chain,
+     boilerplate, fatal error without directives, linker errors, text
+     output, `-j1` without `--output-sync`, usage errors); and a real build
+     of `test/build` with an error put into a statement's C++, reported at
+     its Java line (skipped without `make`; in WSL on Windows).
+     `test-mcp.js` and `test-extension.js` cover the tool and the command.
+     CI builds `Java17Lambdas` with `--line-directives` under UBSan and runs
+     its smoke harness. Checked by hand: every `Java17*` fixture builds and
+     its smoke tests pass with directives, and gdb stops at
+     `break Java17Lambdas.java:21` and lists the Java source.
+   - Open: Java columns are not mapped (the compiler's column is the C++
+     one); `j2c build` does not stop `make` when the CLI is killed; the
+     nearest Java line of boilerplate can be the previous method's last
+     line; errors inside macros spanning lines are not specially handled.
 5. **Migration readiness report.** A `j2c_report` tool and
    `j2c report --format markdown|json` show:
    - the percentage translatable;

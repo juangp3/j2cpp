@@ -186,6 +186,28 @@ C++20-targeted output.
   order). The `.j2c-output` marker is written before translation starts, so
   a failed or cancelled translation's partial output is replaced next time
   without `--force`.
+- C++ errors mapped back to Java: `--line-directives` adds `#line`
+  directives to the generated `.cpp` and `.hpp` files (method bodies, field
+  initializers and declarations, including lambdas, which map to the
+  lambda's own lines), so GCC, Clang and gdb name Java files and lines
+  (`break Foo.java:21` works). Each C++ line maps to the Java statement it
+  came from; generated boilerplate maps back to the C++ file's own lines.
+  Paths are relative to the output directory, where `make` runs. Without the
+  option the output is unchanged, byte for byte.
+- `j2c build --output <directory> [inputs]` translates the inputs with
+  directives (or uses earlier J2C output), runs `make -k` (in WSL on Windows
+  when `make` is missing; `--make`, `--wsl auto|always|never`,
+  `--wsl-distro`, `--target`, `--jobs`, or `J2C_MAKE`, `J2C_WSL`,
+  `J2C_WSL_DISTRO`) and reports GCC and Clang errors, warnings and notes
+  (with their include chains and linker errors) at their Java file and line,
+  with the C++ location of each and the end of the log. It exits with 0 when
+  `make` succeeds, else 1. The `j2c_build` MCP tool does the same (not
+  destructive, closed-world: it never runs Maven or Gradle; progress per
+  compiled file, and cancellation stops `make` and its compilers),
+  `j2c_translate`
+  takes `lineDirectives`, and VS Code adds **J2C: Build Translated C++**
+  (diagnostics in the Problems panel) and the `j2c.lineDirectives` and
+  `j2c.build.*` settings. JSON schema version 4.
 
 ### Java language support
 

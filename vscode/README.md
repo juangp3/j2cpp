@@ -13,6 +13,15 @@ Translatability** to Java editor and Explorer context menus.
 - **Check**: reports every compile error and unsupported construct in the
   selection without writing anything. Run it on a source folder to see whether
   a project can be translated.
+- **Build Translated C++** (command palette, or a J2C output folder in the
+  Explorer): runs `make` in a J2C output directory through the CLI's
+  `j2c build` and shows the compiler's errors and warnings in the
+  **Problems** panel. With `j2c.lineDirectives` on when translating, the
+  generated C++ carries `#line` directives, so they appear at their Java
+  lines (with the C++ location in the message), and debuggers such as gdb
+  step through the Java source. On Windows, `make` runs in WSL when it is not
+  on the `PATH` (`j2c.build.wsl`, `j2c.build.wslDistribution`; WSL needs GNU
+  make and g++ 13 or newer); `j2c.build.make` names another make program.
 
 Problems from either command appear in the **Problems** panel at their source
 lines; a clean run clears them. Problems with a mechanical fix (such as `this`
@@ -35,8 +44,9 @@ panel. Sources are read as UTF-8.
 The extension also offers J2C to AI agents: with `j2c.mcp.enabled` (on by
 default), it registers the bundled CLI as an MCP server for each workspace
 folder, so Copilot agent mode can check, fix and translate Java through the
-`j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_explain`, and
-`j2c_capabilities` tools. `j2c_report` assesses a migration: how much
+`j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_build`,
+`j2c_explain`, and `j2c_capabilities` tools. `j2c_build` compiles translated
+code and returns the compiler's errors at their Java lines. `j2c_report` assesses a migration: how much
 translates, what blocks the rest, and the JDK API the code uses that the
 J2C runtime lacks. The server's prompts `j2c-migrate` and `j2c-assess` appear
 among Copilot Chat's slash commands in VS Code versions that support MCP

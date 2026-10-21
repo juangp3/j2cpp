@@ -106,7 +106,7 @@ Copilot > MCP servers** page, in its MCP configuration. Paste
       "type": "local",
       "command": "npx",
       "args": ["-y", "@juangp3/j2c-mcp@0.6.0", "--root", "."],
-      "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_explain", "j2c_capabilities"]
+      "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_build", "j2c_explain", "j2c_capabilities"]
     }
   }
 }
@@ -136,9 +136,10 @@ source paths and the output directory must be inside it. Class path entries
 | Tool | Writes | Arguments | Result |
 | --- | --- | --- | --- |
 | `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
-| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `projects`, `warnings` |
+| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force`, `lineDirectives` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `lineDirectives`, `projects`, `warnings` |
 | `j2c_fix` | With `apply: true` | The same as `j2c_check`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
 | `j2c_report` | No | The same as `j2c_check` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
+| `j2c_build` | Build products in `output` | `output` (required), `target` (`all`, `mains` or `tests`), `jobs`; with `paths` (and the `j2c_translate` arguments except `buildTool` and `lineDirectives`) it translates first | `status` (`ok` or `failed`), `exitCode`, `diagnostics`, `summary`, `makeCommand`, `log`, `logTruncated`, `translated` |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
 
@@ -266,6 +267,46 @@ result for planning a migration:
 The CLI prints Markdown by default (`--format json` for the shape above) and
 exits with 0 whenever it prints a report.
 
+### Building and C++ errors
+
+`j2c_build` runs `make -k` in a J2C output directory (one with the
+`.j2c-output` marker, inside the root) and returns the compiler's
+diagnostics. Translate with `lineDirectives: true` (`j2c_build` with
+`paths` does): the generated C++ then has `#line` directives, so each error
+names the Java file and line of the statement it came from.
+
+```json
+{
+  "severity": "error",
+  "message": "'value' was not declared in this scope",
+  "java": { "file": "/work/src/demo/Counter.java", "line": 12 },
+  "cpp": { "file": "/work/build/cpp/src/demo/Counter.cpp", "line": 34, "column": 15 },
+  "mapped": "line-directive",
+  "context": "In member function 'virtual int32_t demo::Counter::next()'",
+  "includedFrom": [],
+  "notes": []
+}
+```
+
+`mapped` is `line-directive` when the compiler reported the Java line,
+`nearest` when the error is in generated code outside any Java statement
+(`java` is then the closest Java line before it, and `cpp` is exact), and
+`none` without directives (`java` is `null`). `notes` holds the compiler's
+notes on it (`severity: "note"`), `includedFrom` the include chain, and
+linker errors have `cpp: null` when they name no file. Java columns are not
+known; `cpp.column` is the compiler's. `log` is the end of `make`'s output
+(`logTruncated` when longer). A failed build is a normal result, not a tool
+error.
+
+On Windows, `make` runs in WSL when it is not on the `PATH` (it needs GNU
+make and g++ 13 or newer there); set `J2C_WSL=always|never`,
+`J2C_WSL_DISTRO` (default: WSL's default distribution) or `J2C_MAKE` in the
+server's environment to change that. `j2c_build` never runs Maven or Gradle
+(a cached class path is used); call `j2c_translate` first when a project's
+dependencies must be resolved. Fix C++ errors in the Java source where they
+come from the Java code; errors in J2C's own generated code are J2C bugs
+worth reporting.
+
 ## Prompts and resources
 
 The server has two prompts, which clients show as commands:
@@ -362,7 +403,9 @@ starts). What is left:
    a check problem.
 5. Repeat `j2c_check` until `status` is `ok`.
 6. Call `j2c_translate` with an empty output directory.
-7. Build the result with `make -C <output>` if a C++20 toolchain is available.
+7. If a C++20 toolchain is available, call `j2c_build` with the output
+   directory (translate with `lineDirectives: true` first) and read its
+   diagnostics at their Java lines.
 
 Translated programs compile and link, but JDK classes (`String`, collections,
 `System.out`) are generated as stubs. The program needs a C++ implementation
@@ -381,12 +424,19 @@ java -jar j2c-cli.jar --output build/cpp --format json src/main/java
 java -jar j2c-cli.jar fix --format json src/main/java
 java -jar j2c-cli.jar fix --apply --format json src/main/java
 java -jar j2c-cli.jar report --format json src/main/java
+java -jar j2c-cli.jar build --output build/cpp --format json src/main/java
 java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
 
 `j2c report [--format markdown|json]` takes the same inputs and options as
 `--check` (and `--runtime`) and prints the readiness report.
+`j2c build --output <directory> [inputs]` translates the inputs with
+`--line-directives` (without inputs, it builds earlier J2C output) and prints
+the same result as `j2c_build`; `--make`, `--wsl auto|always|never`,
+`--wsl-distro`, `--target` and `--jobs` choose how `make` runs. It exits with
+0 when `make` succeeds, else 1. `--line-directives` adds the directives to a
+plain translation.
 `j2c fix` takes the same inputs and options as `--check` and prints the same
 result as `j2c_fix`; without `--format json` it prints the diff on stdout and
 a summary on stderr. It exits with 0 when no problem is left that needs
@@ -403,7 +453,8 @@ and 2 for invalid arguments. With `--format json`, invalid arguments produce
 `{"status": "usage-error", "message": ...}`. The JSON shapes are versioned
 by `schemaVersion`, which increases whenever a field is added, changed or
 removed; ignore fields you do not know. Version 2 added `fixes` to problems
-and the `fix` command; version 3 the `report` command.
+and the `fix` command; version 3 the `report` command; version 4 the `build`
+command and `lineDirectives` in translate results.
 
 ## Safety
 
@@ -417,8 +468,12 @@ and the `fix` command; version 3 the `report` command.
 - `j2c_report`, the prompts and the resources write nothing; resources
   read only the catalog, the runtime's description, and J2C's output inside
   the root.
-- Only `j2c_translate` and `j2c_fix` with `apply: true` write, only inside
-  the workspace root. `j2c_translate` never deletes: replaced output is moved
+- Only `j2c_translate`, `j2c_fix` with `apply: true` and `j2c_build` write,
+  only inside the workspace root; `j2c_build` writes `make`'s object files
+  and libraries into the output directory (and translates into it with
+  `paths`). `j2c_build` runs `make` with J2C's generated Makefile and the
+  C++ compiler, never the translated program (its targets are `all`, `mains`
+  and `tests`, not `test`). `j2c_translate` never deletes: replaced output is moved
   to a backup. `j2c_fix` edits only the Java files with fixed problems.
 - Tool results contain file paths and J2C's own messages. The exception is
   `j2c_fix` and `fixes`: their diffs and `newText` include lines of the Java

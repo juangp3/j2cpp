@@ -6,7 +6,8 @@ description: Translate Java 17 code to C++20 with J2C, and make Java code transl
 # Translating Java to C++ with J2C
 
 J2C translates Java 17 source into C++20. Use its MCP tools (`j2c_check`,
-`j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_explain`, `j2c_capabilities`)
+`j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_build`, `j2c_explain`,
+`j2c_capabilities`)
 when they are available. Otherwise run the CLI with `--format json`
 (`java -jar j2c-cli.jar --check --format json <paths>`, and
 `java -jar j2c-cli.jar fix [--apply] --format json <paths>`), which prints
@@ -44,7 +45,8 @@ one JSON object with the same fields.
    `J2C-LAMBDA-UNTRANSLATED`, stop and tell the user: it is a J2C bug, not a
    code problem.
 5. **Translate.** Call `j2c_translate` with an output directory that is empty
-   or earlier J2C output. If J2C refuses because the directory has other
+   or earlier J2C output, and `lineDirectives: true` so C++ errors name Java
+   lines. If J2C refuses because the directory has other
    content, ask the user before retrying with `force: true`: the contents
    would be moved to a backup.
 6. **Include the tests.** If the project has JUnit tests, pass `tests: true`
@@ -54,9 +56,15 @@ one JSON object with the same fields.
    problems the same way (for example, replace Mockito mocks with small
    hand-written fakes). The generated GoogleTest wrappers are listed in
    `testFiles`.
-7. **Build if possible.** If a C++20 toolchain is available, run
-   `make -C <output>` (and `make -C <output> test` with tests) and report
-   compiler errors to the user, quoting the generated file and line.
+7. **Build if possible.** If a C++20 toolchain is available, call
+   `j2c_build` with the output directory (or run
+   `java -jar j2c-cli.jar build --output <output> --format json`; on Windows
+   it uses WSL when `make` is missing). Each diagnostic has `java` (the Java
+   file and line, when `mapped` is `line-directive`) and `cpp` (the
+   generated file, line and column). Report errors to the user at their Java
+   lines; `mapped: "nearest"` means the error is in generated boilerplate
+   near that Java line, which is likely a J2C bug. With tests, `make -C
+   <output> test` builds and runs them.
 
 ## Common fixes
 

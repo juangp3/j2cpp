@@ -148,8 +148,35 @@ with `--tests`, the JDK types and members the code uses compared with what
 the J2C runtime provides (the rest would be stubs that fail at run time),
 and next steps.
 
+`--line-directives` adds `#line` directives to the generated C++, so compiler
+errors and debuggers (`gdb`: `break Foo.java:21`, `list`) refer to Java files
+and lines. Each C++ line maps to the Java statement it came from, also in
+lambdas; generated boilerplate keeps its C++ file and line. Paths in the
+directives are relative to the output directory, where `make` runs. Without
+the option the generated files are unchanged.
+
+`j2c build` compiles translated code and reports the compiler's errors at
+their Java lines:
+
+```sh
+java -jar target/j2c-cli.jar build --output build/cpp src/main/java  # translate with directives, then make
+java -jar target/j2c-cli.jar build --output build/cpp --format json  # build earlier J2C output
+```
+
+It runs `make -k` in the output directory (in WSL on Windows when `make` is
+not on the PATH; `--wsl auto|always|never`, `--wsl-distro <name>`,
+`--make <program>`, `--target <target>`, `--jobs <n>`, or the variables
+`J2C_MAKE`, `J2C_WSL` and `J2C_WSL_DISTRO`), parses GCC and Clang
+diagnostics, and prints each at its Java file and line with its C++
+location. A diagnostic in generated code outside any Java statement is
+reported in C++ with the nearest Java line before it. With `--format json`
+the result has `status`, `exitCode`, `diagnostics` (`severity`, `message`,
+`java`, `cpp`, `mapped`, `notes`, `includedFrom`), `summary` and the end of
+the `log`.
+
 The CLI exits with status 0 on success (or a clean check), 1 when translation
-fails or a check finds problems, and 2 for invalid arguments. `j2c fix` exits
+fails or a check finds problems, and 2 for invalid arguments. `j2c build`
+exits with 0 when `make` succeeds, else 1. `j2c fix` exits
 with 0 when no problem is left that needs changes by hand (after applying,
 or that the preview cannot fix), else 1. `j2c report` exits with 0 whenever
 it prints a report.
@@ -242,7 +269,7 @@ claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
 ```
 
 The tools are `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`,
-`j2c_explain` and `j2c_capabilities`; the server also has the prompts
+`j2c_build`, `j2c_explain` and `j2c_capabilities`; the server also has the prompts
 `j2c-migrate` and `j2c-assess`, and resources for the problem catalog, the
 runtime's contract and translated files.
 The server keeps check results between calls, so checking again after an
@@ -264,7 +291,9 @@ are included.
 The extension provides **J2C: Translate to C++** from Java editor and Explorer
 context menus. Select a Java file or source folder, then choose an existing
 output directory. Problems appear in the Problems panel, and those with a
-mechanical fix offer it as a quick fix.
+mechanical fix offer it as a quick fix. **J2C: Build Translated C++** runs
+`make` in an output directory and shows the compiler's errors in the
+Problems panel, at their Java lines when `j2c.lineDirectives` is on.
 
 The Marketplace release is not published yet. To install a locally packaged
 VSIX after building it:
@@ -294,6 +323,8 @@ Configuration:
 | `j2c.cliJar` | `""` | Optional path to a custom CLI JAR; otherwise the packaged CLI is used. |
 | `j2c.javaExecutable` | `"java"` | Java executable used to run the CLI. |
 | `j2c.sealedTypes` | `"advisory"` | `advisory` emits ordinary inheritance and permits comments; `reject` rejects sealed and non-sealed declarations. |
+| `j2c.lineDirectives` | `false` | Add `#line` directives, so compiler errors and debuggers refer to Java lines. |
+| `j2c.build.make`, `j2c.build.wsl`, `j2c.build.wslDistribution` | `""`, `"auto"`, `""` | How **J2C: Build Translated C++** runs `make` (in WSL on Windows when `make` is missing). |
 | `j2c.project` | `"auto"` | `auto` uses a Maven or Gradle build in the workspace folder for source roots and the dependency class path (see [Maven and Gradle projects](#maven-and-gradle-projects)); `none` turns this off. |
 
 ## Java feature support
