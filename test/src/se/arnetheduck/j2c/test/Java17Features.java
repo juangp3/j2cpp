@@ -135,6 +135,28 @@ public class Java17Features {
 		return EINTR;
 	}
 
+	// Synchronized methods hold the monitor of this, or of the class when
+	// static, for the whole body; a synchronized block's expression is
+	// checked for null (R7)
+	private int syncCount;
+
+	public synchronized int syncIncrement() {
+		return ++syncCount;
+	}
+
+	// Initialized once, by the first thread that uses the class
+	private static final int[] SYNC_STEPS = { 1, 2 };
+
+	public static synchronized int syncStatic(int x) {
+		return x + SYNC_STEPS[0];
+	}
+
+	public static int syncBlock(java.lang.Object lock, int x) {
+		synchronized (lock) {
+			return x * 2;
+		}
+	}
+
 	// A cast from Object to a primitive checks the box, then unboxes (found
 	// in zxing). This package declares its own Object class.
 	public static int unboxCast(java.lang.Object value) {

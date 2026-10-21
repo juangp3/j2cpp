@@ -575,8 +575,10 @@ try {
 		path.join(repositoryRoot, "test", "runtime", "hello")]);
 	assert.strictEqual(runtimeRun.status, 0, runtimeRun.stderr || runtimeRun.stdout);
 	const runtimeObject = fs.readFileSync(path.join(runtimeOutput, "ext", "src", "java", "lang", "Object.hpp"), "utf8");
-	// The runtime's Object has no wait(), unlike the JDK's
-	assert(!runtimeObject.includes("wait("), runtimeObject);
+	// The runtime's Object has no finalize(), unlike the JDK's, and waits
+	// through its own native wait0 (R7)
+	assert(!runtimeObject.includes("finalize("), runtimeObject);
+	assert(runtimeObject.includes("wait0("), runtimeObject);
 	assert.strictEqual(
 		fs.readFileSync(path.join(runtimeOutput, "ext", "native", "java", "lang", "Object-native.cpp"), "utf8"),
 		fs.readFileSync(path.join(runtimeDirectory, "cpp", "native", "java", "lang", "Object-native.cpp"), "utf8"));
@@ -1028,6 +1030,13 @@ try {
 		// errno and its codes are C macros, so Java names that spell them are renamed (G61)
 		assert(featureSource.includes("Java17Features::errnoNames(int32_t errno_)"), featureSource);
 		assert.match(featureSource, /auto EINTR_ = errno_ \+ (Java17Features::)?ENOENT_;/);
+		// synchronized: methods lock this or the class, blocks check for null (R7)
+		assert.match(featureSource, /Java17Features::syncIncrement\(\)\s*\{\s*synchronized synchronized_method_\(this\);/);
+		assert.match(featureSource, /Java17Features::syncStatic\(int32_t x\)\s*\{\s*clinit\(\);\s*synchronized synchronized_method_\(class_\(\)\);/);
+		assert(featureSource.includes("synchronized synchronized_0(npc(lock));"), featureSource);
+		assert(featureSource.includes("~synchronized() { ::unlock(o); }"));
+		// Static initializers run once even with threads: the recursion flag is per thread
+		assert(featureSource.includes("static thread_local bool in_cl_init = false;"));
 		// Resources close on a normal exit, or close and suppress, then rethrow (G45)
 		assert(featureSource.includes("auto finally0 = on_normal_exit([&] { if (reader != nullptr) { reader->close(); } });"));
 		assert(featureSource.includes("primary0->addSuppressed(suppressed0);"));
