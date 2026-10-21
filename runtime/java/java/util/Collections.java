@@ -245,6 +245,23 @@ public class Collections {
 		return new UnmodifiableSet<T>(s);
 	}
 
+	public static <T> Collection<T> synchronizedCollection(Collection<T> c) {
+		return new SynchronizedCollection<T>(c, null);
+	}
+
+	public static <T> List<T> synchronizedList(List<T> list) {
+		return list instanceof RandomAccess ? new SynchronizedRandomAccessList<T>(list, null)
+				: new SynchronizedList<T>(list, null);
+	}
+
+	public static <T> Set<T> synchronizedSet(Set<T> s) {
+		return new SynchronizedSet<T>(s, null);
+	}
+
+	public static <K, V> Map<K, V> synchronizedMap(Map<K, V> m) {
+		return new SynchronizedMap<K, V>(m);
+	}
+
 	public static <K, V> Map<K, V> unmodifiableMap(Map<? extends K, ? extends V> m) {
 		return new UnmodifiableMap<K, V>(m);
 	}
@@ -616,6 +633,7 @@ public class Collections {
 			return unmodifiableSet((Set) m.entrySet());
 		}
 
+
 		public Collection<V> values() {
 			return unmodifiableCollection(m.values());
 		}
@@ -630,6 +648,409 @@ public class Collections {
 
 		public String toString() {
 			return m.toString();
+		}
+	}
+
+	// Synchronized views: each method holds the monitor of mutex (the view,
+	// or the view it came from); iterating needs the caller to hold it
+
+	static class SynchronizedCollection<E> implements Collection<E>, java.io.Serializable {
+		final Collection<E> c;
+		final Object mutex;
+
+		SynchronizedCollection(Collection<E> c, Object mutex) {
+			this.c = Objects.requireNonNull(c);
+			this.mutex = mutex == null ? this : mutex;
+		}
+
+		public int size() {
+			synchronized (mutex) {
+				return c.size();
+			}
+		}
+
+		public boolean isEmpty() {
+			synchronized (mutex) {
+				return c.isEmpty();
+			}
+		}
+
+		public boolean contains(Object o) {
+			synchronized (mutex) {
+				return c.contains(o);
+			}
+		}
+
+		public Object[] toArray() {
+			synchronized (mutex) {
+				return c.toArray();
+			}
+		}
+
+		public <T> T[] toArray(T[] a) {
+			synchronized (mutex) {
+				return c.toArray(a);
+			}
+		}
+
+		public Iterator<E> iterator() {
+			return c.iterator();
+		}
+
+		public boolean add(E e) {
+			synchronized (mutex) {
+				return c.add(e);
+			}
+		}
+
+		public boolean remove(Object o) {
+			synchronized (mutex) {
+				return c.remove(o);
+			}
+		}
+
+		public boolean containsAll(Collection<?> coll) {
+			synchronized (mutex) {
+				return c.containsAll(coll);
+			}
+		}
+
+		public boolean addAll(Collection<? extends E> coll) {
+			synchronized (mutex) {
+				return c.addAll(coll);
+			}
+		}
+
+		public boolean removeAll(Collection<?> coll) {
+			synchronized (mutex) {
+				return c.removeAll(coll);
+			}
+		}
+
+		public boolean retainAll(Collection<?> coll) {
+			synchronized (mutex) {
+				return c.retainAll(coll);
+			}
+		}
+
+		public void clear() {
+			synchronized (mutex) {
+				c.clear();
+			}
+		}
+
+		public boolean removeIf(Predicate<? super E> filter) {
+			synchronized (mutex) {
+				return c.removeIf(filter);
+			}
+		}
+
+		public void forEach(java.util.function.Consumer<? super E> action) {
+			synchronized (mutex) {
+				c.forEach(action);
+			}
+		}
+
+		public String toString() {
+			synchronized (mutex) {
+				return c.toString();
+			}
+		}
+	}
+
+	static class SynchronizedSet<E> extends SynchronizedCollection<E> implements Set<E> {
+		SynchronizedSet(Set<E> s, Object mutex) {
+			super(s, mutex);
+		}
+
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			}
+			synchronized (mutex) {
+				return c.equals(o);
+			}
+		}
+
+		public int hashCode() {
+			synchronized (mutex) {
+				return c.hashCode();
+			}
+		}
+	}
+
+	static class SynchronizedList<E> extends SynchronizedCollection<E> implements List<E> {
+		final List<E> list;
+
+		SynchronizedList(List<E> list, Object mutex) {
+			super(list, mutex);
+			this.list = list;
+		}
+
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			}
+			synchronized (mutex) {
+				return list.equals(o);
+			}
+		}
+
+		public int hashCode() {
+			synchronized (mutex) {
+				return list.hashCode();
+			}
+		}
+
+		public E get(int index) {
+			synchronized (mutex) {
+				return list.get(index);
+			}
+		}
+
+		public E set(int index, E element) {
+			synchronized (mutex) {
+				return list.set(index, element);
+			}
+		}
+
+		public void add(int index, E element) {
+			synchronized (mutex) {
+				list.add(index, element);
+			}
+		}
+
+		public E remove(int index) {
+			synchronized (mutex) {
+				return list.remove(index);
+			}
+		}
+
+		public int indexOf(Object o) {
+			synchronized (mutex) {
+				return list.indexOf(o);
+			}
+		}
+
+		public int lastIndexOf(Object o) {
+			synchronized (mutex) {
+				return list.lastIndexOf(o);
+			}
+		}
+
+		public boolean addAll(int index, Collection<? extends E> coll) {
+			synchronized (mutex) {
+				return list.addAll(index, coll);
+			}
+		}
+
+		public ListIterator<E> listIterator() {
+			return list.listIterator();
+		}
+
+		public ListIterator<E> listIterator(int index) {
+			return list.listIterator(index);
+		}
+
+		public List<E> subList(int fromIndex, int toIndex) {
+			synchronized (mutex) {
+				return new SynchronizedList<E>(list.subList(fromIndex, toIndex), mutex);
+			}
+		}
+
+		public void replaceAll(UnaryOperator<E> operator) {
+			synchronized (mutex) {
+				list.replaceAll(operator);
+			}
+		}
+
+		public void sort(Comparator<? super E> comparator) {
+			synchronized (mutex) {
+				list.sort(comparator);
+			}
+		}
+	}
+
+	static class SynchronizedRandomAccessList<E> extends SynchronizedList<E> implements RandomAccess {
+		SynchronizedRandomAccessList(List<E> list, Object mutex) {
+			super(list, mutex);
+		}
+
+		public List<E> subList(int fromIndex, int toIndex) {
+			synchronized (mutex) {
+				return new SynchronizedRandomAccessList<E>(list.subList(fromIndex, toIndex), mutex);
+			}
+		}
+	}
+
+	private static class SynchronizedMap<K, V> implements Map<K, V>, java.io.Serializable {
+		private final Map<K, V> m;
+		final Object mutex;
+
+		SynchronizedMap(Map<K, V> m) {
+			this.m = Objects.requireNonNull(m);
+			this.mutex = this;
+		}
+
+		public int size() {
+			synchronized (mutex) {
+				return m.size();
+			}
+		}
+
+		public boolean isEmpty() {
+			synchronized (mutex) {
+				return m.isEmpty();
+			}
+		}
+
+		public boolean containsKey(Object key) {
+			synchronized (mutex) {
+				return m.containsKey(key);
+			}
+		}
+
+		public boolean containsValue(Object value) {
+			synchronized (mutex) {
+				return m.containsValue(value);
+			}
+		}
+
+		public V get(Object key) {
+			synchronized (mutex) {
+				return m.get(key);
+			}
+		}
+
+		public V put(K key, V value) {
+			synchronized (mutex) {
+				return m.put(key, value);
+			}
+		}
+
+		public V remove(Object key) {
+			synchronized (mutex) {
+				return m.remove(key);
+			}
+		}
+
+		public void putAll(Map<? extends K, ? extends V> map) {
+			synchronized (mutex) {
+				m.putAll(map);
+			}
+		}
+
+		public void clear() {
+			synchronized (mutex) {
+				m.clear();
+			}
+		}
+
+		public Set<K> keySet() {
+			synchronized (mutex) {
+				return new SynchronizedSet<K>(m.keySet(), mutex);
+			}
+		}
+
+		public Set<Map.Entry<K, V>> entrySet() {
+			synchronized (mutex) {
+				return new SynchronizedSet<Map.Entry<K, V>>(m.entrySet(), mutex);
+			}
+		}
+
+		public Collection<V> values() {
+			synchronized (mutex) {
+				return new SynchronizedCollection<V>(m.values(), mutex);
+			}
+		}
+
+		public boolean equals(Object o) {
+			if (this == o) {
+				return true;
+			}
+			synchronized (mutex) {
+				return m.equals(o);
+			}
+		}
+
+		public int hashCode() {
+			synchronized (mutex) {
+				return m.hashCode();
+			}
+		}
+
+		public String toString() {
+			synchronized (mutex) {
+				return m.toString();
+			}
+		}
+
+		public V getOrDefault(Object key, V defaultValue) {
+			synchronized (mutex) {
+				return m.getOrDefault(key, defaultValue);
+			}
+		}
+
+		public void forEach(java.util.function.BiConsumer<? super K, ? super V> action) {
+			synchronized (mutex) {
+				m.forEach(action);
+			}
+		}
+
+		public void replaceAll(java.util.function.BiFunction<? super K, ? super V, ? extends V> function) {
+			synchronized (mutex) {
+				m.replaceAll(function);
+			}
+		}
+
+		public V putIfAbsent(K key, V value) {
+			synchronized (mutex) {
+				return m.putIfAbsent(key, value);
+			}
+		}
+
+		public boolean remove(Object key, Object value) {
+			synchronized (mutex) {
+				return m.remove(key, value);
+			}
+		}
+
+		public boolean replace(K key, V oldValue, V newValue) {
+			synchronized (mutex) {
+				return m.replace(key, oldValue, newValue);
+			}
+		}
+
+		public V replace(K key, V value) {
+			synchronized (mutex) {
+				return m.replace(key, value);
+			}
+		}
+
+		public V computeIfAbsent(K key, java.util.function.Function<? super K, ? extends V> mappingFunction) {
+			synchronized (mutex) {
+				return m.computeIfAbsent(key, mappingFunction);
+			}
+		}
+
+		public V computeIfPresent(K key,
+				java.util.function.BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+			synchronized (mutex) {
+				return m.computeIfPresent(key, remappingFunction);
+			}
+		}
+
+		public V compute(K key, java.util.function.BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
+			synchronized (mutex) {
+				return m.compute(key, remappingFunction);
+			}
+		}
+
+		public V merge(K key, V value,
+				java.util.function.BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
+			synchronized (mutex) {
+				return m.merge(key, value, remappingFunction);
+			}
 		}
 	}
 }
