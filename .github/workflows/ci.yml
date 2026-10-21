@@ -86,6 +86,11 @@ jobs:
         env:
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
         run: node vscode/scripts/runtime-programs.js
+      - name: Run test/runtime programs with the runtime packaged in the CLI JAR (--runtime bundled)
+        if: matrix.java-version == '17'
+        env:
+          CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
+        run: node vscode/scripts/runtime-programs.js --runtime bundled --program hello,collections,files,regex
       - name: Run allocation-heavy test/runtime programs with the Boehm collector (J2C_GC=boehm)
         if: matrix.java-version == '17'
         env:

@@ -20,7 +20,12 @@
 // /usr/bin/time: it must stay under that many MB with the collector and
 // exceed it without, which shows the bound means something.
 //
+// --runtime bundled translates with the runtime packaged in the CLI JAR
+// instead of the runtime/ directory (--runtime <dir> names another one);
+// the output must not differ.
+//
 // Usage: node scripts/runtime-programs.js [--program a,b] [--gc boehm]
+//        [--runtime bundled|<dir>]
 const childProcess = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -29,13 +34,14 @@ const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
 const cliJar = process.env.J2C_CLI_JAR || path.join(repositoryRoot, "target", "j2c-cli.jar");
 const programsRoot = path.join(repositoryRoot, "test", "runtime");
-const runtimeDirectory = path.join(repositoryRoot, "runtime");
 
 function option(name) {
 	const index = process.argv.indexOf(name);
 	return index >= 0 ? process.argv[index + 1] : null;
 }
 
+// bundled, or a runtime directory
+const runtimeDirectory = option("--runtime") || path.join(repositoryRoot, "runtime");
 const gc = option("--gc");
 if (gc !== null && gc !== "boehm") {
 	console.error(`--gc must be boehm, not ${gc}`);
@@ -43,7 +49,8 @@ if (gc !== null && gc !== "boehm") {
 }
 const gcStress = process.env.J2C_GC_STRESS || "1000";
 const cflags = [process.env.CFLAGS, gc ? `-O2 -DJ2C_GC_STRESS=${gcStress}` : null].filter(Boolean).join(" ");
-const workRoot = path.join(repositoryRoot, "target", gc ? "runtime-programs-gc" : "runtime-programs");
+const workRoot = path.join(repositoryRoot, "target", (gc ? "runtime-programs-gc" : "runtime-programs")
+	+ (runtimeDirectory === "bundled" ? "-bundled" : ""));
 
 function run(command, args, options = {}) {
 	return childProcess.spawnSync(command, args, { encoding: "utf8", maxBuffer: 1 << 28, ...options });
