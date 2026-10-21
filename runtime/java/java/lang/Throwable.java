@@ -142,16 +142,19 @@ public class Throwable implements java.io.Serializable {
 	}
 
 	public void printStackTrace(java.io.PrintStream s) {
-		Throwable[] seen = new Throwable[] { this };
-		s.println(this);
-		printFrames(s, "");
-		Throwable[] ours = getSuppressed();
-		for (int i = 0; i < ours.length; i++) {
-			seen = ours[i].printEnclosed(s, "Suppressed: ", "\t", seen);
-		}
-		Throwable c = getCause();
-		if (c != null) {
-			c.printEnclosed(s, "Caused by: ", "", seen);
+		// As in the JDK, the whole trace under the stream's monitor
+		synchronized (s) {
+			Throwable[] seen = new Throwable[] { this };
+			s.println(this);
+			printFrames(s, "");
+			Throwable[] ours = getSuppressed();
+			for (int i = 0; i < ours.length; i++) {
+				seen = ours[i].printEnclosed(s, "Suppressed: ", "\t", seen);
+			}
+			Throwable c = getCause();
+			if (c != null) {
+				c.printEnclosed(s, "Caused by: ", "", seen);
+			}
 		}
 	}
 

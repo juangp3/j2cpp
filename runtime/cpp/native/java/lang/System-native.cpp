@@ -8,6 +8,8 @@
 #include <ObjectArray.hpp>
 #include <java/lang/System.hpp>
 
+#include "j2c_threads.hpp"
+
 namespace {
 
 template<typename A>
@@ -114,5 +116,6 @@ int32_t java::lang::System::identityHashCode(Object* x)
 void java::lang::System::exit(int32_t status)
 {
     clinit();
-    std::exit(status);
+    // At once, also while other threads run (cpp/src/j2c_threads.cpp)
+    j2c_exit(status);
 }

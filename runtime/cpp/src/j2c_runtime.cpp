@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -16,6 +17,7 @@
 #include <java/lang/Throwable.hpp>
 
 #include "j2c_runtime.hpp"
+#include "j2c_threads.hpp"
 
 java::lang::String* j2c_string(const std::u16string& text)
 {
@@ -112,15 +114,18 @@ std::u16string j2c_floating_text(double value, bool isFloat)
 
 ::java::lang::Class* class_(const char16_t* name, int length)
 {
-    // One Class per name, so getClass() results compare with ==
-    static std::unordered_map<std::u16string, ::java::lang::Class*> classes;
+    // One Class per name, so getClass() results compare with ==. Never
+    // destroyed, as daemon threads may still run while the process exits.
+    static std::recursive_mutex* mutex = new std::recursive_mutex();
+    static auto classes = new std::unordered_map<std::u16string, ::java::lang::Class*>();
+    std::lock_guard<std::recursive_mutex> guard(*mutex);
     std::u16string key(name, length);
-    auto found = classes.find(key);
-    if (found != classes.end()) {
+    auto found = classes->find(key);
+    if (found != classes->end()) {
         return found->second;
     }
     auto cls = ::java::lang::Class::j2cForName(j2c_string(key));
-    classes.emplace(key, cls);
+    classes->emplace(key, cls);
     return cls;
 }
 
@@ -142,6 +147,8 @@ java::lang::String* java::lang::operator "" _j(const char16_t* p, size_t n)
 
 void init_jvm()
 {
+    // Program exit waits for the non-daemon threads
+    j2c_threads_init();
 }
 
 // main's String[] from the C arguments; bytes are taken as Latin-1
@@ -161,5 +168,7 @@ void init_jvm()
 
 void j2c_uncaught(java::lang::Throwable* t)
 {
+    // main returns 1, also when the process ends while daemon threads run
+    j2c_set_exit_status(1);
     java::lang::System::j2cUncaught(t);
 }

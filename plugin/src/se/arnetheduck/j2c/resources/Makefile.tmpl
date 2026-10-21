@@ -5,8 +5,8 @@ CPPFLAGS := $(CPPFLAGS) $(INCLUDES)
 # Array indices are checked as in Java; CFLAGS=-DJ2C_NO_BOUNDS_CHECKS in the
 # environment removes the checks (an index out of range is then undefined)
 CFLAGS := $(CFLAGS) -g -pipe -MMD -MP
-# Java integer arithmetic wraps on overflow
-CXXFLAGS := $(CFLAGS) -std=c++20 -fwrapv
+# Java integer arithmetic wraps on overflow; -pthread for java.lang.Thread
+CXXFLAGS := $(CFLAGS) -std=c++20 -fwrapv -pthread
 
 # make J2C_GC=boehm links the programs (mains) with the Boehm garbage
 # collector (libgc), which then serves every allocation; override GC_CFLAGS

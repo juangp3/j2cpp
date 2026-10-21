@@ -731,7 +731,10 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 	private static String[] internTable = new String[64];
 	private static int internCount;
 
-	public String intern() {
+	/** internLocked() under a lock, as threads share the table (String-native.cpp) */
+	public native String intern();
+
+	private String internLocked() {
 		int mask = internTable.length - 1;
 		int i = hashCode() & mask;
 		for (String s = internTable[i]; s != null; s = internTable[i]) {
@@ -747,7 +750,7 @@ public final class String implements java.io.Serializable, Comparable<String>, C
 			internCount = 0;
 			for (int j = 0; j < old.length; j++) {
 				if (old[j] != null) {
-					old[j].intern();
+					old[j].internLocked();
 				}
 			}
 		}

@@ -10,11 +10,14 @@ extern void j2c_uncaught(java::lang::Throwable* t);
 // make J2C_GC=boehm: every C++ allocation, Java objects and the buffers of
 // standard containers alike, comes from the Boehm collector's scanned heap,
 // so anything reachable from the stack, static data or another allocation
-// stays alive. The program must be single-threaded.
+// stays alive. Threads must be created with pthread_create where gc.h
+// (with GC_THREADS) redirects it, so the collector scans their stacks.
+#include <atomic>
 #include <cstddef>
 #include <new>
 #include <typeinfo>
 
+#define GC_THREADS
 #include <gc.h>
 
 namespace
@@ -23,7 +26,7 @@ void* gc_allocate(std::size_t size, std::size_t alignment, bool nothrow)
 {
 #ifdef J2C_GC_STRESS
     // Testing: collect every J2C_GC_STRESS allocations
-    static long allocations = 0;
+    static std::atomic<long> allocations { 0 };
     if (++allocations %% J2C_GC_STRESS == 0) {
         GC_gcollect();
     }
@@ -37,7 +40,7 @@ void* gc_allocate(std::size_t size, std::size_t alignment, bool nothrow)
     return p;
 }
 
-unsigned thrownNext = 0;
+std::atomic<unsigned> thrownNext { 0 };
 }
 
 // The exception object of a C++ throw is malloc'd, where the collector does
@@ -87,6 +90,7 @@ int main(int argc, char** argv)
 {
 #ifdef J2C_GC_BOEHM
     GC_INIT();
+    GC_allow_register_threads();
 #endif
     init_jvm();
 

@@ -5,7 +5,8 @@ import java.nio.charset.Charset;
 /**
  * Prints text through an OutputStreamWriter over this stream, so the bytes
  * of each print reach the underlying stream at once, as in the JDK.
- * IOExceptions only set the error flag.
+ * IOExceptions only set the error flag. As in the JDK, each print, println
+ * and printf holds the stream's monitor, so lines from threads do not mix.
  */
 public class PrintStream extends FilterOutputStream implements Appendable, Closeable {
 	private final boolean autoFlush;
@@ -85,7 +86,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		}
 	}
 
-	public void flush() {
+	public synchronized void flush() {
 		try {
 			ensureOpen();
 			out.flush();
@@ -94,7 +95,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		}
 	}
 
-	public void close() {
+	public synchronized void close() {
 		if (!closing) {
 			closing = true;
 			try {
@@ -126,7 +127,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		trouble = false;
 	}
 
-	public void write(int b) {
+	public synchronized void write(int b) {
 		try {
 			ensureOpen();
 			out.write(b);
@@ -138,7 +139,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		}
 	}
 
-	public void write(byte[] buf, int off, int len) {
+	public synchronized void write(byte[] buf, int off, int len) {
 		try {
 			ensureOpen();
 			out.write(buf, off, len);
@@ -158,7 +159,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		this.write(buf, 0, buf.length);
 	}
 
-	private void write(char[] buf) {
+	private synchronized void write(char[] buf) {
 		try {
 			ensureOpen();
 			charOut.write(buf);
@@ -176,7 +177,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		}
 	}
 
-	private void write(String s) {
+	private synchronized void write(String s) {
 		try {
 			ensureOpen();
 			charOut.write(s);
@@ -189,7 +190,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		}
 	}
 
-	private void newLine() {
+	private synchronized void newLine() {
 		try {
 			ensureOpen();
 			charOut.write(System.lineSeparator());
@@ -249,7 +250,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 		return getClass() == PrintStream.class;
 	}
 
-	private void writeln(String s) {
+	private synchronized void writeln(String s) {
 		try {
 			ensureOpen();
 			charOut.write(s);
@@ -350,7 +351,7 @@ public class PrintStream extends FilterOutputStream implements Appendable, Close
 	}
 
 	/** Like the JVM, prints the text formatted before a failing specifier */
-	public PrintStream format(String format, Object... args) {
+	public synchronized PrintStream format(String format, Object... args) {
 		java.util.Formatter formatter = new java.util.Formatter();
 		try {
 			formatter.format(format, args);

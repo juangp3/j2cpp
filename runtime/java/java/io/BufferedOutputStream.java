@@ -23,14 +23,14 @@ public class BufferedOutputStream extends FilterOutputStream {
 		}
 	}
 
-	public void write(int b) throws IOException {
+	public synchronized void write(int b) throws IOException {
 		if (count >= buf.length) {
 			flushBuffer();
 		}
 		buf[count++] = (byte) b;
 	}
 
-	public void write(byte[] b, int off, int len) throws IOException {
+	public synchronized void write(byte[] b, int off, int len) throws IOException {
 		if (len >= buf.length) {
 			flushBuffer();
 			out.write(b, off, len);
@@ -44,7 +44,7 @@ public class BufferedOutputStream extends FilterOutputStream {
 		count += len;
 	}
 
-	public void flush() throws IOException {
+	public synchronized void flush() throws IOException {
 		flushBuffer();
 		out.flush();
 	}

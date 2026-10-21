@@ -436,7 +436,7 @@ public final class Math {
 	 * A value in [0.0, 1.0), from the linear congruential generator that
 	 * java.util.Random's specification defines, seeded from nanoTime().
 	 */
-	public static double random() {
+	public static synchronized double random() {
 		if (!seeded) {
 			seed = (System.nanoTime() ^ 0x5DEECE66DL) & ((1L << 48) - 1);
 			seeded = true;
