@@ -1707,7 +1707,7 @@ mapped to `EXPECT_*` macros (Java equality, exceptions on failure, lambdas in
 | T2 | `--tests` generates a GoogleTest wrapper per runnable JUnit 4 or 5 class: a fresh instance per test; `@BeforeAll`, `@BeforeEach`, `@AfterEach` and `@AfterAll` in JUnit's order, including inherited and overridden methods; disabled tests skipped with their reason; `@Test(expected = ...)` checked with subclasses allowed; `j2c_gtest.hpp`; and Makefile `tests` and `test` targets (`GTEST_CFLAGS`, `GTEST_LIBS`, `TEST_LDLIBS`). Also exposed through MCP (`tests`, `testFiles`) and the `j2c.tests` setting. | — | Done (2026-10-11) |
 | T3a | JUnit assertions and assumptions (JUnit 4 and 5) translated into `j2c_junit.hpp` helpers with JUnit's rules and messages, needing no runtime: a failed assertion throws a Java `AssertionError`; `assertThrows` uses the class literal's type; assumptions skip. Unsupported forms (`assertAll`, `assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth, non-literal `assertThrows` classes) are reported as `J2C-TEST-UNSUPPORTED-ASSERTION`. | — | Done (2026-10-11) |
 | T3b | With `--runtime`, assertions compare JDK objects (`String`, boxed numbers, lists, maps) with Java's `equals` and give JUnit's messages: values shown with `toString`, JUnit 5's `message ==>` prefix, `Supplier<String>` messages called only on failure, and JUnit 4's own forms (in `j2c::junit::junit4`), including `ComparisonFailure`'s compacted strings; the `AssertionError` carries the message. JUnit 4's expected-exception failures use JUnit's messages. The fixtures run with real JUnit 5.10 and 4.13 on the JVM (`junit-jvm.js`), and every outcome and recorded message is compared with `expected-results.json`, as are the GoogleTest runs against stubs and against the runtime (`junit-gtest.js`) | Phase 10 milestone 1 | Done (2026-10-15) |
-| T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Planned |
+| T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Done (2026-10-21) |
 | T5 | Optional gMock classes generated from Java interfaces, for new C++ tests | T2 | Planned |
 
 Tests for T1 and T2:
@@ -1770,6 +1770,63 @@ Tests for T3b:
 - The CLI suite checks the `junit4::` calls, a `Supplier<String>` message
   passed as a lambda object, JUnit 4's wrapper messages, and a clean
   `--check --tests --runtime` of both directories.
+
+T4 (done 2026-10-21):
+
+- `j2c test --output <dir> [options] <inputs>` and the `j2c_test` MCP tool
+  (`TestRunner`) translate with `--tests` and `--line-directives` (and
+  `--runtime`/`runtime`), build the `tests` target with `Builder` (make, the
+  WSL fallback, `--make`, `--wsl`, `--wsl-distro`, `--jobs`; a failed build
+  is `status: "build-failed"` with `build.diagnostics` at their Java lines
+  and `build.log`), run `bin/<name>-tests --gtest_output=json:...
+  --gtest_color=no` (in WSL with `env LC_ALL=C timeout -k 5 <seconds>`), and
+  parse the report.
+- The translator lists the tests it wraps (`Transformer.generatedTests()`,
+  `GeneratedTest`): GoogleTest suite and name, test class, method, declaring
+  class, and the file and line of the method's name, recorded from every
+  parsed unit, so an inherited test points at its superclass. The generated
+  C++ is unchanged.
+- Each test: `javaClass`, `javaMethod`, `declaringClass`, `file`, `line`,
+  `status` (`passed`, `failed`, `skipped`, `disabled` for Java-disabled
+  tests with the reason as `message`, `notRun`), `message` (JUnit's: the
+  `AssertionError`'s, or an unexpected exception's own, as
+  `check-gtest.js` reads them), `exception`, `failure` (every failure's
+  text), `disabledReason`, `timeMillis`, `cppTest`, `cppFile`. `summary`:
+  `total`, a count per status, `timeMillis` and `exitCode`. Top-level
+  `status` is `ok`, `failed`, `timeout` or `build-failed`; JSON schema
+  version 5.
+- The JSON report lacks skip messages, so they come from the console
+  output, which also gives the results when there is no report (a crash or
+  a timeout): the test that was running fails with a message naming the
+  exit code or the timeout, and the others are `notRun`.
+- `--filter`/`filter`: test classes (simple or qualified names),
+  `Class.method`, `Class#method` or method names, resolved against the
+  generated tests into `--gtest_filter` (`Suite.*` for whole classes); a
+  name matching no test is a usage error. `--timeout`/`timeout` (default
+  300 s, 0 for none) kills the test process tree (and `timeout(1)` in WSL).
+  The tool reports progress per compiled file and per finished test, and
+  cancelling stops `make` or the tests. Like `j2c_build`, it never runs
+  Maven or Gradle. The `j2c-migrate` prompt calls it when `tests` is set.
+- Tests: `test-cli-test.js` (run by `test:cli`) uses a stub make that
+  writes a stub test binary with a canned report and console: results at
+  their Java lines (an inherited test at `AbstractBaseTest`), messages,
+  exceptions and several failures, disabled and skipped tests, text output,
+  exit code 0 when everything passes, filters and an unknown name, a crash,
+  the timeout (the stub process is gone afterwards), a failed build, usage
+  errors and inputs without tests; then a real run of `test/junit` and
+  `test/junit-runtime` against `runtime/` (73 tests, in WSL with
+  GoogleTest 1.14.0 and GCC 13.3) whose outcomes and messages all match
+  `expected-results.json`, with every test's line naming its method.
+  `test-mcp.js` covers the schema, a stubbed call with a filter, refused
+  arguments and outputs, and the same real run; `test-mcp-sessions.js`
+  progress per test and cancellation.
+- Open: an output directory whose name has spaces breaks the Makefile's
+  `NAME` (pass `--name`; already so for `j2c build`); assertion failures are
+  reported at the test method, not the assertion's line (no stack traces);
+  JUnit assumption messages are not shown (the wrapper says "Assumption
+  failed"); without `--runtime` the binary needs the hooks a runtime
+  provides (`junit-gtest.js` links `test/cpp/j2c_test_hooks.cpp`), which
+  `j2c test` cannot add; a native Windows toolchain is untested.
 
 Not yet covered: `assertIterableEquals`, `assertLinesMatch`, nested-array
 `assertArrayEquals`, JUnit 4's `assertThrows` (`ThrowingRunnable`) and the

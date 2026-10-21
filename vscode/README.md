@@ -45,8 +45,11 @@ The extension also offers J2C to AI agents: with `j2c.mcp.enabled` (on by
 default), it registers the bundled CLI as an MCP server for each workspace
 folder, so Copilot agent mode can check, fix and translate Java through the
 `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_build`,
-`j2c_explain`, and `j2c_capabilities` tools. `j2c_build` compiles translated
-code and returns the compiler's errors at their Java lines. `j2c_report` assesses a migration: how much
+`j2c_test`, `j2c_explain`, and `j2c_capabilities` tools. `j2c_build` compiles translated
+code and returns the compiler's errors at their Java lines. `j2c_test`
+translates, builds and runs JUnit tests with GoogleTest and returns each
+result at its Java class, method, file and line, with JUnit's failure
+message. `j2c_report` assesses a migration: how much
 translates, what blocks the rest, and the JDK API the code uses that the
 J2C runtime lacks. The server's prompts `j2c-migrate` and `j2c-assess` appear
 among Copilot Chat's slash commands in VS Code versions that support MCP

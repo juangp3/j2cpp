@@ -6,8 +6,8 @@ description: Translate Java 17 code to C++20 with J2C, and make Java code transl
 # Translating Java to C++ with J2C
 
 J2C translates Java 17 source into C++20. Use its MCP tools (`j2c_check`,
-`j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_build`, `j2c_explain`,
-`j2c_capabilities`)
+`j2c_fix`, `j2c_report`, `j2c_translate`, `j2c_build`, `j2c_test`,
+`j2c_explain`, `j2c_capabilities`)
 when they are available. Otherwise run the CLI with `--format json`
 (`java -jar j2c-cli.jar --check --format json <paths>`, and
 `java -jar j2c-cli.jar fix [--apply] --format json <paths>`), which prints
@@ -63,8 +63,19 @@ one JSON object with the same fields.
    file and line, when `mapped` is `line-directive`) and `cpp` (the
    generated file, line and column). Report errors to the user at their Java
    lines; `mapped: "nearest"` means the error is in generated boilerplate
-   near that Java line, which is likely a J2C bug. With tests, `make -C
-   <output> test` builds and runs them.
+   near that Java line, which is likely a J2C bug.
+8. **Run the tests.** With JUnit tests and a toolchain with GoogleTest,
+   call `j2c_test` with the same `paths` and an output directory (or run
+   `java -jar j2c-cli.jar test --output <output> --format json <paths>`). It
+   translates with tests, builds and runs them, and returns each test's
+   `javaClass`, `javaMethod`, `file`, `line`, `status` (`passed`, `failed`,
+   `skipped`, `disabled`, or `notRun` after a crash or `timeout`) and
+   `message` (the Java `AssertionError` message), with `summary` counts. A
+   failed build has `status: "build-failed"` and the compiler's errors in
+   `build.diagnostics`. Pass `runtime` (a J2C runtime directory) when there
+   is one: without it, assertions on JDK objects cannot show Java values.
+   Use `filter` (test classes, `Class.method` or method names) to rerun the
+   failing tests, and report failures at their Java lines.
 
 ## Common fixes
 

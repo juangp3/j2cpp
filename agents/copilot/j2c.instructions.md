@@ -8,7 +8,7 @@ This project's Java is translated to C++20 with J2C. When asked to translate
 Java to C++, or to make Java code translatable:
 
 - Use the J2C MCP tools: `j2c_check`, `j2c_fix`, `j2c_report`,
-  `j2c_translate`, `j2c_build`, `j2c_explain`, and `j2c_capabilities`. Without them, run
+  `j2c_translate`, `j2c_build`, `j2c_test`, `j2c_explain`, and `j2c_capabilities`. Without them, run
   `java -jar j2c-cli.jar --check --format json <paths>` (and
   `java -jar j2c-cli.jar fix [--apply] <paths>`) in the terminal.
 - For a Maven or Gradle project, pass the project folder (`paths: ["."]`):
@@ -31,6 +31,11 @@ Java to C++, or to make Java code translatable:
   `java -jar j2c-cli.jar build --output <output> --format json`. Its
   `diagnostics` give each compiler error's Java file and line (`java`) and
   generated C++ location (`cpp`); report them at the Java lines.
+- To run the JUnit tests in C++, call `j2c_test` with the Java `paths` and
+  an output directory (`runtime` too when there is a J2C runtime), or run
+  `java -jar j2c-cli.jar test --output <output> --format json <paths>`. Each
+  entry of `tests` has the Java class, method, file and line, its `status`
+  and the Java failure `message`; `filter` reruns chosen classes or methods.
 - A `J2C-LAMBDA-UNTRANSLATED` problem is a J2C bug: report it to the user
   instead of rewriting the code around it.
 - Translated programs need a C++ implementation of the JDK classes they use

@@ -106,7 +106,7 @@ Copilot > MCP servers** page, in its MCP configuration. Paste
       "type": "local",
       "command": "npx",
       "args": ["-y", "@juangp3/j2c-mcp@0.6.0", "--root", "."],
-      "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_build", "j2c_explain", "j2c_capabilities"]
+      "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_build", "j2c_test", "j2c_explain", "j2c_capabilities"]
     }
   }
 }
@@ -140,13 +140,15 @@ source paths and the output directory must be inside it. Class path entries
 | `j2c_fix` | With `apply: true` | The same as `j2c_check`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
 | `j2c_report` | No | The same as `j2c_check` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
 | `j2c_build` | Build products in `output` | `output` (required), `target` (`all`, `mains` or `tests`), `jobs`; with `paths` (and the `j2c_translate` arguments except `buildTool` and `lineDirectives`) it translates first | `status` (`ok` or `failed`), `exitCode`, `diagnostics`, `summary`, `makeCommand`, `log`, `logTruncated`, `translated` |
+| `j2c_test` | Translation and build products in `output` | `paths` and `output` (required), the `j2c_translate` arguments except `tests`, `buildTool` and `lineDirectives`, plus `runtime`, `filter`, `timeout` (seconds, default 300, 0 for none) and `jobs` | `status` (`ok`, `failed`, `timeout` or `build-failed`), `tests`, `summary`, `exitCode`, `gtestFilter`, `testCommand`, `build`, `log`, `testFiles` |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
 
 Pass `tests: true` to both tools for projects with JUnit tests (JUnit JARs in
 `classPath`). `j2c_check` then also reports test features that translated
 tests cannot run, and `j2c_translate` generates GoogleTest wrappers, listed
-in `testFiles`, that `make -C <output> test` builds and runs.
+in `testFiles`, that `make -C <output> test` builds and runs; `j2c_test`
+builds and runs them and returns each result at its Java method.
 
 Each problem has a stable `id`, `file`, `line`, `column` (1-based), `message`,
 `hint` and `fixes`. Problems in the Java code are a normal `j2c_check` result,
@@ -308,13 +310,63 @@ dependencies must be resolved. Fix C++ errors in the Java source where they
 come from the Java code; errors in J2C's own generated code are J2C bugs
 worth reporting.
 
+### Running tests
+
+`j2c_test` translates `paths` with their JUnit tests (like `j2c_translate`
+with `tests` and `lineDirectives`), builds the GoogleTest binary (`make
+tests`, run like `j2c_build`), runs it with a JSON report, and returns one
+entry per test:
+
+```json
+{
+  "javaClass": "demo.CounterTest",
+  "javaMethod": "countsUp",
+  "declaringClass": "demo.CounterTest",
+  "file": "/work/src/test/java/demo/CounterTest.java",
+  "line": 14,
+  "status": "failed",
+  "message": "expected: <2> but was: <3>",
+  "exception": "java.lang.AssertionError",
+  "failure": "Test threw java.lang.AssertionError: expected: <2> but was: <3>",
+  "disabledReason": null,
+  "timeMillis": 1,
+  "cppTest": "demo_CounterTest.countsUp",
+  "cppFile": "test/demo/CounterTest_test.cpp"
+}
+```
+
+`file` and `line` are the test method's declaration (`declaringClass` is a
+superclass for an inherited test; both are `null` when it has no source).
+`status` is `passed`, `failed`, `skipped` (a failed assumption), `disabled`
+(`@Disabled` or `@Ignore`; `message` is the reason) or `notRun` (selected,
+but the test process crashed or timed out first). `message` is JUnit's
+failure message: the `AssertionError`'s, or an unexpected exception's own
+message (`exception` names its class). `summary` counts each status and has
+the `exitCode` of the test binary. `status` is `ok` when no test failed,
+`failed` otherwise, `timeout` when the tests were stopped after `timeout`
+seconds (the binary and everything it started are killed; a test still
+running is `failed`, the rest `notRun`), and `build-failed` when the build
+failed: `build.diagnostics` then has the compiler's errors at their Java
+lines, as in `j2c_build`, and `build.log` the end of `make`'s output.
+
+`filter` selects tests by Java name: a test class (simple or qualified
+name), `Class.method`, `Class#method`, or a method name. It becomes
+`--gtest_filter` (shown as `gtestFilter`); a name that matches no test is a
+usage error. Pass `runtime` (a J2C runtime directory, such as the
+repository's `runtime/`) so assertions on JDK objects compare with Java's
+`equals` and messages show Java values; without it, JDK classes are stubs
+and the binary must be linked with the hooks a runtime provides. With a
+`progressToken`, progress names each file compiled and then each test
+finished; cancelling the call stops `make` or the tests. Like `j2c_build`,
+`j2c_test` never runs Maven or Gradle.
+
 ## Prompts and resources
 
 The server has two prompts, which clients show as commands:
 
 - `j2c-migrate` (`path`, optional `output` (default `build/cpp`) and
   `tests`): check, fix (previewing first), translate and build, fixing
-  problems in the Java source.
+  problems in the Java source, and with `tests` run them with `j2c_test`.
 - `j2c-assess` (`path`, optional `tests`): run `j2c_report` and summarize
   readiness, blockers, runtime gaps and the work left, changing nothing.
 
@@ -407,6 +459,8 @@ starts). What is left:
 7. If a C++20 toolchain is available, call `j2c_build` with the output
    directory (translate with `lineDirectives: true` first) and read its
    diagnostics at their Java lines.
+8. With JUnit tests and GoogleTest installed, call `j2c_test` with the same
+   `paths` and output directory, and fix failing tests at their Java lines.
 
 Translated programs compile and link, but JDK classes (`String`, collections,
 `System.out`) are generated as stubs. The program needs a C++ implementation
@@ -426,6 +480,7 @@ java -jar j2c-cli.jar fix --format json src/main/java
 java -jar j2c-cli.jar fix --apply --format json src/main/java
 java -jar j2c-cli.jar report --format json src/main/java
 java -jar j2c-cli.jar build --output build/cpp --format json src/main/java
+java -jar j2c-cli.jar test --output build/cpp --format json --runtime runtime src/main/java src/test/java
 java -jar j2c-cli.jar explain J2C-LAMBDA-ANONYMOUS-THIS
 java -jar j2c-cli.jar capabilities
 ```
@@ -438,6 +493,13 @@ the same result as `j2c_build`; `--make`, `--wsl auto|always|never`,
 `--wsl-distro`, `--target` and `--jobs` choose how `make` runs. It exits with
 0 when `make` succeeds, else 1. `--line-directives` adds the directives to a
 plain translation.
+`j2c test --output <directory> <inputs>` translates the inputs with
+`--tests` and `--line-directives`, builds and runs the tests, and prints the
+same result as `j2c_test` (as text: one line per test that did not pass, at
+its Java file and line, then the counts). `--filter <names>` (comma
+separated) and `--timeout <seconds>` select tests and limit their time, and
+`--make`, `--wsl`, `--wsl-distro` and `--jobs` work as for `build`. It exits
+with 0 when no test failed, else 1.
 `j2c fix` takes the same inputs and options as `--check` and prints the same
 result as `j2c_fix`; without `--format json` it prints the diff on stdout and
 a summary on stderr. It exits with 0 when no problem is left that needs
@@ -455,12 +517,14 @@ and 2 for invalid arguments. With `--format json`, invalid arguments produce
 by `schemaVersion`, which increases whenever a field is added, changed or
 removed; ignore fields you do not know. Version 2 added `fixes` to problems
 and the `fix` command; version 3 the `report` command; version 4 the `build`
-command and `lineDirectives` in translate results.
+command and `lineDirectives` in translate results; version 5 the `test`
+command.
 
 ## Safety
 
 - J2C itself makes no network requests and never runs the code it
-  translates. For a Maven or Gradle project it runs the project's build tool
+  translates, except `j2c_test` (and `j2c test`), which runs the translated
+  tests: call it only on code you would run. For a Maven or Gradle project it runs the project's build tool
   (its wrapper script, if it has one) to resolve dependencies, which may
   download them and run build plugins; its stdin is closed, and its output
   is shown (on stderr) only when it fails. Pass `buildTool: false` (or
@@ -469,12 +533,15 @@ command and `lineDirectives` in translate results.
 - `j2c_report`, the prompts and the resources write nothing; resources
   read only the catalog, the runtime's description, and J2C's output inside
   the root.
-- Only `j2c_translate`, `j2c_fix` with `apply: true` and `j2c_build` write,
+- Only `j2c_translate`, `j2c_fix` with `apply: true`, `j2c_build` and
+  `j2c_test` write,
   only inside the workspace root; `j2c_build` writes `make`'s object files
   and libraries into the output directory (and translates into it with
   `paths`). `j2c_build` runs `make` with J2C's generated Makefile and the
   C++ compiler, never the translated program (its targets are `all`, `mains`
-  and `tests`, not `test`). `j2c_translate` never deletes: replaced output is moved
+  and `tests`, not `test`). `j2c_test` translates into the output
+  directory, builds it, and runs its test binary there, stopping it after
+  `timeout` seconds. `j2c_translate` never deletes: replaced output is moved
   to a backup. `j2c_fix` edits only the Java files with fixed problems.
 - Tool results contain file paths and J2C's own messages. The exception is
   `j2c_fix` and `fixes`: their diffs and `newText` include lines of the Java

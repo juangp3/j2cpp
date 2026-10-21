@@ -208,6 +208,23 @@ C++20-targeted output.
   takes `lineDirectives`, and VS Code adds **J2C: Build Translated C++**
   (diagnostics in the Problems panel) and the `j2c.lineDirectives` and
   `j2c.build.*` settings. JSON schema version 4.
+- `j2c test --output <directory> <inputs>` translates the inputs with
+  `--tests` and `--line-directives` (and `--runtime` when given), builds the
+  GoogleTest binary (`make tests`, run as `j2c build` runs `make`; a failed
+  build reports its errors at their Java lines), runs it with a JSON report,
+  and reports each test at its Java class, method, file and line (an
+  inherited test at its declaration in the superclass): status (`passed`,
+  `failed`, `skipped`, `disabled`, or `notRun` when the test process
+  crashed or timed out first), JUnit's failure message and the exception
+  class, time, and the C++ test name, with counts and the binary's exit
+  code. `--filter` takes test classes, `Class.method`, `Class#method` or
+  method names and becomes `--gtest_filter`; `--timeout <seconds>` (default
+  300, 0 for none) stops the test process and everything it started. It
+  exits with 0 when no test failed, else 1. The `j2c_test` MCP tool does the
+  same (`filter`, `timeout`, `runtime`, `jobs`; never runs Maven or Gradle;
+  progress per compiled file and per finished test, and cancellation stops
+  `make` or the tests), and the `j2c-migrate` prompt calls it with `tests`.
+  JSON schema version 5.
 
 ### Java language support
 

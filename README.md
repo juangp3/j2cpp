@@ -176,7 +176,8 @@ the `log`.
 
 The CLI exits with status 0 on success (or a clean check), 1 when translation
 fails or a check finds problems, and 2 for invalid arguments. `j2c build`
-exits with 0 when `make` succeeds, else 1. `j2c fix` exits
+exits with 0 when `make` succeeds, else 1; `j2c test` with 0 when no test
+failed, else 1. `j2c fix` exits
 with 0 when no problem is left that needs changes by hand (after applying,
 or that the preview cannot fix), else 1. `j2c report` exits with 0 whenever
 it prints a report.
@@ -239,6 +240,29 @@ type, and custom messages are not shown. Other forms (`assertAll`,
 `assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth) are reported by
 `--check --tests`.
 
+`j2c test` does all of this in one step and reports each test at its Java
+method:
+
+```sh
+java -jar target/j2c-cli.jar test --output generated --runtime runtime \
+  --sourcepath src/main/java:src/test/java src/main/java src/test/java
+java -jar target/j2c-cli.jar test --output generated --format json \
+  --filter CounterTest,ParserTest.parsesEmpty src/main/java src/test/java
+```
+
+It translates with `--tests` and `--line-directives`, builds the GoogleTest
+binary (`make tests`, run as `j2c build` runs `make`, so a failed build
+reports the compiler's errors at their Java lines), runs it, and prints one
+line per test that did not pass, at its Java file and line with JUnit's
+message, then the counts. With `--format json` each test has `javaClass`,
+`javaMethod`, `file`, `line`, `status` (`passed`, `failed`, `skipped`,
+`disabled`, or `notRun` when the test process crashed or timed out first),
+`message`, `exception`, `timeMillis` and `cppTest`, and `summary` has the
+counts and the test binary's exit code. `--filter` takes test classes,
+`Class.method`, `Class#method` or method names (comma separated);
+`--timeout <seconds>` (default 300, 0 for none) stops the test process and
+everything it started.
+
 `make test` needs GoogleTest (found with `pkg-config`, or set `GTEST_CFLAGS`
 and `GTEST_LIBS`) and, like any translated program, a C++ implementation of
 the JDK classes the tests use: the J2C runtime, or your own passed with
@@ -269,7 +293,7 @@ claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
 ```
 
 The tools are `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`,
-`j2c_build`, `j2c_explain` and `j2c_capabilities`; the server also has the prompts
+`j2c_build`, `j2c_test`, `j2c_explain` and `j2c_capabilities`; the server also has the prompts
 `j2c-migrate` and `j2c-assess`, and resources for the problem catalog, the
 runtime's contract and translated files.
 The server keeps check results between calls, so checking again after an
