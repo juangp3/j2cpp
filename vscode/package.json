@@ -131,6 +131,11 @@
           "default": false,
           "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath, unless the workspace is a Maven or Gradle project (see j2c.project)."
         },
+        "j2c.runtime": {
+          "type": "string",
+          "default": "bundled",
+          "markdownDescription": "The Java class library translated programs use. `bundled` (the default) translates against the J2C runtime shipped with the extension (`java.lang`, the collections, streams, `String.format`, regular expressions, text input and files), so programs run without writing C++; JDK classes it does not provide are compile errors, listed by **J2C: Check Translatability**. `none` translates against the JDK instead, with every JDK class a generated stub that fails at run time (the CLI's default). Anything else is the path of a runtime directory, relative to the workspace folder."
+        },
         "j2c.lineDirectives": {
           "type": "boolean",
           "default": false,

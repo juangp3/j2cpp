@@ -327,6 +327,7 @@ async function testConfiguredTranslationArguments() {
 			"--output", outputDirectory,
 			"--format", "json",
 			"--sealed-types", "reject",
+			"--runtime", "bundled",
 			"--sourcepath", sourceRoot,
 			"--classpath", [dependency, absoluteDependency].join(path.delimiter),
 			"--name", path.basename(root),
@@ -691,6 +692,33 @@ async function testTestsSettingPassesFlag() {
 	assert(harness.spawned[0][1].includes("--tests"), "j2c.tests checks JUnit tests");
 }
 
+// j2c.runtime: bundled by default, none for the JDK with stubs (no
+// --runtime), or a runtime directory relative to the workspace folder
+async function testRuntimeSetting() {
+	const root = path.join(tempDirectory, "runtime workspace");
+	const input = makeFile(path.join(root, "src", "Hello.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "runtime extension", "lib", "j2c-cli.jar"));
+	const runtimeArgs = async (config) => {
+		const harness = createHarness({
+			config,
+			extensionPath: path.dirname(path.dirname(bundledJar)),
+			workspaceFolders: [createWorkspace(root)]
+		});
+		await harness.commands.get("j2c.check")({ fsPath: input });
+		const args = harness.spawned[0][1];
+		const index = args.indexOf("--runtime");
+		return index < 0 ? null : args[index + 1];
+	};
+	assert.strictEqual(await runtimeArgs({}), "bundled");
+	assert.strictEqual(await runtimeArgs({ runtime: "bundled" }), "bundled");
+	assert.strictEqual(await runtimeArgs({ runtime: "none" }), null);
+	assert.strictEqual(await runtimeArgs({ runtime: "my runtime" }), path.join(root, "my runtime"));
+	const absolute = path.join(tempDirectory, "absolute runtime");
+	assert.strictEqual(await runtimeArgs({ runtime: absolute }), absolute);
+	const packageJson = require(path.resolve(__dirname, "..", "package.json"));
+	assert.strictEqual(packageJson.contributes.configuration.properties["j2c.runtime"].default, "bundled");
+}
+
 // j2c.project: a Maven or Gradle workspace folder is named with --project
 // for selections inside it, and supplies the source roots; none turns it off
 async function testProjectSetting() {
@@ -939,6 +967,7 @@ async function main() {
 		await testOutputDirectoryGuard();
 		await testMcpServerDefinitions();
 		await testTestsSettingPassesFlag();
+		await testRuntimeSetting();
 		await testProjectSetting();
 		await testNoTargetIsReported();
 		await testLineDirectivesSetting();

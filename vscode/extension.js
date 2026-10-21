@@ -442,6 +442,7 @@ async function prepare(session, target, writesOutput) {
 	if (writesOutput && configuration.get("lineDirectives", false)) {
 		args.push("--line-directives");
 	}
+	args.push(...runtimeArgs(configuration, workspaceFolder));
 	args.push(...project.args);
 	if (sourcePaths.length > 0) {
 		args.push("--sourcepath", sourcePaths.join(path.delimiter));
@@ -681,6 +682,23 @@ function getTargets(target) {
  * with a build, the folder is named with --project, so the build's source
  * roots and class path are used.
  */
+/**
+ * --runtime for j2c.runtime: bundled (the default) translates against the
+ * runtime packaged in the CLI, none against the JDK with stubs, and anything
+ * else is a runtime directory, relative to the workspace folder
+ */
+function runtimeArgs(configuration, workspaceFolder) {
+	const runtime = String(configuration.get("runtime", "bundled")).trim();
+	if (runtime === "none") {
+		return [];
+	}
+	if (runtime === "" || runtime === "bundled") {
+		return ["--runtime", "bundled"];
+	}
+	return ["--runtime", workspaceFolder && !path.isAbsolute(runtime)
+		? path.resolve(workspaceFolder.uri.fsPath, runtime) : path.resolve(runtime)];
+}
+
 function projectSetup(configuration, workspaceFolder, targets) {
 	if (configuration.get("project", "auto") === "none") {
 		return { args: ["--project", "none"], detected: false };
