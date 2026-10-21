@@ -36,6 +36,10 @@ public class Main {
 			+ "[--wsl <auto|always|never>] [--wsl-distro <name>] "
 			+ "[--target <target>] [--jobs <n>] [--format <text|json>] "
 			+ "[translation options and inputs]" + NL
+			+ "       j2c test --output <directory> [--filter <names>] "
+			+ "[--timeout <seconds>] [--make <program>] [--wsl <auto|always|never>] "
+			+ "[--wsl-distro <name>] [--jobs <n>] [--format <text|json>] "
+			+ "[translation options] <inputs>..." + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
@@ -69,6 +73,12 @@ public class Main {
 			+ "inputs, uses earlier J2C output), runs make (in WSL on Windows when "
 			+ "make is missing), and reports the compiler's errors at their Java "
 			+ "lines." + NL
+			+ "test translates the inputs with --tests and --line-directives, "
+			+ "builds the GoogleTest binary (make tests), runs it, and reports "
+			+ "each test at its Java class, method, file and line; --filter takes "
+			+ "comma-separated test classes, Class.method, Class#method or method "
+			+ "names, and --timeout stops the tests after that many seconds "
+			+ "(default " + TestRunner.DEFAULT_TIMEOUT + ", 0 for none)." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents; --check-cache keeps the check results of up to "
 			+ "that many files between calls (default "
@@ -80,7 +90,7 @@ public class Main {
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;
 		if (json || "fix".equals(command) || "report".equals(command)
-				|| "build".equals(command)) {
+				|| "build".equals(command) || "test".equals(command)) {
 			// The translator reports progress on stdout; keep it for JSON
 			// and for diffs
 			System.setOut(System.err);
@@ -130,7 +140,7 @@ public class Main {
 		if (args.length > 0
 				&& ("explain".equals(args[0]) || "capabilities".equals(args[0])
 						|| "fix".equals(args[0]) || "report".equals(args[0])
-						|| "build".equals(args[0]))) {
+						|| "build".equals(args[0]) || "test".equals(args[0]))) {
 			return args[0];
 		}
 		for (String arg : args) {
@@ -161,6 +171,9 @@ public class Main {
 		}
 		if (args.length > 0 && "build".equals(args[0])) {
 			return build(args, stdout, json);
+		}
+		if (args.length > 0 && "test".equals(args[0])) {
+			return test(args, stdout, json);
 		}
 
 		J2cService.Request request = new J2cService.Request();
@@ -406,46 +419,12 @@ public class Main {
 		request.lineDirectives = true;
 		Builder.Options options = new Builder.Options();
 		for (int i = 1; i < args.length; i++) {
-			String arg = args[i];
-			if ("--output".equals(arg)) {
-				request.output = new File(value(args, ++i, arg));
-			} else if ("--make".equals(arg)) {
-				options.make = value(args, ++i, arg);
-			} else if ("--wsl".equals(arg)) {
-				options.wsl = value(args, ++i, arg);
-			} else if ("--wsl-distro".equals(arg)) {
-				options.wslDistro = value(args, ++i, arg);
-			} else if ("--target".equals(arg)) {
-				options.target = value(args, ++i, arg);
-			} else if ("--jobs".equals(arg)) {
-				options.jobs = jobs(value(args, ++i, arg));
-			} else if ("--format".equals(arg)) {
-				format(value(args, ++i, arg));
-			} else if ("--sourcepath".equals(arg)) {
-				request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
-			} else if ("--classpath".equals(arg)) {
-				request.classPaths.addAll(pathList(value(args, ++i, arg)));
-			} else if ("--name".equals(arg)) {
-				request.name = value(args, ++i, arg);
-			} else if ("--sealed-types".equals(arg)) {
-				request.sealedTypes = sealedTypes(value(args, ++i, arg));
-			} else if ("--encoding".equals(arg)) {
-				request.encoding = charset(value(args, ++i, arg));
-			} else if ("--force".equals(arg)) {
-				request.force = true;
-			} else if ("--tests".equals(arg)) {
-				request.tests = true;
-			} else if ("--runtime".equals(arg)) {
-				request.runtime = new File(value(args, ++i, arg));
-			} else if ("--project".equals(arg)) {
-				request.project = project(value(args, ++i, arg), true);
-			} else if ("--no-build-tool".equals(arg)) {
-				request.buildTool = false;
-			} else if (arg.startsWith("-")) {
-				throw new IllegalArgumentException("Unknown build option: " + arg);
-			} else {
-				request.inputs.add(new File(arg));
+			int next = buildOption(args, i, request, options, true);
+			if (next < 0) {
+				throw new IllegalArgumentException("Unknown build option: "
+						+ args[i]);
 			}
+			i = next;
 		}
 		if (request.output == null) {
 			throw new IllegalArgumentException("Missing --output directory");
@@ -486,6 +465,134 @@ public class Main {
 							+ ", " + errors + " error(s)");
 		}
 		return result.exitCode == 0 ? 0 : 1;
+	}
+
+	/**
+	 * Reads the build option at args[i] (translation, make and --format
+	 * options, or an input) into the request or options, and returns the
+	 * index of its last argument, or -1 when it is not one. --tests and
+	 * --target are build's alone: test always translates tests and builds
+	 * the tests target.
+	 */
+	private static int buildOption(String[] args, int i,
+			J2cService.Request request, Builder.Options options, boolean build) {
+		String arg = args[i];
+		if ("--output".equals(arg)) {
+			request.output = new File(value(args, ++i, arg));
+		} else if ("--make".equals(arg)) {
+			options.make = value(args, ++i, arg);
+		} else if ("--wsl".equals(arg)) {
+			options.wsl = value(args, ++i, arg);
+		} else if ("--wsl-distro".equals(arg)) {
+			options.wslDistro = value(args, ++i, arg);
+		} else if (build && "--target".equals(arg)) {
+			options.target = value(args, ++i, arg);
+		} else if ("--jobs".equals(arg)) {
+			options.jobs = jobs(value(args, ++i, arg));
+		} else if ("--format".equals(arg)) {
+			format(value(args, ++i, arg));
+		} else if ("--sourcepath".equals(arg)) {
+			request.sourcePaths.addAll(pathList(value(args, ++i, arg)));
+		} else if ("--classpath".equals(arg)) {
+			request.classPaths.addAll(pathList(value(args, ++i, arg)));
+		} else if ("--name".equals(arg)) {
+			request.name = value(args, ++i, arg);
+		} else if ("--sealed-types".equals(arg)) {
+			request.sealedTypes = sealedTypes(value(args, ++i, arg));
+		} else if ("--encoding".equals(arg)) {
+			request.encoding = charset(value(args, ++i, arg));
+		} else if ("--force".equals(arg)) {
+			request.force = true;
+		} else if (build && "--tests".equals(arg)) {
+			request.tests = true;
+		} else if ("--runtime".equals(arg)) {
+			request.runtime = new File(value(args, ++i, arg));
+		} else if ("--project".equals(arg)) {
+			request.project = project(value(args, ++i, arg), true);
+		} else if ("--no-build-tool".equals(arg)) {
+			request.buildTool = false;
+		} else if (arg.startsWith("-")) {
+			return -1;
+		} else {
+			request.inputs.add(new File(arg));
+		}
+		return i;
+	}
+
+	/**
+	 * Translates the inputs with --tests, builds and runs the GoogleTest
+	 * binary, and reports each test at its Java method. Exits with 0 when
+	 * no selected test failed, else 1.
+	 */
+	private static int test(String[] args, PrintStream stdout, boolean json)
+			throws Exception {
+		J2cService.Request request = new J2cService.Request();
+		TestRunner.Options options = new TestRunner.Options();
+		for (int i = 1; i < args.length; i++) {
+			String arg = args[i];
+			if ("--filter".equals(arg)) {
+				for (String name : value(args, ++i, arg).split(",")) {
+					if (!name.trim().isEmpty()) {
+						options.filter.add(name.trim());
+					}
+				}
+			} else if ("--timeout".equals(arg)) {
+				options.timeout = timeout(value(args, ++i, arg));
+			} else {
+				int next = buildOption(args, i, request, options.build, false);
+				if (next < 0) {
+					throw new IllegalArgumentException("Unknown test option: "
+							+ arg);
+				}
+				i = next;
+			}
+		}
+		if (request.output == null) {
+			throw new IllegalArgumentException("Missing --output directory");
+		}
+
+		J2cService service = new J2cService(null);
+		TestRunner.Result result;
+		try {
+			result = TestRunner.run(service, request, options, System.err,
+					Progress.NONE);
+		} catch (TranslationException e) {
+			if (!json) {
+				throw e;
+			}
+			stdout.println(Json.write(J2cService.failedJson("test",
+					e.problems(), service.projects())));
+			return 1;
+		} catch (Builder.BuildException e) {
+			if (json) {
+				stdout.println(Json.write(J2cService.errorJson("test", "error",
+						e.getMessage())));
+			} else {
+				System.err.println("J2C test failed: " + e.getMessage());
+			}
+			return 1;
+		}
+		Map<String, Object> report = TestRunner.json(result);
+		if (json) {
+			stdout.println(Json.write(report));
+		} else {
+			stdout.print(TestRunner.text(result));
+			stdout.flush();
+		}
+		return "ok".equals(report.get("status")) ? 0 : 1;
+	}
+
+	static int timeout(String value) {
+		try {
+			int seconds = Integer.parseInt(value);
+			if (seconds >= 0) {
+				return seconds;
+			}
+		} catch (NumberFormatException e) {
+			// Reported below
+		}
+		throw new IllegalArgumentException("Invalid --timeout value: " + value
+				+ " (expected seconds, 0 for none)");
 	}
 
 	static int jobs(String value) {

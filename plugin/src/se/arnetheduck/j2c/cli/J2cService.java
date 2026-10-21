@@ -20,6 +20,7 @@ import java.util.regex.Pattern;
 import org.eclipse.core.runtime.Path;
 
 import se.arnetheduck.j2c.transform.Fix;
+import se.arnetheduck.j2c.transform.GeneratedTest;
 import se.arnetheduck.j2c.transform.Problem;
 import se.arnetheduck.j2c.transform.ProblemCatalog;
 import se.arnetheduck.j2c.transform.SourceEdit;
@@ -47,9 +48,9 @@ final class J2cService {
 	 * added, changed or removed. 2 added problem fixes, the fix command, and
 	 * the project setup fields (projects, warnings, buildTools); 3 the report
 	 * command; 4 the build command (Builder.json) and lineDirectives in
-	 * translate results.
+	 * translate results; 5 the test command (TestRunner.json).
 	 */
-	static final int SCHEMA_VERSION = 4;
+	static final int SCHEMA_VERSION = 5;
 
 	static final class Request {
 		final List<File> inputs = new ArrayList<File>();
@@ -96,6 +97,8 @@ final class J2cService {
 		List<ProjectSetup.Project> projects = Collections.emptyList();
 		/** Whether the C++ has #line directives */
 		boolean lineDirectives;
+		/** The GoogleTest tests generated with tests */
+		List<GeneratedTest> tests = Collections.emptyList();
 
 		TranslateResult(File output, List<String> generatedFiles, int fileCount) {
 			this.output = output;
@@ -240,6 +243,7 @@ final class J2cService {
 				prepared.units.length);
 		result.projects = projects;
 		result.lineDirectives = request.lineDirectives;
+		result.tests = transformer.generatedTests();
 		return result;
 	}
 
@@ -747,7 +751,7 @@ final class J2cService {
 		json.put("javaSourceLevel", "17");
 		json.put("cppStandard", "c++20");
 		json.put("commands", Arrays.asList("translate", "check", "fix", "report",
-				"build", "explain", "capabilities", "mcp"));
+				"build", "test", "explain", "capabilities", "mcp"));
 		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
 				ProjectSetup.GRADLE));
 		json.put("supportedFeatures", Arrays.asList(
@@ -775,7 +779,11 @@ final class J2cService {
 						+ "catalog, the runtime contract, translated files)",
 				"#line directives in the generated C++ (--line-directives), and a "
 						+ "build command (j2c build, the j2c_build tool) reporting "
-						+ "compiler errors at their Java files and lines"));
+						+ "compiler errors at their Java files and lines",
+				"A test command (j2c test, the j2c_test tool) that translates "
+						+ "JUnit tests, builds and runs them with GoogleTest, and "
+						+ "reports each result at its Java class, method, file and "
+						+ "line"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

@@ -56,7 +56,9 @@ final class McpServer {
 			+ "its hint (j2c_explain gives details), check again until no problems "
 			+ "remain (j2c_fix previews or applies the mechanical fixes some "
 			+ "problems carry), then call j2c_translate with an output directory, and "
-			+ "j2c_build to compile it and get C++ errors at their Java lines. Paths are "
+			+ "j2c_build to compile it and get C++ errors at their Java lines; j2c_test "
+			+ "translates, builds and runs JUnit tests with GoogleTest and returns "
+			+ "each result at its Java method. Paths are "
 			+ "relative to the workspace root. A Maven or Gradle project folder "
 			+ "(such as \".\") can be passed directly: its source roots and "
 			+ "dependency class path are detected. Translated code still needs a C++ "
@@ -597,6 +599,52 @@ final class McpServer {
 				return Builder.json(result);
 			}
 		});
+		register(new Tool(tool("j2c_test", "Run translated JUnit tests",
+				"Translates Java files, source folders or a project's test roots "
+						+ "with their JUnit tests into the output directory (like "
+						+ "j2c_translate with tests and lineDirectives), builds the "
+						+ "GoogleTest binary with make (in WSL on Windows when make is "
+						+ "missing), runs it, and returns each test's result at its "
+						+ "Java class, method, file and line: status (passed, failed, "
+						+ "skipped, disabled, or notRun when the test process crashed "
+						+ "or timed out first), the Java failure message, time and the "
+						+ "C++ test name, with counts and the exit code. A failed build "
+						+ "returns the compiler's errors at their Java lines, like "
+						+ "j2c_build. Writes only inside the output directory.",
+				testSchema(), false, false, false)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				J2cService.Request request = request(arguments, true);
+				// Closed-world like j2c_build
+				request.buildTool = false;
+				String runtime = optionalString(arguments, "runtime");
+				if (runtime != null) {
+					request.runtime = resolve(runtime);
+				}
+				TestRunner.Options options = new TestRunner.Options();
+				options.filter.addAll(strings(arguments, "filter", false));
+				Object timeout = arguments.get("timeout");
+				if (timeout != null) {
+					if (!(timeout instanceof Long)) {
+						throw new IllegalArgumentException(
+								"timeout must be an integer");
+					}
+					options.timeout = Main.timeout(timeout.toString());
+				}
+				Object jobs = arguments.get("jobs");
+				if (jobs != null) {
+					if (!(jobs instanceof Long)) {
+						throw new IllegalArgumentException("jobs must be an integer");
+					}
+					options.build.jobs = Main.jobs(jobs.toString());
+				}
+				TestRunner.Result result = TestRunner.run(service, request,
+						options, System.err, progress);
+				content.translated(result.translation);
+				return TestRunner.json(result);
+			}
+		});
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
@@ -765,6 +813,36 @@ final class McpServer {
 		properties.put("jobs", property("integer",
 				"Parallel compile jobs (default: one per processor)"));
 		schema.put("required", Collections.singletonList("output"));
+		return schema;
+	}
+
+	private static Map<String, Object> testSchema() {
+		Map<String, Object> schema = inputSchema(true);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> properties = (Map<String, Object>) schema
+				.get("properties");
+		properties.remove("tests");
+		properties.remove("buildTool");
+		properties.remove("lineDirectives");
+		properties.put("paths", array("Java files, source folders, or Maven or "
+				+ "Gradle project folders (their test roots too) with the JUnit "
+				+ "tests and the code they test, relative to the workspace root. "
+				+ "Maven and Gradle are not run: a cached class path is used, so "
+				+ "call j2c_check with tests first when dependencies must be "
+				+ "resolved"));
+		properties.put("runtime", property("string",
+				"A J2C runtime directory (such as runtime) to translate against "
+						+ "instead of the JDK's stubs; assertions on JDK objects and "
+						+ "failure messages with Java values need it"));
+		properties.put("filter", array("Tests to run: test classes (simple or "
+				+ "qualified names), Class.method, Class#method or method names; "
+				+ "omit to run every test"));
+		properties.put("timeout", property("integer",
+				"Seconds the tests may run before the test process and everything "
+						+ "it started are stopped (default "
+						+ TestRunner.DEFAULT_TIMEOUT + ", 0 for none)"));
+		properties.put("jobs", property("integer",
+				"Parallel compile jobs (default: one per processor)"));
 		return schema;
 	}
 

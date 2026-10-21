@@ -99,6 +99,10 @@ final class Builder {
 		boolean translated;
 		J2cService.TranslateResult translation;
 		int exitCode;
+		/** Whether make ran in WSL, as programs built by it must */
+		boolean wsl;
+		/** What runs a program in make's environment (wsl ... -- env LC_ALL=C) */
+		List<String> prefix = Collections.emptyList();
 		List<String> command = Collections.emptyList();
 		final List<Diagnostic> diagnostics = new ArrayList<Diagnostic>();
 		final List<String> log = new ArrayList<String>();
@@ -226,6 +230,8 @@ final class Builder {
 		Result result = new Result();
 		result.output = output;
 		result.command = command;
+		result.wsl = useWsl;
+		result.prefix = prefix;
 		ProcessBuilder process = new ProcessBuilder(command).directory(output)
 				.redirectErrorStream(true);
 		// English messages with plain quotes
@@ -299,7 +305,7 @@ final class Builder {
 	}
 
 	/** Kills make and every process it started (WSL's with wsl.exe) */
-	private static void stop(Process process) throws InterruptedException {
+	static void stop(Process process) throws InterruptedException {
 		Iterator<ProcessHandle> descendants = process.descendants().iterator();
 		while (descendants.hasNext()) {
 			descendants.next().destroyForcibly();
@@ -668,6 +674,16 @@ final class Builder {
 
 	static Map<String, Object> json(Result result) {
 		Map<String, Object> json = J2cService.header("build");
+		json.putAll(body(result, true));
+		if (result.translation != null) {
+			json.put("generatedFiles", result.translation.generatedFiles);
+		}
+		return json;
+	}
+
+	/** The build's fields, without the header; the log only when asked */
+	static Map<String, Object> body(Result result, boolean log) {
+		Map<String, Object> json = new LinkedHashMap<String, Object>();
 		json.put("status", result.exitCode == 0 ? "ok" : "failed");
 		json.put("exitCode", result.exitCode);
 		json.put("output", result.output.getPath());
@@ -689,10 +705,9 @@ final class Builder {
 		summary.put("errors", errors);
 		summary.put("warnings", warnings);
 		json.put("summary", summary);
-		json.put("log", result.log);
-		json.put("logTruncated", result.logTruncated);
-		if (result.translation != null) {
-			json.put("generatedFiles", result.translation.generatedFiles);
+		if (log) {
+			json.put("log", result.log);
+			json.put("logTruncated", result.logTruncated);
 		}
 		return json;
 	}
