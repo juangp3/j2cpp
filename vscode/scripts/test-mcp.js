@@ -8,6 +8,8 @@ const path = require("path");
 const projects = require("./test-cli-projects");
 const sessions = require("./test-mcp-sessions");
 const { writeFakeMake } = require("./test-cli-build");
+const testRunner = require("./test-cli-test");
+const { compare, readExpected } = require("./check-gtest");
 
 const extensionDirectory = path.resolve(__dirname, "..");
 const repositoryRoot = path.resolve(extensionDirectory, "..");
@@ -39,6 +41,92 @@ function session(messages, options = {}) {
 
 function call(id, name, args) {
 	return { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } };
+}
+
+/** Copies the JUnit fixtures and their API stubs into the workspace root */
+function copyJUnitFixtures() {
+	for (const name of ["junit", "junit-runtime", "junit-api"]) {
+		fs.cpSync(path.join(repositoryRoot, "test", name), path.join(root, "tests", name), { recursive: true });
+	}
+	return ["tests/junit", "tests/junit-runtime", "tests/junit-api"];
+}
+
+/**
+ * j2c_test with a stub make and test binary: results at Java methods,
+ * filters and usage errors; then, when make and GoogleTest are available,
+ * a real run of the JUnit fixtures against the runtime
+ */
+function checkTestTool() {
+	const [junit, junitRuntime, junitApi] = copyJUnitFixtures();
+	const suite = "se_arnetheduck_j2c_test_junit_";
+	const stubDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "j2c-mcp-test-"));
+	try {
+		const make = testRunner.writeFakeTools(stubDirectory);
+		const file = (name) => path.join(stubDirectory, name);
+		const { report, consoleText } = testRunner.cannedRun();
+		fs.writeFileSync(file("report.json"), JSON.stringify(report));
+		fs.writeFileSync(file("console.txt"), consoleText);
+		fs.mkdirSync(path.join(root, "tested"));
+		const outsideBefore = fs.readdirSync(outside);
+		const base = { paths: [junit], sourcePaths: [junit, junitApi], output: "tested", name: "stubbed" };
+		const tests = session([
+			call(1, "j2c_test", { ...base, jobs: 2, filter: ["DerivedTest", "Java17AssertionsTest#primitiveMismatchFails"] }),
+			call(2, "j2c_test", { ...base, filter: ["NoSuchTest"] }),
+			call(3, "j2c_test", { ...base, output: outside }),
+			call(4, "j2c_test", { ...base, timeout: "long" }),
+			call(6, "j2c_test", { ...base, timeout: 30 })
+		], { env: { J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_ARGS: file("make-args.json"),
+			J2C_FAKE_GTEST_ARGS: file("gtest-args.json"), J2C_FAKE_GTEST_CONSOLE: file("console.txt"),
+			J2C_FAKE_GTEST_REPORT: file("report.json") } });
+		const ran = tests.get(1).result;
+		assert.strictEqual(ran.isError, false, "Failed tests are data, not a tool failure");
+		const result = ran.structuredContent;
+		assert.strictEqual(result.schemaVersion, 5);
+		assert.strictEqual(result.command, "test");
+		assert.strictEqual(result.status, "failed");
+		assert.strictEqual(result.gtestFilter, `${suite}DerivedTest.*:${suite}Java17AssertionsTest.primitiveMismatchFails`);
+		// Later calls overwrite the stubs' argument files
+		assert(result.testCommand.includes(`--gtest_filter=${result.gtestFilter}`), JSON.stringify(result.testCommand));
+		assert.deepStrictEqual(result.build.makeCommand, [make, "-k", "-j2", "--output-sync=target", "tests"]);
+		const mismatch = result.tests.find((entry) => entry.javaMethod === "primitiveMismatchFails");
+		const assertionsJava = path.join(root, junit, "se", "arnetheduck", "j2c", "test", "junit", "Java17AssertionsTest.java");
+		assert.strictEqual(mismatch.javaClass, "se.arnetheduck.j2c.test.junit.Java17AssertionsTest");
+		assert.strictEqual(mismatch.file, assertionsJava);
+		assert.strictEqual(mismatch.line, fs.readFileSync(assertionsJava, "utf8").split(/\r?\n/)
+			.findIndex((line) => line.includes("void primitiveMismatchFails()")) + 1);
+		assert.strictEqual(mismatch.message, "expected: <4> but was: <5>");
+		assert.strictEqual(result.summary.exitCode, 1);
+		// The translation is offered as resources
+		assert(fs.existsSync(path.join(root, "tested", ".j2c-output")));
+		assert(tests.get(2).result.structuredContent.message.includes("NoSuchTest matches no JUnit test"));
+		assert(tests.get(3).result.structuredContent.message.includes("outside the workspace root"));
+		assert(tests.get(4).result.structuredContent.message.includes("timeout must be an integer"));
+		for (const id of [2, 3, 4]) {
+			assert.strictEqual(tests.get(id).result.isError, true, `${id}`);
+			assert.strictEqual(tests.get(id).result.structuredContent.status, "usage-error", `${id}`);
+		}
+		assert.strictEqual(tests.get(6).result.structuredContent.timeout, 30);
+		assert.deepStrictEqual(fs.readdirSync(outside), outsideBefore);
+	} finally {
+		fs.rmSync(stubDirectory, { recursive: true, force: true });
+	}
+
+	// A real run: make, g++ and GoogleTest (in WSL on Windows)
+	fs.mkdirSync(path.join(root, "junit-cpp"));
+	const env = process.platform === "win32" && !process.env.J2C_WSL_DISTRO ? { J2C_WSL_DISTRO: "Ubuntu" } : {};
+	const real = session([
+		call(1, "j2c_test", { paths: [junit, junitRuntime], sourcePaths: [junit, junitRuntime, junitApi],
+			output: "junit-cpp", name: "junit", runtime: path.join(repositoryRoot, "runtime") })
+	], { env }).get(1).result.structuredContent;
+	const missing = testRunner.missingToolchain(real);
+	if (missing) {
+		console.log(`j2c_test with a real GoogleTest run skipped: ${missing}`);
+		return;
+	}
+	const problems = compare(testRunner.outcomesOf(real), readExpected([path.join(root, junit), path.join(root, junitRuntime)]), true);
+	assert.deepStrictEqual(problems, [], JSON.stringify(real).slice(0, 2000));
+	assert(real.tests.every((entry) => entry.file && entry.line > 0), "Every test has its Java location");
+	console.log(`j2c_test ran ${real.tests.length} translated JUnit tests; every outcome and message matches`);
 }
 
 async function main() {
@@ -105,7 +193,7 @@ try {
 
 	const tools = responses.get(2).result.tools;
 	assert.deepStrictEqual(tools.map((tool) => tool.name),
-		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_build", "j2c_explain", "j2c_capabilities"]);
+		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_build", "j2c_test", "j2c_explain", "j2c_capabilities"]);
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
 	assert.strictEqual(byName.get("j2c_check").annotations.readOnlyHint, true);
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
@@ -144,6 +232,20 @@ try {
 	assert.strictEqual(buildTool.inputSchema.properties.jobs.type, "integer");
 	assert.strictEqual(buildTool.inputSchema.properties.buildTool, undefined);
 	assert.strictEqual(byName.get("j2c_translate").inputSchema.properties.lineDirectives.type, "boolean");
+	// j2c_test translates with tests and directives, builds and runs the
+	// tests in the output directory, and never runs Maven or Gradle
+	const testTool = byName.get("j2c_test");
+	assert.strictEqual(testTool.annotations.readOnlyHint, false);
+	assert.strictEqual(testTool.annotations.destructiveHint, false);
+	assert.strictEqual(testTool.annotations.openWorldHint, false);
+	assert.deepStrictEqual(testTool.inputSchema.required, ["paths", "output"]);
+	for (const [property, type] of [["filter", "array"], ["timeout", "integer"], ["runtime", "string"], ["jobs", "integer"]]) {
+		assert.strictEqual(testTool.inputSchema.properties[property].type, type, property);
+	}
+	for (const property of ["tests", "buildTool", "lineDirectives", "target"]) {
+		assert.strictEqual(testTool.inputSchema.properties[property], undefined, property);
+	}
+	assert(init.instructions.includes("j2c_test"));
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -293,7 +395,7 @@ try {
 	const readiness = reported.get(1).result;
 	assert.strictEqual(readiness.isError, false, JSON.stringify(readiness));
 	assert.strictEqual(readiness.structuredContent.command, "report");
-	assert.strictEqual(readiness.structuredContent.schemaVersion, 4);
+	assert.strictEqual(readiness.structuredContent.schemaVersion, 5);
 	assert.deepStrictEqual(readiness.structuredContent.totals.files, { total: 3, translatable: 1, percent: 33.3 });
 	assert.deepStrictEqual(readiness.structuredContent.blockers.byId.map((entry) => [entry.id, entry.count]),
 		[["J2C-COMPILE-ERROR", 1], ["J2C-LAMBDA-ANONYMOUS-THIS", 1], ["J2C-PATTERN-OUTSIDE-METHOD", 1]]);
@@ -348,7 +450,8 @@ try {
 	assert.strictEqual(migrate.messages[0].role, "user");
 	const migrateText = migrate.messages[0].content.text;
 	for (const step of ["j2c_check with paths: [\"src\"], tests: true", "j2c_fix", "apply: true",
-		"j2c_translate with paths: [\"src\"], output: \"build/cpp\", tests: true", "make -C build/cpp"]) {
+		"j2c_translate with paths: [\"src\"], output: \"build/cpp\", tests: true", "make -C build/cpp",
+		"j2c_test with paths: [\"src\"], output: \"build/cpp\""]) {
 		assert(migrateText.includes(step), `${step} missing from ${migrateText}`);
 	}
 	assert(content.get(4).result.messages[0].content.text.includes("j2c_report with paths: [\"src\"]."));
@@ -467,6 +570,8 @@ try {
 	} finally {
 		fs.rmSync(stubDirectory, { recursive: true, force: true });
 	}
+	checkTestTool();
+
 	for (const value of ["many", "-1"]) {
 		const badCache = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root", root,
 			"--check-cache", value], { encoding: "utf8", input: "" });
@@ -489,6 +594,8 @@ try {
 	console.log(`Cancelled check stopped the build tool in ${gradleStop} ms`);
 	const makeStop = await sessions.checkBuildCancellation(cliJar, tempDirectory, sessionEnv);
 	console.log(`Cancelled build stopped make in ${makeStop} ms`);
+	const testStop = await sessions.checkTestCancellation(cliJar, tempDirectory, sessionEnv);
+	console.log(`Cancelled tests stopped the test binary in ${testStop} ms`);
 
 	console.log("MCP server checks passed");
 } finally {

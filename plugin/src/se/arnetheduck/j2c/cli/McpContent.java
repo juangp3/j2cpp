@@ -195,8 +195,12 @@ final class McpContent {
 				+ "6. If a C++20 compiler and make are available, call j2c_build with "
 				+ "output: " + json(output) + " (it runs make -C " + output + ", in "
 				+ "WSL on Windows when make is missing) and report the errors it "
-				+ "returns at their Java lines" + (tests ? "; make -C " + output
-						+ " test runs the tests" : "") + ". Generated files can be "
+				+ "returns at their Java lines" + (tests ? ". Then call j2c_test "
+						+ "with paths: [" + json(path) + "], output: " + json(output)
+						+ " (and runtime: a J2C runtime directory, when there is one) to "
+						+ "build and run the tests with GoogleTest, and "
+						+ "report each failed test at its Java file and line with its "
+						+ "message" : "") + ". Generated files can be "
 				+ "read as resources j2c://output/{path}.\n\n"
 				+ "Translated programs use stubs for JDK classes the J2C runtime "
 				+ "does not provide (resource j2c://runtime). Finish with a short "

@@ -433,6 +433,61 @@ async function checkBuildCancellation(cliJar, workspace, env) {
 	}
 }
 
+/**
+ * j2c_test reports each finished test as progress, at its Java method, and
+ * a cancel stops the test binary (a stub that waits a minute)
+ */
+async function checkTestCancellation(cliJar, workspace, env) {
+	const { writeFakeTools } = require("./test-cli-test");
+	const root = path.join(workspace, "slow tests");
+	for (const name of ["junit", "junit-api"]) {
+		fs.cpSync(path.join(repositoryRoot, "test", name), path.join(root, name), { recursive: true });
+	}
+	fs.mkdirSync(path.join(root, "out"));
+	const stub = path.join(workspace, "slow tests stub");
+	fs.mkdirSync(stub);
+	const make = writeFakeTools(stub);
+	const consoleFile = path.join(stub, "console.txt");
+	const suite = "se_arnetheduck_j2c_test_junit_DerivedTest";
+	fs.writeFileSync(consoleFile, `[ RUN      ] ${suite}.inheritedTest\n[       OK ] ${suite}.inheritedTest (0 ms)\n`
+		+ `[ RUN      ] ${suite}.overriddenTest\n`);
+	const pidFile = path.join(stub, "gtest.pid");
+	const client = new McpClient(cliJar, root, {
+		env: { ...env, J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_ARGS: path.join(stub, "make-args.json"),
+			J2C_FAKE_GTEST_ARGS: path.join(stub, "gtest-args.json"), J2C_FAKE_GTEST_CONSOLE: consoleFile,
+			J2C_FAKE_GTEST_NO_REPORT: "1", J2C_FAKE_GTEST_PID: pidFile }
+	});
+	try {
+		client.call(1, "j2c_test", { paths: ["junit"], sourcePaths: ["junit", "junit-api"], output: "out",
+			filter: ["DerivedTest"] }, { progressToken: "tests" });
+		await client.until(() => client.progress("tests").some((message) =>
+			message.params.message === "se.arnetheduck.j2c.test.junit.DerivedTest.inheritedTest passed"), "a finished test");
+		const finished = client.progress("tests").find((message) => / passed$/.test(message.params.message));
+		assert.strictEqual(finished.params.total, finished.params.progress + 1, "One of the two tests is left");
+		await client.until(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "", "the test binary's pid");
+		const pid = Number(fs.readFileSync(pidFile, "utf8"));
+		const cancelledAt = Date.now();
+		client.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 } });
+		client.call(2, "j2c_capabilities", {});
+		const capabilities = await client.response(2);
+		const stopTime = capabilities.receivedAt - cancelledAt;
+		assert(stopTime < 15000, `The tests were stopped after ${stopTime} ms`);
+		await client.close();
+		assert.strictEqual(client.responses(1).length, 0, "A cancelled call gets no response");
+		let running = true;
+		try {
+			process.kill(pid, 0);
+		} catch (error) {
+			running = false;
+		}
+		assert(!running, "The stub test binary was stopped");
+		return stopTime;
+	} catch (error) {
+		client.process.kill();
+		throw error;
+	}
+}
+
 /** Before 2025-03-26, progress notifications have no message */
 async function checkOldProgress(cliJar, workspace, env) {
 	const root = path.join(workspace, "progress");
@@ -453,6 +508,7 @@ async function checkOldProgress(cliJar, workspace, env) {
 module.exports = {
 	checkBuildCancellation,
 	checkBuildToolCancellation,
+	checkTestCancellation,
 	checkIncremental,
 	checkOldProgress,
 	checkProgressAndCancellation
