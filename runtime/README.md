@@ -1,7 +1,8 @@
 # J2C runtime
 
 A C++ implementation of the Java class library for translated programs,
-used with `j2c --runtime runtime`. It covers milestones R1 to R6 in
+used with `j2c --runtime bundled` (this directory, packaged in the CLI JAR)
+or `j2c --runtime runtime` (a checkout's copy). It covers milestones R1 to R6 in
 `docs/PUBLISHING_PLAN.md` (Phase 10), R6 being regular expressions, text
 input and files:
 
@@ -196,10 +197,23 @@ files into the output, and the generated Makefile builds them into the
 `-ext` library.
 
 ```sh
-java -jar target/j2c-cli.jar --runtime runtime --output out test/runtime/hello
+java -jar target/j2c-cli.jar --runtime bundled --output out test/runtime/hello
 make -C out all mains
 out/bin/Hello one two
 ```
+
+Maven packages this directory's `java/`, `cpp/`, `required-classes.txt`,
+`api.txt` and this README into the CLI JAR under `META-INF/j2c-runtime/`
+(and so into the VS Code extension, whose `j2c.runtime` setting defaults to
+`bundled`). `--runtime bundled` extracts them into J2C's cache directory
+(`~/.j2c/cache`, or `J2C_CACHE_DIR`) as `runtime-<version>-<hash>`, the hash
+covering every file's name and contents, and uses that directory as
+`--runtime runtime` would use this one; the output is the same. A copy is
+reused while its files are exactly the packaged ones, and replaced when a
+file is missing, changed or added. Extraction writes a temporary directory
+next to it and renames it into place, so concurrent J2C processes never see
+a partial copy. `--runtime runtime` reads a checkout directly, so edits here
+take effect without rebuilding the JAR.
 
 ## Garbage collection
 

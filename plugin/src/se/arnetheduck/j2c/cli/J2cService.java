@@ -810,7 +810,7 @@ final class J2cService {
 				"Exceptions from close() during exception unwinding terminate the program",
 				"In translated tests, assertEquals on JDK objects (strings, boxed numbers, "
 						+ "collections) and custom assertion messages need a Java runtime "
-						+ "(--runtime runtime); mocking libraries are not supported"));
+						+ "(--runtime bundled); mocking libraries are not supported"));
 		List<String> ids = new ArrayList<String>();
 		for (ProblemCatalog.Entry entry : ProblemCatalog.all()) {
 			ids.add(entry.id);

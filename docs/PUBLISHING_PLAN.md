@@ -1182,6 +1182,27 @@ Effort: about 3–5 days.
 Goal: "translate and run" works for ordinary programs without writing any
 C++.
 
+**Status (2026-10-21): bundling done.** `--runtime bundled` selects the
+runtime packaged in the CLI JAR (`runtime/`'s `java/`, `cpp/`,
+`required-classes.txt`, `api.txt` and README under `META-INF/j2c-runtime/`,
+about 250 KB more JAR: 11,016,533 to 11,276,329 bytes), and so in the VSIX.
+It is extracted to `~/.j2c/cache/runtime-<version>-<hash>` (or
+`J2C_CACHE_DIR`), verified file by file on each use, replaced when damaged,
+and installed by an atomic rename of a temporary directory, so concurrent
+processes are safe (`BundledRuntime`). The MCP tools take
+`runtime: "bundled"`, and the extension's new `j2c.runtime` setting
+defaults to `bundled`. The CLI's default stays "no runtime": with a
+runtime, `java.*` comes from it, so code using JDK classes it lacks
+(`java.time`, AWT) would get compile errors instead of stubs; the
+extension's default changes its output that way, as `CHANGELOG.md` states.
+Tests: `test-cli-runtime.js` (same output as `--runtime runtime`, reuse,
+four kinds of damage repaired, six concurrent processes on an empty and on
+a damaged cache), `test-mcp.js`, `test-extension.js`, `test:licenses` (the
+JAR's runtime files equal `runtime/` and carry no foreign notice), and a CI
+step running four `test/runtime` programs with `--runtime bundled`; all 26
+pass with it. The C++ is still built by the generated Makefile with each
+program, not prebuilt per platform. See `docs/RUNTIME.md`.
+
 Design:
 
 - The runtime is hand-written C++ built on the C++ standard library, not
@@ -1249,7 +1270,7 @@ Risks:
 | --- | --- |
 | 0.6.0 | Translator as documented; output compiles and links; runtime limitation stated |
 | 0.6.x | Step 1: `--runtime`, `docs/RUNTIME.md`, conformance check, fake-runtime tests |
-| 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run |
+| 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run (`--runtime bundled` done 2026-10-21) |
 | 0.8.0 | Milestone 2: collections and enums; milestone 3: optional garbage collection |
 
 ## Phase 11 — AI agent support (implemented 2026-10-11)

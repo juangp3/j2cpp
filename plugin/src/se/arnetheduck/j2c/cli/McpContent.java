@@ -238,7 +238,7 @@ final class McpContent {
 				"application/json", titles));
 		if (hasRuntime()) {
 			resources.add(resource(RUNTIME, "runtime", "J2C runtime contract",
-					"What the bundled J2C runtime (--runtime) implements of the "
+					"What the bundled J2C runtime (--runtime bundled) implements of the "
 							+ "Java class library, its limits, and the types it provides",
 					"text/markdown", titles));
 		}

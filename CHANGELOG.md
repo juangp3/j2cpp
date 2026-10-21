@@ -61,6 +61,24 @@ C++20-targeted output.
     input handling and exception messages.
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
+- `--runtime bundled` uses the runtime packaged in the CLI JAR, so no
+  repository checkout is needed (the JAR grows by about 250 KB). It is
+  extracted on first use into `~/.j2c/cache` (or `J2C_CACHE_DIR`) as
+  `runtime-<version>-<hash>`, reused while its files are intact and
+  replaced when one is missing, changed or added; concurrent processes are
+  safe. The output equals `--runtime` with the checkout's `runtime/`.
+  `--runtime <directory>` is unchanged, and the CLI still translates
+  without a runtime by default. See `docs/RUNTIME.md`.
+- The MCP tools `j2c_check`, `j2c_translate`, `j2c_fix`, `j2c_report` and
+  `j2c_build` take `runtime` (`"bundled"` or a directory).
+- VS Code: the `j2c.runtime` setting, **`bundled` by default**, so Check and
+  Translate use the J2C runtime and translated programs run. This changes
+  the extension's output: `java.*` comes from the runtime, so code using JDK
+  classes it does not provide (such as `java.time`) now gets
+  `J2C-COMPILE-ERROR` problems instead of stubs. Set `j2c.runtime` to
+  `none` for the previous behavior, or to a runtime directory.
+- `j2c report` names the runtime it compares with as `--runtime bundled`
+  when no runtime directory is given.
 - `make J2C_GC=boehm` links a program with the Boehm garbage collector,
   which then serves every allocation (Java objects and the runtime's C++
   containers), so memory is reclaimed. Exceptions in flight stay reachable

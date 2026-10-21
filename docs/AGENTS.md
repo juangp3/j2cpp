@@ -135,7 +135,7 @@ source paths and the output directory must be inside it. Class path entries
 
 | Tool | Writes | Arguments | Result |
 | --- | --- | --- | --- |
-| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
+| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `runtime`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
 | `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force`, `lineDirectives` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `lineDirectives`, `projects`, `warnings` |
 | `j2c_fix` | With `apply: true` | The same as `j2c_check`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
 | `j2c_report` | No | The same as `j2c_check` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
@@ -143,6 +143,13 @@ source paths and the output directory must be inside it. Class path entries
 | `j2c_test` | Translation and build products in `output` | `paths` and `output` (required), the `j2c_translate` arguments except `tests`, `buildTool` and `lineDirectives`, plus `runtime`, `filter`, `timeout` (seconds, default 300, 0 for none) and `jobs` | `status` (`ok`, `failed`, `timeout` or `build-failed`), `tests`, `summary`, `exitCode`, `gtestFilter`, `testCommand`, `build`, `log`, `testFiles` |
 | `j2c_explain` | No | `id` (optional) | What problem IDs mean and how to fix them |
 | `j2c_capabilities` | No | none | Version, supported features, limitations, problem IDs |
+
+`runtime: "bundled"` translates against the J2C runtime packaged in J2C, so
+the translated program runs (`make all mains`) without hand-written C++;
+`java.*` then comes from the runtime, so JDK classes it does not provide are
+`J2C-COMPILE-ERROR` problems. A path names another runtime directory.
+Without `runtime`, the default, every JDK class is a stub that fails at run
+time; `j2c_report` still compares with the bundled runtime's API.
 
 Pass `tests: true` to both tools for projects with JUnit tests (JUnit JARs in
 `classPath`). `j2c_check` then also reports test features that translated
@@ -256,8 +263,8 @@ result for planning a migration:
   their members (methods as `name(Parameter, ...)`, constructors as
   `<init>(...)`, fields by name), with `uses`, most used first, and whether
   the J2C runtime provides them (`provided`); `runtime` is `bundled` (the
-  runtime's API in the JAR, generated from `runtime/`) or the `--runtime`
-  directory. A member is provided when the runtime type or one of its
+  runtime's API in the JAR, generated from `runtime/`, without `--runtime`
+  or with `--runtime bundled`) or the `--runtime` directory. A member is provided when the runtime type or one of its
   supertypes declares it with the same erased parameter types. Without a
   runtime every JDK class is a stub that fails at run time. Implicit uses
   (string concatenation, boxing, enhanced `for`) are not counted. With
@@ -506,7 +513,9 @@ a summary on stderr. It exits with 0 when no problem is left that needs
 changes by hand (after applying, or that the preview has no fix for), and 1
 otherwise.
 
-`--runtime <directory>` translates against a J2C runtime instead of the
+`--runtime bundled` translates against the J2C runtime packaged in the CLI
+JAR (extracted on first use to `~/.j2c/cache`, or `J2C_CACHE_DIR`), and
+`--runtime <directory>` against another runtime directory, instead of the
 running JDK (see `runtime/README.md` in the repository). `--project
 auto|none|<directory>` and `--no-build-tool` control project auto-setup, as
 `project` and `buildTool` do for the MCP tools.

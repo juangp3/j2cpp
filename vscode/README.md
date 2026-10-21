@@ -5,9 +5,15 @@ Translatability** to Java editor and Explorer context menus.
 
 - **Translate**: select a Java source file or source folder, then choose an
   existing output directory. Generated implementation files are written below
-  `src`; dependency headers and stubs are written below `ext`. JDK classes
-  are stubs, so the program does not run until a runtime provides them; the
-  CLI's `--runtime` option (not yet a setting here) uses the J2C runtime.
+  `src`; dependency headers and stubs are written below `ext`. By default
+  (`j2c.runtime` is `bundled`) Java code is translated against the J2C
+  runtime shipped with the extension, so `make all mains` in the output
+  builds programs that run: it covers the core of `java.lang`, the
+  collections, streams, `String.format`, regular expressions, text input and
+  files, and JDK classes it does not provide are compile errors (Check lists
+  them). Set `j2c.runtime` to `none` to translate against the JDK instead,
+  where every JDK class is a stub that fails at run time (the CLI's
+  default), or to the path of another runtime directory.
   Objects are never freed unless the program is built with
   `make J2C_GC=boehm`, which links the Boehm garbage collector.
 - **Check**: reports every compile error and unsupported construct in the

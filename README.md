@@ -53,6 +53,26 @@ Additional optional arguments are `--classpath <paths>`, `--name <name>`,
 read as UTF-8 unless `--encoding` says otherwise; generated C++ is always
 written as UTF-8.
 
+Translate against the J2C runtime so the program runs without writing any
+C++:
+
+```sh
+java -jar target/j2c-cli.jar --runtime bundled --output generated test/runtime/hello
+make -C generated all mains && generated/bin/Hello
+```
+
+`--runtime bundled` uses the runtime packaged in the CLI JAR (and in the VS
+Code extension), so no repository checkout is needed: on first use it is
+extracted to `~/.j2c/cache/runtime-<version>-<hash>` (or `J2C_CACHE_DIR`),
+reused while its files are intact, and replaced when they are not.
+`--runtime <directory>` uses another runtime directory, such as a checkout's
+`runtime/` (name a directory called `bundled` as `./bundled`). Without
+`--runtime`, the default, `java.*` comes from the running JDK and every JDK
+class is a stub that fails at run time; with it, `java.*` comes from the
+runtime, so JDK classes it does not provide are compile errors that
+`--check` lists. See [runtime/README.md](runtime/README.md) for what it
+covers.
+
 Check whether code can be translated before writing anything:
 
 ```sh
@@ -220,7 +240,7 @@ JUnit gives, such as `expected: <4> but was: <5>` (JUnit 5) or
 `expected:<4> but was:<5>` (JUnit 4). Object equality calls the translated
 `equals()`, so it works for the project's own classes.
 
-Translated with the J2C runtime (`--tests --runtime runtime`), assertions
+Translated with the J2C runtime (`--tests --runtime bundled`), assertions
 also compare JDK objects with Java's `equals` (strings, boxed numbers,
 lists, maps) and show values and messages as JUnit does:
 
@@ -347,6 +367,7 @@ Configuration:
 | `j2c.cliJar` | `""` | Optional path to a custom CLI JAR; otherwise the packaged CLI is used. |
 | `j2c.javaExecutable` | `"java"` | Java executable used to run the CLI. |
 | `j2c.sealedTypes` | `"advisory"` | `advisory` emits ordinary inheritance and permits comments; `reject` rejects sealed and non-sealed declarations. |
+| `j2c.runtime` | `"bundled"` | `bundled` translates against the J2C runtime shipped in the extension, so programs run (JDK classes it lacks are compile errors); `none` translates against the JDK with stubs, the CLI's default; or a runtime directory. |
 | `j2c.lineDirectives` | `false` | Add `#line` directives, so compiler errors and debuggers refer to Java lines. |
 | `j2c.build.make`, `j2c.build.wsl`, `j2c.build.wslDistribution` | `""`, `"auto"`, `""` | How **J2C: Build Translated C++** runs `make` (in WSL on Windows when `make` is missing). |
 | `j2c.project` | `"auto"` | `auto` uses a Maven or Gradle build in the workspace folder for source roots and the dependency class path (see [Maven and Gradle projects](#maven-and-gradle-projects)); `none` turns this off. |
@@ -395,9 +416,10 @@ assignment, array identity hashing, and reference stringification can differ
 from JVM behavior. **The generated program does not run on its own:** JDK
 classes (`String`, collections, `System.out`, and so on) are generated as
 stubs that call `unimplemented_()`, so a runtime implementation of the Java
-classes you use must be provided. `--runtime runtime` uses the repository's
-own runtime ([runtime/README.md](runtime/README.md)); it is in its first
-milestone and covers `System.out.println` and `main`'s arguments.
+classes you use must be provided. `--runtime bundled` uses J2C's own
+runtime, packaged in the CLI ([runtime/README.md](runtime/README.md)): the
+core of `java.lang`, the collections, streams, `String.format`, regular
+expressions, text input and files.
 
 Generated objects are never freed by default. `make J2C_GC=boehm` links the
 programs with the Boehm garbage collector (`libgc-dev` on Debian and Ubuntu,

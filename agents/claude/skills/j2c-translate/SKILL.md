@@ -93,5 +93,6 @@ one JSON object with the same fields.
 
 Tell the user which Java changes you made and why, the output directory, the
 number of generated files, and that the result needs a C++ runtime for the
-JDK classes it uses before it can run (`j2c_report` lists the ones the J2C
-runtime lacks; the resource `j2c://runtime` describes what it provides).
+JDK classes it uses before it can run: translating with `runtime: "bundled"`
+uses the J2C runtime packaged in J2C (`j2c_report` lists the JDK members it
+lacks; the resource `j2c://runtime` describes what it provides).
