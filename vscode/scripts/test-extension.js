@@ -502,7 +502,7 @@ async function testJsonReportPublishesDiagnostics() {
 	const input = makeFile(path.join(root, "src", "Anonymous.java"));
 	const bundledJar = makeFile(path.join(tempDirectory, "json extension", "lib", "j2c-cli.jar"));
 	const report = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		tool: "j2c",
 		command: "check",
 		status: "problems",
@@ -566,7 +566,7 @@ async function testQuickFixesFromJsonReport() {
 		fixes
 	});
 	const report = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		tool: "j2c",
 		command: "check",
 		status: "problems",
@@ -742,7 +742,7 @@ async function testProjectSetting() {
 	// A class path warning becomes a warning on the build file, which does
 	// not count as a problem
 	const report = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		tool: "j2c",
 		command: "check",
 		status: "ok",
@@ -810,7 +810,7 @@ async function testBuildPublishesMappedDiagnostics() {
 		severity, message, java: javaLocation, cpp: cppLocation, mapped, context: null, includedFrom: [], notes
 	});
 	const report = {
-		schemaVersion: 3,
+		schemaVersion: 4,
 		tool: "j2c",
 		command: "build",
 		status: "failed",
@@ -888,7 +888,7 @@ async function testBuildPublishesMappedDiagnostics() {
 	// make could not be run: the CLI's message is shown
 	const unavailable = createHarness({
 		extensionPath,
-		spawnOutcome: { code: 1, stdout: `${JSON.stringify({ schemaVersion: 3, tool: "j2c", command: "build", status: "error", message: "Could not run make" })}\n` },
+		spawnOutcome: { code: 1, stdout: `${JSON.stringify({ schemaVersion: 4, tool: "j2c", command: "build", status: "error", message: "Could not run make" })}\n` },
 		workspaceFolders: [createWorkspace(root)]
 	});
 	await unavailable.commands.get("j2c.build")({ fsPath: output });
