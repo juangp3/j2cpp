@@ -90,7 +90,7 @@ function checkQuickFixes() {
 	const checked = runCli(["--check", "--format", "json", sources]);
 	assert.strictEqual(checked.status, 1, checked.stderr);
 	const report = JSON.parse(checked.stdout);
-	assert.strictEqual(report.schemaVersion, 4);
+	assert.strictEqual(report.schemaVersion, 5);
 	assert.strictEqual(report.summary.problemCount, 11);
 	const problems = problemsByLocation(report);
 	const declaration = [24, 5, 24, 5, "var self = this;\n\t\t\t\t"];
@@ -310,7 +310,7 @@ function checkReadinessReport() {
 		sources, tests]);
 	assert.strictEqual(jsonRun.status, 0, jsonRun.stderr);
 	const report = JSON.parse(jsonRun.stdout);
-	assert.strictEqual(report.schemaVersion, 4);
+	assert.strictEqual(report.schemaVersion, 5);
 	assert.strictEqual(report.command, "report");
 	assert.strictEqual(report.status, "problems");
 	assert.strictEqual(report.files, 4);
@@ -767,7 +767,7 @@ try {
 	const jsonCheck = runCli(["--check", "--format", "json", unsupportedSource]);
 	assert.strictEqual(jsonCheck.status, 1, jsonCheck.stderr);
 	const checkReport = JSON.parse(jsonCheck.stdout);
-	assert.strictEqual(checkReport.schemaVersion, 4);
+	assert.strictEqual(checkReport.schemaVersion, 5);
 	assert.deepStrictEqual(checkReport.problems.map((problem) => [problem.id, problem.fixes.length]),
 		[["J2C-COMPILE-ERROR", 0], ["J2C-PATTERN-OUTSIDE-METHOD", 1]],
 		"The pattern problem has a fix; the compile error has none");
@@ -803,6 +803,7 @@ try {
 	assert(capabilities.commands.includes("fix"));
 	assert(capabilities.commands.includes("report"));
 	assert(capabilities.commands.includes("build"));
+	assert(capabilities.commands.includes("test"));
 	assert.deepStrictEqual(
 		capabilities.problemIds,
 		allExplained.problems.map((entry) => entry.id)
@@ -1264,6 +1265,8 @@ try {
 
 		// --line-directives and j2c build
 		require("./test-cli-build").checkBuild(runCli, tempDirectory);
+		// j2c test
+		require("./test-cli-test").checkTest(runCli, tempDirectory);
 	} else {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}

@@ -80,7 +80,7 @@ function checkLineDirectives(runCli, tempDirectory) {
 		"--output", lines, "--sourcepath", sourceRoot, sourceRoot]);
 	assert.strictEqual(linesRun.status, 0, linesRun.stderr);
 	const report = JSON.parse(linesRun.stdout);
-	assert.strictEqual(report.schemaVersion, 4);
+	assert.strictEqual(report.schemaVersion, 5);
 	assert.strictEqual(report.lineDirectives, true);
 
 	const plainFiles = filesUnder(plain).map((file) => path.relative(plain, file)).sort();
@@ -215,7 +215,7 @@ function checkBuildParsing(runCli, tempDirectory) {
 			"--wsl", "never", "--jobs", "3", "--target", "mains"], { env: environment });
 		assert.strictEqual(built.status, 1, built.stderr);
 		const report = JSON.parse(built.stdout);
-		assert.strictEqual(report.schemaVersion, 4);
+		assert.strictEqual(report.schemaVersion, 5);
 		assert.strictEqual(report.command, "build");
 		assert.strictEqual(report.status, "failed");
 		assert.strictEqual(report.exitCode, 2);

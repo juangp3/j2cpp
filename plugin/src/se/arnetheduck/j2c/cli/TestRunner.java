@@ -273,7 +273,8 @@ final class TestRunner {
 			throw new Builder.BuildException("make tests did not produce "
 					+ result.binary);
 		}
-		File report = new File(result.binary.getPath() + ".json");
+		File report = new File(result.binary.getParentFile(), result.binary
+				.getName().replaceFirst("\\.(exe|cmd)$", "") + ".json");
 		Files.deleteIfExists(report.toPath());
 
 		List<String> command = new ArrayList<String>(build.prefix);
