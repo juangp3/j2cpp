@@ -67,6 +67,7 @@ function checkTestTool() {
 		fs.writeFileSync(file("report.json"), JSON.stringify(report));
 		fs.writeFileSync(file("console.txt"), consoleText);
 		fs.mkdirSync(path.join(root, "tested"));
+		fs.mkdirSync(path.join(root, "tested bundled"));
 		const outsideBefore = fs.readdirSync(outside);
 		const base = { paths: [junit], sourcePaths: [junit, junitApi], output: "tested", name: "stubbed" };
 		const tests = session([
@@ -74,7 +75,8 @@ function checkTestTool() {
 			call(2, "j2c_test", { ...base, filter: ["NoSuchTest"] }),
 			call(3, "j2c_test", { ...base, output: outside }),
 			call(4, "j2c_test", { ...base, timeout: "long" }),
-			call(6, "j2c_test", { ...base, timeout: 30 })
+			call(6, "j2c_test", { ...base, timeout: 30 }),
+			call(7, "j2c_test", { ...base, output: "tested bundled", runtime: "bundled" })
 		], { env: { J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_ARGS: file("make-args.json"),
 			J2C_FAKE_GTEST_ARGS: file("gtest-args.json"), J2C_FAKE_GTEST_CONSOLE: file("console.txt"),
 			J2C_FAKE_GTEST_REPORT: file("report.json") } });
@@ -106,6 +108,9 @@ function checkTestTool() {
 			assert.strictEqual(tests.get(id).result.structuredContent.status, "usage-error", `${id}`);
 		}
 		assert.strictEqual(tests.get(6).result.structuredContent.timeout, 30);
+		// runtime: "bundled" translates against the runtime packaged in the JAR
+		assert.strictEqual(tests.get(7).result.isError, false, JSON.stringify(tests.get(7).result));
+		assert(fs.existsSync(path.join(root, "tested bundled", "runtime", "j2c_runtime.cpp")));
 		assert.deepStrictEqual(fs.readdirSync(outside), outsideBefore);
 	} finally {
 		fs.rmSync(stubDirectory, { recursive: true, force: true });
@@ -116,7 +121,7 @@ function checkTestTool() {
 	const env = process.platform === "win32" && !process.env.J2C_WSL_DISTRO ? { J2C_WSL_DISTRO: "Ubuntu" } : {};
 	const real = session([
 		call(1, "j2c_test", { paths: [junit, junitRuntime], sourcePaths: [junit, junitRuntime, junitApi],
-			output: "junit-cpp", name: "junit", runtime: path.join(repositoryRoot, "runtime") })
+			output: "junit-cpp", name: "junit", runtime: "bundled" })
 	], { env }).get(1).result.structuredContent;
 	const missing = testRunner.missingToolchain(real);
 	if (missing) {
@@ -246,6 +251,9 @@ try {
 		assert.strictEqual(testTool.inputSchema.properties[property], undefined, property);
 	}
 	assert(init.instructions.includes("j2c_test"));
+	for (const name of ["j2c_check", "j2c_translate", "j2c_report", "j2c_build", "j2c_test"]) {
+		assert.strictEqual(byName.get(name).inputSchema.properties.runtime.type, "string", name);
+	}
 
 	const clean = responses.get(3).result;
 	assert.strictEqual(clean.isError, false);
@@ -567,6 +575,28 @@ try {
 		assert.strictEqual(translatedBuild.translated, true, JSON.stringify(translatedBuild));
 		assert(translatedBuild.generatedFiles.includes("src/demo/Hi.cpp"));
 		assert(fs.readFileSync(path.join(root, "built", "src", "demo", "Hi.cpp"), "utf8").includes("#line "));
+
+		// runtime: "bundled" selects the runtime packaged in the JAR, in every
+		// tool that translates or compares with a runtime
+		fs.mkdirSync(path.join(root, "runtime out"));
+		fs.mkdirSync(path.join(root, "runtime built"));
+		const runtimeCalls = session([
+			call(1, "j2c_check", { paths: [hi], runtime: "bundled" }),
+			call(2, "j2c_translate", { paths: [hi], output: "runtime out", runtime: "bundled" }),
+			call(3, "j2c_report", { paths: [hi], runtime: "bundled" }),
+			call(4, "j2c_build", { paths: [hi], output: "runtime built", runtime: "bundled" }),
+			call(5, "j2c_check", { paths: [hi], runtime: "no such runtime" })
+		], { env: { J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_OUTPUT: canned, J2C_FAKE_MAKE_ARGS: argsFile } });
+		assert.strictEqual(runtimeCalls.get(1).result.structuredContent.status, "ok",
+			JSON.stringify(runtimeCalls.get(1).result));
+		assert(runtimeCalls.get(2).result.structuredContent.generatedFiles.includes("runtime/j2c_runtime.cpp"),
+			JSON.stringify(runtimeCalls.get(2).result));
+		assert.strictEqual(runtimeCalls.get(3).result.structuredContent.jdk.runtime, "bundled");
+		const runtimeBuild = runtimeCalls.get(4).result.structuredContent;
+		assert.strictEqual(runtimeBuild.translated, true, JSON.stringify(runtimeBuild));
+		assert(runtimeBuild.generatedFiles.includes("runtime/j2c_runtime.cpp"));
+		assert.strictEqual(runtimeCalls.get(5).result.structuredContent.status, "usage-error");
+		assert(runtimeCalls.get(5).result.structuredContent.message.includes("Not a J2C runtime"));
 	} finally {
 		fs.rmSync(stubDirectory, { recursive: true, force: true });
 	}

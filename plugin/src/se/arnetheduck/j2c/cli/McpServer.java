@@ -618,10 +618,6 @@ final class McpServer {
 				J2cService.Request request = request(arguments, true);
 				// Closed-world like j2c_build
 				request.buildTool = false;
-				String runtime = optionalString(arguments, "runtime");
-				if (runtime != null) {
-					request.runtime = resolve(runtime);
-				}
 				TestRunner.Options options = new TestRunner.Options();
 				options.filter.addAll(strings(arguments, "filter", false));
 				Object timeout = arguments.get("timeout");
@@ -674,7 +670,8 @@ final class McpServer {
 	 * it first when paths is given. The build tool is never run, so the
 	 * tool stays closed-world; j2c_translate resolves a project's class path.
 	 */
-	private J2cService.Request buildRequest(Map<?, ?> arguments) {
+	private J2cService.Request buildRequest(Map<?, ?> arguments)
+			throws IOException {
 		J2cService.Request request;
 		if (arguments.get("paths") != null) {
 			request = request(arguments, true);
@@ -691,7 +688,8 @@ final class McpServer {
 		return request;
 	}
 
-	private J2cService.Request request(Map<?, ?> arguments, boolean writes) {
+	private J2cService.Request request(Map<?, ?> arguments, boolean writes)
+			throws IOException {
 		J2cService.Request request = new J2cService.Request();
 		for (String path : strings(arguments, "paths", true)) {
 			request.inputs.add(resolve(path));
@@ -707,6 +705,10 @@ final class McpServer {
 			request.sealedTypes = Main.sealedTypes(sealedTypes);
 		}
 		request.tests = Boolean.TRUE.equals(arguments.get("tests"));
+		String runtime = optionalString(arguments, "runtime");
+		if (runtime != null) {
+			request.runtime = J2cService.runtime(runtime, root);
+		}
 		String projectMode = optionalString(arguments, "project");
 		if (projectMode == null) {
 			request.project = project;
@@ -831,9 +833,10 @@ final class McpServer {
 				+ "call j2c_check with tests first when dependencies must be "
 				+ "resolved"));
 		properties.put("runtime", property("string",
-				"A J2C runtime directory (such as runtime) to translate against "
-						+ "instead of the JDK's stubs; assertions on JDK objects and "
-						+ "failure messages with Java values need it"));
+				"bundled (the J2C runtime packaged in J2C) or a J2C runtime "
+						+ "directory to translate against instead of the JDK's stubs; "
+						+ "assertions on JDK objects and failure messages with Java "
+						+ "values need it"));
 		properties.put("filter", array("Tests to run: test classes (simple or "
 				+ "qualified names), Class.method, Class#method or method names; "
 				+ "omit to run every test"));
@@ -864,6 +867,12 @@ final class McpServer {
 		properties.put("tests", property("boolean", translate
 				? "Generate GoogleTest wrappers that run the JUnit tests (make test)"
 				: "Also report JUnit test features that translated tests cannot run"));
+		properties.put("runtime", property("string",
+				"bundled translates against the J2C runtime packaged in J2C, so "
+						+ "programs run without writing C++ (java.* comes from the "
+						+ "runtime: JDK classes it lacks do not compile); or a runtime "
+						+ "directory. Omit to translate against the JDK, with every "
+						+ "JDK class a stub"));
 		properties.put("project", property("string",
 				"auto (default) detects a Maven or Gradle build in each folder in "
 						+ "paths and uses its source roots (test roots with tests) and "
