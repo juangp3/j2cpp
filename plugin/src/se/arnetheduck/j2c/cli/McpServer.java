@@ -28,9 +28,9 @@ import se.arnetheduck.j2c.transform.TranslationException;
  * on stdin and stdout. Every path is resolved against, and must stay inside,
  * the workspace root.
  *
- * Tool calls run one at a time on a worker thread, in the order they arrive,
- * while this thread keeps reading: ping and the other methods are answered
- * at once, and notifications/cancelled stops a call at its next file or
+ * Requests run one at a time on a worker thread, in the order they arrive,
+ * while this thread keeps reading: ping, initialize and notifications are
+ * handled at once, and notifications/cancelled stops a call at its next file or
  * phase, after which the call gets no response. A call with a progressToken
  * in its _meta gets notifications/progress while it runs. Every message is
  * written whole, one at a time.
@@ -41,6 +41,12 @@ final class McpServer {
 			"2025-06-18", "2025-03-26", "2024-11-05");
 	/** Before 2025-03-26, progress notifications had no message */
 	private static final String FIRST_PROGRESS_MESSAGE_VERSION = "2025-03-26";
+	/**
+	 * Requests answered as soon as they arrive; the others run in order on
+	 * the worker, so a resources/read after a translation sees its files
+	 */
+	private static final List<String> IMMEDIATE = Arrays.asList("ping",
+			"initialize");
 	/** Progress notifications of one call are at least this far apart */
 	static final long PROGRESS_INTERVAL_MILLIS = 100;
 
@@ -221,19 +227,20 @@ final class McpServer {
 	/** Answers one message now, or queues a tool call */
 	private void receive(String line, ExecutorService worker) {
 		final Map<?, ?> request = request(line);
-		if (request == null || !"tools/call".equals(request.get("method"))
-				|| !"2.0".equals(request.get("jsonrpc"))) {
+		Object method = request == null ? null : request.get("method");
+		if (request == null || !request.containsKey("id")
+				|| !"2.0".equals(request.get("jsonrpc"))
+				|| IMMEDIATE.contains(method)) {
+			// Notifications (such as cancellation), errors, ping and
+			// initialize are answered at once
 			Map<String, Object> response = handle(line);
 			if (response != null) {
 				send(response);
 			}
 			return;
 		}
-		if (!request.containsKey("id")) {
-			// A tools/call notification asks for nothing
-			return;
-		}
 		final Map<?, ?> params = params(request);
+		final boolean toolCall = "tools/call".equals(method);
 		Object meta = params.get("_meta");
 		Object token = meta instanceof Map ? ((Map<?, ?>) meta)
 				.get("progressToken") : null;
@@ -250,7 +257,8 @@ final class McpServer {
 				Map<String, Object> response = null;
 				try {
 					if (!call.cancelled()) {
-						response = callTool(call.id, params, call);
+						response = toolCall ? callTool(call.id, params, call)
+								: handle(line);
 					}
 				} catch (OperationCanceledException e) {
 					response = null;

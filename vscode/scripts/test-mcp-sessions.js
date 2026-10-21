@@ -306,15 +306,22 @@ async function checkProgressAndCancellation(cliJar, workspace, env) {
 		const replaced = await client.response(9);
 		assert.strictEqual(replaced.result.isError, false, JSON.stringify(replaced.result));
 		assert(fs.existsSync(path.join(root, "big out", "Makefile")));
+
+		// j2c_report runs a check, with the same progress
+		client.call(10, "j2c_report", { paths: ["src"] }, { progressToken: "report" });
+		const report = await client.response(10);
+		assert.strictEqual(report.result.isError, false, JSON.stringify(report.result).slice(0, 2000));
+		assert(client.progress("report").some((message) => message.params.total > 100),
+			"Counting the files of test/src");
 		await client.close();
 
 		// Exactly one response per answered request, none for cancelled ones
-		for (const answered of [1, 2, 3, 4, 7, 8, 9]) {
+		for (const answered of [1, 2, 3, 4, 7, 8, 9, 10]) {
 			assert.strictEqual(client.responses(answered).length, 1, `Responses to ${answered}`);
 		}
 		assert.strictEqual(client.responses(5).length, 0, "A cancelled call gets no response");
 		assert.strictEqual(client.responses(6).length, 0, "A cancelled queued call gets no response");
-		assert.strictEqual(client.messages.filter((message) => !message.method).length, 7);
+		assert.strictEqual(client.messages.filter((message) => !message.method).length, 8);
 		return { fullTime, stopTime };
 	} catch (error) {
 		client.process.kill();

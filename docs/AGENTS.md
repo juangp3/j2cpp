@@ -290,6 +290,7 @@ output directory with J2C's `.j2c-output` marker; anything else is an error.
 `resources/list` lists the catalog, the runtime, and the files of each
 translation made in the session; `resources/templates/list` has the two
 templates.
+
 ### Re-checks, progress and cancellation
 
 The server keeps check results between calls, so checking again after an
@@ -331,8 +332,10 @@ looking for changed files, the build tool resolving the class path, files
 checked (out of `total`), and translated files and headers (no total).
 None are sent after the response.
 
-Tool calls run one at a time, in the order they arrive; `ping` and the other
-requests are answered while one runs. `notifications/cancelled` with the
+Requests run one at a time, in the order they arrive, so a `resources/read`
+sees the files of the translation before it; `ping`, `initialize` and
+notifications are handled at once, also while a call runs.
+`notifications/cancelled` with the
 call's `requestId` stops it at its next file or phase, stopping the build
 tool if it is running, and the call gets no response (a queued call never
 starts). What is left:

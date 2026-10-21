@@ -176,7 +176,7 @@ C++20-targeted output.
   after a body edit takes 0.13 s instead of 1.2 s (2.6 s from the command
   line).
 - MCP progress and cancellation: tool calls run on a worker thread, so
-  `ping` and other requests are answered while one runs; a call with
+  `ping` is answered while one runs (other requests run in order); a call with
   `_meta.progressToken` gets `notifications/progress` (files checked, build
   tool running, files translated) at most every 100 ms; and
   `notifications/cancelled` stops a call at its next file or phase, stopping

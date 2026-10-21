@@ -1584,8 +1584,9 @@ the agent's work, ordered by value for effort:
 8. **MCP progress and cancellation** for long translations. Effort: about one
    day. **Done (2026-10-20):**
    - `McpServer` reads stdin on its own thread and runs tool calls one at a
-     time, in order, on a worker thread; `ping`, `initialize`, `tools/list`
-     and notifications are answered at once, and every message is written
+     time, in order, on a worker thread with the other requests (prompts,
+     resources, `tools/list`), so results follow request order; `ping`,
+     `initialize` and notifications are handled at once, and every message is written
      whole under one lock. Tools are registered in a table (`Tool`: the
      `tools/list` definition and a `call(arguments, progress)`) so new tools
      get progress and cancellation the same way. On end of input the server
