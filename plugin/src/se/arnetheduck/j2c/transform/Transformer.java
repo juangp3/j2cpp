@@ -59,6 +59,10 @@ public class Transformer {
 	/** Whether JUnit tests get GoogleTest wrappers (see GTestWriter) */
 	private boolean tests;
 	private final List<JUnitSupport.TestClass> testClasses = new ArrayList<JUnitSupport.TestClass>();
+	/** Where annotated methods are declared, by method binding key */
+	private final Map<String, MethodLocation> methodLocations = new HashMap<String, MethodLocation>();
+	/** The GoogleTest tests written, in wrapper order */
+	private final List<GeneratedTest> generatedTests = new ArrayList<GeneratedTest>();
 	private boolean junitAssertions;
 	/** Whether generated C++ carries #line directives (see LineDirectives) */
 	private boolean lineDirectives;
@@ -137,6 +141,22 @@ public class Transformer {
 
 	public boolean translatesTests() {
 		return tests;
+	}
+
+	/** The GoogleTest tests written by process, with their Java methods */
+	public List<GeneratedTest> generatedTests() {
+		return java.util.Collections.unmodifiableList(generatedTests);
+	}
+
+	/** A method declaration's file and the line of its name */
+	static final class MethodLocation {
+		final File file;
+		final int line;
+
+		MethodLocation(File file, int line) {
+			this.file = file;
+			this.line = line;
+		}
 	}
 
 	/** Emit #line directives mapping the generated C++ to the Java source */
@@ -254,6 +274,30 @@ public class Transformer {
 		}
 	}
 
+	/**
+	 * Records where the annotated methods (test and lifecycle methods among
+	 * them) are declared; rewritten lambdas keep every line in place
+	 */
+	private void recordMethodLocations(File file, final CompilationUnit ast) {
+		final File source = file.getAbsoluteFile().toPath().normalize().toFile();
+		ast.accept(new ASTVisitor() {
+			@Override
+			public boolean visit(MethodDeclaration node) {
+				IMethodBinding binding = node.resolveBinding();
+				boolean annotated = false;
+				for (Object modifier : node.modifiers()) {
+					annotated |= modifier instanceof org.eclipse.jdt.core.dom.Annotation;
+				}
+				if (binding != null && annotated) {
+					methodLocations.put(binding.getMethodDeclaration().getKey(),
+							new MethodLocation(source, ast.getLineNumber(node
+									.getName().getStartPosition())));
+				}
+				return true;
+			}
+		});
+	}
+
 	private void writeTests() throws IOException {
 		if (testClasses.isEmpty() && !junitAssertions) {
 			return;
@@ -266,7 +310,8 @@ public class Transformer {
 		FileUtil.writeResource(GTestWriter.HELPER_HPP, root.append("test")
 				.append("j2c_gtest.hpp").toFile());
 		for (JUnitSupport.TestClass testClass : testClasses) {
-			sel.tests.add(GTestWriter.write(root, testClass));
+			sel.tests.add(GTestWriter.write(root, testClass, methodLocations,
+					generatedTests));
 		}
 	}
 
@@ -431,6 +476,10 @@ public class Transformer {
 								problems = QuickFixes.addFixes(project, source,
 										problems);
 								throw new TranslationException(join(problems), problems);
+							}
+							if (tests) {
+								// Also in dependencies: a test may be inherited
+								recordMethodLocations(source.file(), ast);
 							}
 							if (tests && selection.contains(source)) {
 								collectTests(ast);

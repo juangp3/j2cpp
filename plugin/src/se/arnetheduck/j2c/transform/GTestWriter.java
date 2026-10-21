@@ -2,6 +2,8 @@ package se.arnetheduck.j2c.transform;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -21,9 +23,14 @@ final class GTestWriter {
 	private GTestWriter() {
 	}
 
-	/** Writes the wrapper and returns its path relative to root */
-	static String write(IPath root, JUnitSupport.TestClass testClass)
-			throws IOException {
+	/**
+	 * Writes the wrapper and returns its path relative to root. Each test is
+	 * added to generated, located with the method declarations in locations
+	 * (by method binding key).
+	 */
+	static String write(IPath root, JUnitSupport.TestClass testClass,
+			Map<String, Transformer.MethodLocation> locations,
+			List<GeneratedTest> generated) throws IOException {
 		ITypeBinding type = testClass.type;
 		String file = "test/" + TransformUtil.implName(type, "").replaceAll(
 				"\\.cpp$", "_test.cpp");
@@ -34,6 +41,15 @@ final class GTestWriter {
 		Set<String> includes = new TreeSet<String>();
 		includes.add(TransformUtil.include(type));
 		for (JUnitSupport.TestMethod test : testClass.tests) {
+			IMethodBinding declaration = test.method.getMethodDeclaration();
+			Transformer.MethodLocation location = locations.get(declaration
+					.getKey());
+			generated.add(new GeneratedTest(fixture, test.method.getName(),
+					type.getErasure().getQualifiedName(), test.method.getName(),
+					declaration.getDeclaringClass().getErasure()
+							.getQualifiedName(), location == null ? null
+							: location.file, location == null ? 0 : location.line,
+					test.disabledReason, file));
 			anyEnabled |= test.disabledReason == null;
 			if (test.expected != null) {
 				includes.add(TransformUtil.include(test.expected));
