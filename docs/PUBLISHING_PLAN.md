@@ -1204,7 +1204,7 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
    - Tested by `test/runtime/threads`, `threads-wait` (producers and
      consumers, ping-pong with `notify`, interrupts, timed waits, nested
      monitors), `threads-uncaught`, `threads-daemon` and `concurrent`, with
-     and without the collector, and locally under ThreadSanitizer.
+     and without the collector.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
