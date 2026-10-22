@@ -48,7 +48,8 @@ final class J2cService {
 	 * added, changed or removed. 2 added problem fixes, the fix command, and
 	 * the project setup fields (projects, warnings, buildTools); 3 the report
 	 * command; 4 the build command (Builder.json) and lineDirectives in
-	 * translate results; 5 the test command (TestRunner.json).
+	 * translate results; 5 the test command (TestRunner.json) and the run
+	 * command (ProgramRunner.json).
 	 */
 	static final int SCHEMA_VERSION = 5;
 
@@ -101,6 +102,12 @@ final class J2cService {
 		List<GeneratedTest> tests = Collections.emptyList();
 		/** Translation warnings, such as J2C-DEPENDENCY-ERRORS */
 		List<Problem> warnings = Collections.emptyList();
+		/** The Java files translated, for compiling them with javac */
+		List<File> javaFiles = Collections.emptyList();
+		/** Their source and class paths, without a runtime's sources */
+		List<File> sourcePaths = Collections.emptyList();
+		List<File> classPaths = Collections.emptyList();
+		Charset encoding = StandardCharsets.UTF_8;
 
 		TranslateResult(File output, List<String> generatedFiles, int fileCount) {
 			this.output = output;
@@ -115,6 +122,10 @@ final class J2cService {
 
 		final List<File> sourcePaths;
 		final List<File> classPaths;
+		/** The selected Java files, one per unit */
+		List<File> files = Collections.emptyList();
+		/** The source paths before a runtime's sources were added */
+		List<File> projectSourcePaths = Collections.emptyList();
 
 		Prepared(SourceProject project, SourceUnit[] units,
 				List<File> sourcePaths, List<File> classPaths) {
@@ -250,6 +261,10 @@ final class J2cService {
 		result.lineDirectives = request.lineDirectives;
 		result.tests = transformer.generatedTests();
 		result.warnings = transformer.warnings();
+		result.javaFiles = prepared.files;
+		result.sourcePaths = prepared.projectSourcePaths;
+		result.classPaths = prepared.classPaths;
+		result.encoding = request.encoding;
 		return result;
 	}
 
@@ -361,6 +376,7 @@ final class J2cService {
 			}
 		}
 
+		List<File> projectSourcePaths = new ArrayList<File>(sourcePaths);
 		// A runtime is only read, like the class path, and replaces the
 		// running JDK's library with its own java.* sources
 		if (request.runtime != null) {
@@ -392,7 +408,11 @@ final class J2cService {
 		for (int i = 0; i < units.length; ++i) {
 			units[i] = project.getUnit(selectedFiles.get(i));
 		}
-		return new Prepared(project, units, sourcePaths, classPaths);
+		Prepared prepared = new Prepared(project, units, sourcePaths,
+				classPaths);
+		prepared.files = selectedFiles;
+		prepared.projectSourcePaths = projectSourcePaths;
+		return prepared;
 	}
 
 	/**
@@ -774,7 +794,7 @@ final class J2cService {
 		json.put("javaSourceLevel", "17");
 		json.put("cppStandard", "c++20");
 		json.put("commands", Arrays.asList("translate", "check", "fix", "report",
-				"build", "test", "explain", "capabilities", "mcp"));
+				"build", "test", "run", "explain", "capabilities", "mcp"));
 		json.put("buildTools", Arrays.asList(ProjectSetup.MAVEN,
 				ProjectSetup.GRADLE));
 		json.put("supportedFeatures", Arrays.asList(
@@ -806,7 +826,11 @@ final class J2cService {
 				"A test command (j2c test, the j2c_test tool) that translates "
 						+ "JUnit tests, builds and runs them with GoogleTest, and "
 						+ "reports each result at its Java class, method, file and "
-						+ "line"));
+						+ "line",
+				"A run command (j2c run, the j2c_run tool) that translates a "
+						+ "program against the J2C runtime, builds and runs it, runs "
+						+ "the same main class on the JVM, and compares their output "
+						+ "and exit codes"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

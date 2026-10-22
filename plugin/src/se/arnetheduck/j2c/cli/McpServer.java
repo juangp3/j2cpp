@@ -58,7 +58,8 @@ final class McpServer {
 			+ "problems carry), then call j2c_translate with an output directory, and "
 			+ "j2c_build to compile it and get C++ errors at their Java lines; j2c_test "
 			+ "translates, builds and runs JUnit tests with GoogleTest and returns "
-			+ "each result at its Java method. Paths are "
+			+ "each result at its Java method; j2c_run translates, builds and runs "
+			+ "a program and compares it with the JVM. Paths are "
 			+ "relative to the workspace root. A Maven or Gradle project folder "
 			+ "(such as \".\") can be passed directly: its source roots and "
 			+ "dependency class path are detected. Translated code still needs a C++ "
@@ -641,6 +642,52 @@ final class McpServer {
 				return TestRunner.json(result);
 			}
 		});
+		register(new Tool(tool("j2c_run", "Run a translated program",
+				"Translates a Java program into the output directory against the "
+						+ "J2C runtime (bundled by default) with #line directives, "
+						+ "builds its main class with make (in WSL on Windows when "
+						+ "make is missing), runs it with args and stdin, runs the "
+						+ "same main class on the JVM (compiled with javac), and "
+						+ "compares them: status (ok, differs, failed, crashed, "
+						+ "timeout or build-failed), each run's exit code, signal, "
+						+ "duration, stdout and stderr (up to outputLimit "
+						+ "characters each), and the first differing line of stdout "
+						+ "and of stderr (stack frames ignored). A failed build "
+						+ "returns the compiler's errors at their Java lines, like "
+						+ "j2c_build. Writes only inside the output directory.",
+				runSchema(), false, false, false)) {
+			@Override
+			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
+					throws Exception {
+				J2cService.Request request = request(arguments, true);
+				// Closed-world like j2c_build
+				request.buildTool = false;
+				ProgramRunner.Options options = new ProgramRunner.Options();
+				options.main = optionalString(arguments, "main");
+				options.args.addAll(strings(arguments, "args", false));
+				String stdin = optionalString(arguments, "stdin");
+				if (stdin != null) {
+					options.stdin = stdin.getBytes(StandardCharsets.UTF_8);
+				}
+				Object compare = arguments.get("compare");
+				if (compare != null && !(compare instanceof Boolean)) {
+					throw new IllegalArgumentException("compare must be a boolean");
+				}
+				options.compare = !Boolean.FALSE.equals(compare);
+				options.timeout = Main.timeout(integer(arguments, "timeout",
+						options.timeout));
+				options.outputLimit = Main.outputLimit(integer(arguments,
+						"outputLimit", options.outputLimit));
+				Object jobs = arguments.get("jobs");
+				if (jobs != null) {
+					options.build.jobs = Main.jobs(integer(arguments, "jobs", 0));
+				}
+				ProgramRunner.Result result = ProgramRunner.run(service, request,
+						options, System.err, progress);
+				content.translated(result.translation);
+				return ProgramRunner.json(result);
+			}
+		});
 		Map<String, Object> explainProperties = new LinkedHashMap<String, Object>();
 		explainProperties.put("id", property("string",
 				"A problem id such as J2C-LAMBDA-ANONYMOUS-THIS; omit to list all"));
@@ -778,6 +825,19 @@ final class McpServer {
 		return (String) value;
 	}
 
+	/** An integer argument as text for Main's parsers, or the default */
+	private static String integer(Map<?, ?> arguments, String key,
+			int fallback) {
+		Object value = arguments.get(key);
+		if (value == null) {
+			return String.valueOf(fallback);
+		}
+		if (!(value instanceof Long)) {
+			throw new IllegalArgumentException(key + " must be an integer");
+		}
+		return value.toString();
+	}
+
 	private static Map<String, Object> toolResult(Map<String, Object> structured,
 			boolean isError) {
 		Map<String, Object> text = new LinkedHashMap<String, Object>();
@@ -844,6 +904,44 @@ final class McpServer {
 				"Seconds the tests may run before the test process and everything "
 						+ "it started are stopped (default "
 						+ TestRunner.DEFAULT_TIMEOUT + ", 0 for none)"));
+		properties.put("jobs", property("integer",
+				"Parallel compile jobs (default: one per processor)"));
+		return schema;
+	}
+
+	private static Map<String, Object> runSchema() {
+		Map<String, Object> schema = inputSchema(true);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> properties = (Map<String, Object>) schema
+				.get("properties");
+		properties.remove("tests");
+		properties.remove("buildTool");
+		properties.remove("lineDirectives");
+		properties.put("paths", array("Java files, source folders, or Maven or "
+				+ "Gradle project folders with the program, relative to the "
+				+ "workspace root. Maven and Gradle are not run: a cached class "
+				+ "path is used, so call j2c_check first when dependencies must "
+				+ "be resolved"));
+		properties.put("runtime", property("string",
+				"bundled (default: the J2C runtime packaged in J2C) or a J2C "
+						+ "runtime directory to translate against"));
+		properties.put("main", property("string",
+				"The class whose main method runs, qualified or simple name; "
+						+ "needed when several classes have one"));
+		properties.put("args", array("Arguments of the program, for both runs"));
+		properties.put("stdin", property("string",
+				"Standard input of both runs, as UTF-8 text (default: none)"));
+		properties.put("compare", property("boolean",
+				"Also run the main class on the JVM and compare the output and "
+						+ "exit code (default true)"));
+		properties.put("timeout", property("integer",
+				"Seconds each run may take before it and everything it started "
+						+ "are stopped (default " + ProgramRunner.DEFAULT_TIMEOUT
+						+ ", 0 for none)"));
+		properties.put("outputLimit", property("integer",
+				"Characters of each run's stdout and stderr returned (default "
+						+ ProgramRunner.DEFAULT_OUTPUT_LIMIT
+						+ "); the comparison uses all of it"));
 		properties.put("jobs", property("integer",
 				"Parallel compile jobs (default: one per processor)"));
 		return schema;

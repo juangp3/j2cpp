@@ -808,6 +808,7 @@ try {
 	assert(capabilities.commands.includes("report"));
 	assert(capabilities.commands.includes("build"));
 	assert(capabilities.commands.includes("test"));
+	assert(capabilities.commands.includes("run"));
 	assert.deepStrictEqual(
 		capabilities.problemIds,
 		allExplained.problems.map((entry) => entry.id)
@@ -1278,6 +1279,8 @@ try {
 		require("./test-cli-build").checkBuild(runCli, tempDirectory);
 		// j2c test
 		require("./test-cli-test").checkTest(runCli, tempDirectory);
+		// j2c run
+		require("./test-cli-run").checkRun(runCli, tempDirectory);
 	} else {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}

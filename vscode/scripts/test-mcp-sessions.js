@@ -504,6 +504,51 @@ async function checkTestCancellation(cliJar, workspace, env) {
 	}
 }
 
+/**
+ * j2c_run reports the build and the run as progress, and a cancel stops the
+ * program (a stub that waits a minute)
+ */
+async function checkRunCancellation(cliJar, workspace, env) {
+	const { writeFakeRunTools, gone } = require("./test-cli-run");
+	const root = path.join(workspace, "slow run");
+	fs.cpSync(path.join(repositoryRoot, "test", "runtime", "hello"), path.join(root, "hello"), { recursive: true });
+	fs.mkdirSync(path.join(root, "out"));
+	const stub = path.join(workspace, "slow run stub");
+	fs.mkdirSync(stub);
+	const make = writeFakeRunTools(stub);
+	const pidFile = path.join(stub, "program.pid");
+	const client = new McpClient(cliJar, root, {
+		env: { ...env, J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_ARGS: path.join(stub, "make-args.json"),
+			J2C_FAKE_PROGRAM_PID: pidFile }
+	});
+	try {
+		client.call(1, "j2c_run", { paths: ["hello"], output: "out" }, { progressToken: "run" });
+		await client.until(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "", "the program's pid");
+		// Progress is sent at most every 100 ms, so the stub build's last
+		// phases may be left out
+		const messages = client.progress("run").map((message) => message.params.message);
+		assert(messages.some((message) => /^Running .* in /.test(message)), JSON.stringify(messages));
+		const progress = client.progress("run").map((message) => message.params.progress);
+		assert.deepStrictEqual(progress, [...progress].sort((a, b) => a - b), "Progress only increases");
+		const pid = Number(fs.readFileSync(pidFile, "utf8"));
+		const cancelledAt = Date.now();
+		client.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 } });
+		client.call(2, "j2c_capabilities", {});
+		const capabilities = await client.response(2);
+		const stopTime = capabilities.receivedAt - cancelledAt;
+		assert(stopTime < 15000, `The program was stopped after ${stopTime} ms`);
+		await client.close();
+		assert.strictEqual(client.responses(1).length, 0, "A cancelled call gets no response");
+		assert(gone(pid), "The stub program was stopped");
+		assert(!client.progress("run").some((message) => /on the JVM$/.test(message.params.message)),
+			"The JVM run never started");
+		return stopTime;
+	} catch (error) {
+		client.process.kill();
+		throw error;
+	}
+}
+
 /** Before 2025-03-26, progress notifications have no message */
 async function checkOldProgress(cliJar, workspace, env) {
 	const root = path.join(workspace, "progress");
@@ -525,6 +570,7 @@ module.exports = {
 	checkBuildCancellation,
 	checkBuildToolCancellation,
 	checkTestCancellation,
+	checkRunCancellation,
 	checkIncremental,
 	checkOldProgress,
 	checkProgressAndCancellation

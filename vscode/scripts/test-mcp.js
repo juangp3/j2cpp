@@ -9,6 +9,7 @@ const projects = require("./test-cli-projects");
 const sessions = require("./test-mcp-sessions");
 const { writeFakeMake } = require("./test-cli-build");
 const testRunner = require("./test-cli-test");
+const runChecks = require("./test-cli-run");
 const { compare, readExpected } = require("./check-gtest");
 
 const extensionDirectory = path.resolve(__dirname, "..");
@@ -134,6 +135,80 @@ function checkTestTool() {
 	console.log(`j2c_test ran ${real.tests.length} translated JUnit tests; every outcome and message matches`);
 }
 
+/**
+ * j2c_run with a stub make and program, against the real JVM: the same
+ * output, arguments and standard input, a difference, no comparison, and
+ * refused arguments and outputs
+ */
+function checkRunTool() {
+	fs.cpSync(path.join(repositoryRoot, "test", "runtime", "hello"), path.join(root, "programs", "hello"), { recursive: true });
+	const stubDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "j2c-mcp-run-"));
+	try {
+		const make = runChecks.writeFakeRunTools(stubDirectory);
+		const file = (name) => path.join(stubDirectory, name);
+		fs.writeFileSync(file("differs.txt"), "hi from translated Java\nwrong\n");
+		fs.mkdirSync(path.join(root, "ran"));
+		const outsideBefore = fs.readdirSync(outside);
+		const base = { paths: ["programs/hello"], output: "ran" };
+		const env = { J2C_MAKE: make, J2C_WSL: "never", J2C_FAKE_MAKE_ARGS: file("make-args.json"),
+			J2C_FAKE_PROGRAM_RECORD: file("record.json") };
+		const runs = session([
+			call(1, "j2c_run", { ...base, args: ["one", "two words"], stdin: "typed\n", jobs: 2, main: "Hello" }),
+			call(2, "j2c_run", { ...base, compare: "no" }),
+			call(3, "j2c_run", { ...base, timeout: "long" }),
+			call(4, "j2c_run", { ...base, outputLimit: -1 }),
+			call(5, "j2c_run", { ...base, output: outside }),
+			call(6, "j2c_run", { ...base, args: "one" }),
+			call(7, "j2c_run", { ...base, main: "Nope" }),
+			call(8, "j2c_run", { ...base, args: ["one", "two words"], stdin: "typed\n", compare: false, outputLimit: 2, timeout: 30 })
+		], { env });
+		const ran = runs.get(1).result;
+		assert.strictEqual(ran.isError, false, JSON.stringify(ran));
+		const result = ran.structuredContent;
+		assert.strictEqual(result.schemaVersion, 5);
+		assert.strictEqual(result.command, "run");
+		assert.strictEqual(result.status, "ok", JSON.stringify(result.comparison));
+		assert.strictEqual(result.main, "Hello");
+		assert.strictEqual(result.stdinBytes, 6);
+		assert.deepStrictEqual(result.build.makeCommand, [make, "-k", "-j2", "--output-sync=target", "bin/Hello"]);
+		// Call 8 ran the program last, with the same arguments and input
+		const recorded = JSON.parse(fs.readFileSync(file("record.json"), "utf8"));
+		assert.deepStrictEqual(recorded.args, ["one", "two words"]);
+		assert.strictEqual(recorded.stdin, "typed\n");
+		assert.strictEqual(result.cpp.workingDirectory, path.join(root, "ran", "run", "cpp"));
+		assert.strictEqual(result.jvm.status, "ran");
+		assert.strictEqual(result.jvm.stdout, "hi from translated Java\none\ntwo words\n");
+		assert.strictEqual(result.comparison.status, "equal");
+		// The bundled runtime by default; the translation is offered as resources
+		assert(fs.existsSync(path.join(root, "ran", "runtime", "j2c_runtime.cpp")));
+		for (const [id, text] of [[2, "compare must be a boolean"], [3, "timeout must be an integer"],
+			[4, "Invalid --output-limit value: -1"], [5, "outside the workspace root"], [6, "args must be an array of strings"],
+			[7, "The main class Nope has no main method"]]) {
+			const refused = runs.get(id).result;
+			assert.strictEqual(refused.isError, true, `${id}: ${JSON.stringify(refused)}`);
+			assert.strictEqual(refused.structuredContent.status, "usage-error", `${id}`);
+			assert(refused.structuredContent.message.includes(text), `${id}: ${refused.structuredContent.message}`);
+		}
+		const alone = runs.get(8).result.structuredContent;
+		assert.strictEqual(alone.status, "ok");
+		assert.strictEqual(alone.jvm, null);
+		assert.strictEqual(alone.comparison.status, "skipped");
+		assert.strictEqual(alone.cpp.stdout, "hi");
+		assert.strictEqual(alone.timeout, 30);
+		assert.deepStrictEqual(fs.readdirSync(outside), outsideBefore);
+
+		// A difference is data, not a tool failure
+		const differs = session([call(1, "j2c_run", base)], { env: { ...env, J2C_FAKE_PROGRAM_STDOUT: file("differs.txt") } })
+			.get(1).result;
+		assert.strictEqual(differs.isError, false);
+		assert.strictEqual(differs.structuredContent.status, "differs");
+		assert.deepStrictEqual(differs.structuredContent.comparison.stdout.firstDifference,
+			{ line: 2, cpp: "wrong", jvm: "" });
+	} finally {
+		fs.rmSync(stubDirectory, { recursive: true, force: true });
+	}
+}
+
 async function main() {
 try {
 	assert(fs.existsSync(cliJar), `CLI JAR not found: ${cliJar}`);
@@ -198,7 +273,8 @@ try {
 
 	const tools = responses.get(2).result.tools;
 	assert.deepStrictEqual(tools.map((tool) => tool.name),
-		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_build", "j2c_test", "j2c_explain", "j2c_capabilities"]);
+		["j2c_check", "j2c_translate", "j2c_fix", "j2c_report", "j2c_build", "j2c_test", "j2c_run", "j2c_explain",
+			"j2c_capabilities"]);
 	const byName = new Map(tools.map((tool) => [tool.name, tool]));
 	assert.strictEqual(byName.get("j2c_check").annotations.readOnlyHint, true);
 	assert.strictEqual(byName.get("j2c_translate").annotations.readOnlyHint, false);
@@ -251,7 +327,22 @@ try {
 		assert.strictEqual(testTool.inputSchema.properties[property], undefined, property);
 	}
 	assert(init.instructions.includes("j2c_test"));
-	for (const name of ["j2c_check", "j2c_translate", "j2c_report", "j2c_build", "j2c_test"]) {
+	// j2c_run translates, builds and runs a program in the output directory
+	// and runs it on the JVM; it never runs Maven or Gradle
+	const runTool = byName.get("j2c_run");
+	assert.strictEqual(runTool.annotations.readOnlyHint, false);
+	assert.strictEqual(runTool.annotations.destructiveHint, false);
+	assert.strictEqual(runTool.annotations.openWorldHint, false);
+	assert.deepStrictEqual(runTool.inputSchema.required, ["paths", "output"]);
+	for (const [property, type] of [["main", "string"], ["args", "array"], ["stdin", "string"], ["compare", "boolean"],
+		["timeout", "integer"], ["outputLimit", "integer"], ["runtime", "string"], ["jobs", "integer"]]) {
+		assert.strictEqual(runTool.inputSchema.properties[property].type, type, property);
+	}
+	for (const property of ["tests", "buildTool", "lineDirectives", "target", "java"]) {
+		assert.strictEqual(runTool.inputSchema.properties[property], undefined, property);
+	}
+	assert(init.instructions.includes("j2c_run"));
+	for (const name of ["j2c_check", "j2c_translate", "j2c_report", "j2c_build", "j2c_test", "j2c_run"]) {
 		assert.strictEqual(byName.get(name).inputSchema.properties.runtime.type, "string", name);
 	}
 
@@ -459,7 +550,7 @@ try {
 	const migrateText = migrate.messages[0].content.text;
 	for (const step of ["j2c_check with paths: [\"src\"], tests: true", "j2c_fix", "apply: true",
 		"j2c_translate with paths: [\"src\"], output: \"build/cpp\", tests: true", "make -C build/cpp",
-		"j2c_test with paths: [\"src\"], output: \"build/cpp\""]) {
+		"j2c_test with paths: [\"src\"], output: \"build/cpp\"", "j2c_run with paths: [\"src\"], output: \"build/cpp\""]) {
 		assert(migrateText.includes(step), `${step} missing from ${migrateText}`);
 	}
 	assert(content.get(4).result.messages[0].content.text.includes("j2c_report with paths: [\"src\"]."));
@@ -601,6 +692,7 @@ try {
 		fs.rmSync(stubDirectory, { recursive: true, force: true });
 	}
 	checkTestTool();
+	checkRunTool();
 
 	for (const value of ["many", "-1"]) {
 		const badCache = childProcess.spawnSync("java", ["-jar", cliJar, "mcp", "--root", root,
@@ -626,6 +718,8 @@ try {
 	console.log(`Cancelled build stopped make in ${makeStop} ms`);
 	const testStop = await sessions.checkTestCancellation(cliJar, tempDirectory, sessionEnv);
 	console.log(`Cancelled tests stopped the test binary in ${testStop} ms`);
+	const runStop = await sessions.checkRunCancellation(cliJar, tempDirectory, sessionEnv);
+	console.log(`Cancelled run stopped the program in ${runStop} ms`);
 
 	console.log("MCP server checks passed");
 } finally {

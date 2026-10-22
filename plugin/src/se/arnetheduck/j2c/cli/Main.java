@@ -7,6 +7,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,12 @@ public class Main {
 			+ "[--timeout <seconds>] [--make <program>] [--wsl <auto|always|never>] "
 			+ "[--wsl-distro <name>] [--jobs <n>] [--format <text|json>] "
 			+ "[translation options] <inputs>..." + NL
+			+ "       j2c run --output <directory> [--main <class>] "
+			+ "[--stdin <file>] [--no-compare] [--java <program>] "
+			+ "[--timeout <seconds>] [--output-limit <characters>] "
+			+ "[--make <program>] [--wsl <auto|always|never>] "
+			+ "[--wsl-distro <name>] [--jobs <n>] [--format <text|json>] "
+			+ "[translation options] <inputs>... [-- <program arguments>...]" + NL
 			+ "       j2c explain [<problem-id>] [--format <text|json>]" + NL
 			+ "       j2c capabilities" + NL
 			+ "       j2c mcp [--root <directory>] [--project <auto|none>] "
@@ -81,6 +88,18 @@ public class Main {
 			+ "comma-separated test classes, Class.method, Class#method or method "
 			+ "names, and --timeout stops the tests after that many seconds "
 			+ "(default " + TestRunner.DEFAULT_TIMEOUT + ", 0 for none)." + NL
+			+ "run translates a program against the J2C runtime (--runtime, "
+			+ "default bundled) with --line-directives, builds its main class "
+			+ "(--main, needed when several classes have one), runs it with the "
+			+ "arguments after -- and the bytes of --stdin as standard input, "
+			+ "runs the same class on the JVM (compiled with javac; --java "
+			+ "names the java program, in WSL when the build ran there), and "
+			+ "compares standard output, standard error without stack frames, "
+			+ "and the exit code; --no-compare only runs the C++ program, "
+			+ "--timeout stops each run after that many seconds (default "
+			+ ProgramRunner.DEFAULT_TIMEOUT + ", 0 for none), and "
+			+ "--output-limit caps the characters of each output stream "
+			+ "reported (default " + ProgramRunner.DEFAULT_OUTPUT_LIMIT + ")." + NL
 			+ "mcp serves J2C as a Model Context Protocol server on stdin/stdout "
 			+ "for AI agents; --check-cache keeps the check results of up to "
 			+ "that many files between calls (default "
@@ -92,7 +111,8 @@ public class Main {
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;
 		if (json || "fix".equals(command) || "report".equals(command)
-				|| "build".equals(command) || "test".equals(command)) {
+				|| "build".equals(command) || "test".equals(command)
+				|| "run".equals(command)) {
 			// The translator reports progress on stdout; keep it for JSON
 			// and for diffs
 			System.setOut(System.err);
@@ -142,7 +162,8 @@ public class Main {
 		if (args.length > 0
 				&& ("explain".equals(args[0]) || "capabilities".equals(args[0])
 						|| "fix".equals(args[0]) || "report".equals(args[0])
-						|| "build".equals(args[0]) || "test".equals(args[0]))) {
+						|| "build".equals(args[0]) || "test".equals(args[0])
+						|| "run".equals(args[0]))) {
 			return args[0];
 		}
 		for (String arg : args) {
@@ -176,6 +197,9 @@ public class Main {
 		}
 		if (args.length > 0 && "test".equals(args[0])) {
 			return test(args, stdout, json);
+		}
+		if (args.length > 0 && "run".equals(args[0])) {
+			return runProgram(args, stdout, json);
 		}
 
 		J2cService.Request request = new J2cService.Request();
@@ -583,6 +607,95 @@ public class Main {
 			stdout.flush();
 		}
 		return "ok".equals(report.get("status")) ? 0 : 1;
+	}
+
+	/**
+	 * Translates a program, builds and runs it, runs it on the JVM, and
+	 * compares the two. Exits with 0 when the outputs and exit codes are the
+	 * same (or, without a comparison, the program exited with 0), else 1.
+	 */
+	private static int runProgram(String[] args, PrintStream stdout,
+			boolean json) throws Exception {
+		J2cService.Request request = new J2cService.Request();
+		ProgramRunner.Options options = new ProgramRunner.Options();
+		for (int i = 1; i < args.length; i++) {
+			String arg = args[i];
+			if ("--".equals(arg)) {
+				for (++i; i < args.length; i++) {
+					options.args.add(args[i]);
+				}
+			} else if ("--main".equals(arg)) {
+				options.main = value(args, ++i, arg);
+			} else if ("--stdin".equals(arg)) {
+				File file = new File(value(args, ++i, arg));
+				if (!file.isFile()) {
+					throw new IllegalArgumentException("--stdin file does not "
+							+ "exist: " + file);
+				}
+				options.stdin = Files.readAllBytes(file.toPath());
+			} else if ("--no-compare".equals(arg)) {
+				options.compare = false;
+			} else if ("--java".equals(arg)) {
+				options.java = value(args, ++i, arg);
+			} else if ("--timeout".equals(arg)) {
+				options.timeout = timeout(value(args, ++i, arg));
+			} else if ("--output-limit".equals(arg)) {
+				options.outputLimit = outputLimit(value(args, ++i, arg));
+			} else {
+				int next = buildOption(args, i, request, options.build, false);
+				if (next < 0) {
+					throw new IllegalArgumentException("Unknown run option: "
+							+ arg);
+				}
+				i = next;
+			}
+		}
+		if (request.output == null) {
+			throw new IllegalArgumentException("Missing --output directory");
+		}
+
+		J2cService service = new J2cService(null);
+		ProgramRunner.Result result;
+		try {
+			result = ProgramRunner.run(service, request, options, System.err,
+					Progress.NONE);
+		} catch (TranslationException e) {
+			if (!json) {
+				throw e;
+			}
+			stdout.println(Json.write(J2cService.failedJson("run",
+					e.problems(), service.projects())));
+			return 1;
+		} catch (Builder.BuildException e) {
+			if (json) {
+				stdout.println(Json.write(J2cService.errorJson("run", "error",
+						e.getMessage())));
+			} else {
+				System.err.println("J2C run failed: " + e.getMessage());
+			}
+			return 1;
+		}
+		Map<String, Object> report = ProgramRunner.json(result);
+		if (json) {
+			stdout.println(Json.write(report));
+		} else {
+			stdout.print(ProgramRunner.text(result));
+			stdout.flush();
+		}
+		return "ok".equals(report.get("status")) ? 0 : 1;
+	}
+
+	static int outputLimit(String value) {
+		try {
+			int characters = Integer.parseInt(value);
+			if (characters >= 0) {
+				return characters;
+			}
+		} catch (NumberFormatException e) {
+			// Reported below
+		}
+		throw new IllegalArgumentException("Invalid --output-limit value: "
+				+ value + " (expected a number of characters)");
 	}
 
 	static int timeout(String value) {
