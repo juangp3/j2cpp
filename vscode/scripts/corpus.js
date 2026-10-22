@@ -204,11 +204,22 @@ function build(project, directory, jars) {
 	}
 	// Distinct compiler errors, without their locations
 	const errors = new Map();
-	for (const line of `${result.stdout}\n${result.stderr}`.split(/\r?\n/)) {
+	const lines = `${result.stdout}\n${result.stderr}`.split(/\r?\n/);
+	for (const line of lines) {
 		const match = /^(.*?):\d+:\d+: (?:fatal )?error: (.*)$/.exec(line);
 		if (match && !errors.has(match[2])) {
 			errors.set(match[2], `${path.basename(match[1])}: ${match[2]}`);
 		}
+	}
+	if (errors.size === 0) {
+		// No located compiler error: a killed compiler (out of memory), the linker, or make itself
+		const line = lines.find((text) => /error|Killed|\*\*\*/.test(text));
+		return {
+			built: false,
+			errors: 0,
+			firstErrors: [],
+			detail: `make failed (exit ${result.status}): ${(line || "").trim().slice(0, 300)}`
+		};
 	}
 	return {
 		built: false,
