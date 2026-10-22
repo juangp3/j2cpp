@@ -124,7 +124,18 @@ public class Concurrent {
 		for (Future<Integer> f : pool.invokeAll(calls)) {
 			squares += f.get();
 		}
-		System.out.println("invokeAll " + squares + " invokeAny " + pool.invokeAny(calls));
+		// invokeAny may return any successful result, so only one task succeeds
+		List<Callable<Integer>> anyCalls = new ArrayList<>();
+		for (int i = 1; i <= 5; i++) {
+			final int n = i;
+			anyCalls.add(() -> {
+				if (n != 3) {
+					throw new IllegalStateException("task " + n);
+				}
+				return n * n;
+			});
+		}
+		System.out.println("invokeAll " + squares + " invokeAny " + pool.invokeAny(anyCalls));
 		pool.shutdown();
 		System.out.println("terminated " + pool.awaitTermination(10, TimeUnit.SECONDS) + " " + pool.isShutdown()
 				+ " " + pool.isTerminated());
