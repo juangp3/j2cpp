@@ -8,7 +8,7 @@ This project's Java is translated to C++20 with J2C. When asked to translate
 Java to C++, or to make Java code translatable:
 
 - Use the J2C MCP tools: `j2c_check`, `j2c_fix`, `j2c_report`,
-  `j2c_translate`, `j2c_build`, `j2c_test`, `j2c_explain`, and `j2c_capabilities`. Without them, run
+  `j2c_translate`, `j2c_build`, `j2c_test`, `j2c_run`, `j2c_explain`, and `j2c_capabilities`. Without them, run
   `java -jar j2c-cli.jar --check --format json <paths>` (and
   `java -jar j2c-cli.jar fix [--apply] <paths>`) in the terminal.
 - For a Maven or Gradle project, pass the project folder (`paths: ["."]`):
@@ -36,6 +36,12 @@ Java to C++, or to make Java code translatable:
   `java -jar j2c-cli.jar test --output <output> --format json <paths>`. Each
   entry of `tests` has the Java class, method, file and line, its `status`
   and the Java failure `message`; `filter` reruns chosen classes or methods.
+- To check that a translated program behaves as the Java one, call `j2c_run`
+  with the Java `paths`, an output directory, and `args` or `stdin` if it
+  needs them (`main` when several classes have one), or run
+  `java -jar j2c-cli.jar run --output <output> --format json <paths>`. It
+  runs the program against the bundled J2C runtime and on the JVM;
+  `status: differs` comes with the first differing line of each stream.
 - A `J2C-LAMBDA-UNTRANSLATED` problem is a J2C bug: report it to the user
   instead of rewriting the code around it.
 - Translated programs need a C++ implementation of the JDK classes they use

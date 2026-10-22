@@ -73,6 +73,36 @@ runtime, so JDK classes it does not provide are compile errors that
 `--check` lists. See [runtime/README.md](runtime/README.md) for what it
 covers.
 
+`j2c run` translates, builds and runs a program in one step, runs the same
+main class on the JVM, and compares the two:
+
+```sh
+java -jar target/j2c-cli.jar run --output generated test/runtime/hello -- one "two words"
+java -jar target/j2c-cli.jar run --output generated --format json   --main Stdin --stdin test/runtime/stdin/input.txt test/runtime/stdin test/runtime/hello
+```
+
+It translates against the runtime (`--runtime`, default `bundled`) with
+`--line-directives`, builds the main class's binary (`make bin/<Class>`, run
+as `j2c build` runs `make`, so a failed build reports the compiler's errors
+at their Java lines), runs it in a fresh working directory with the
+arguments after `--` and the bytes of `--stdin <file>` as standard input,
+compiles the same sources with the `javac` of the JDK running J2C, and runs
+the class with `java` (in WSL when the build ran there: `--java <program>`,
+else `J2C_WSL_JAVA`, else `java` on WSL's `PATH`, else the Windows JDK
+running J2C, with a note). It compares standard output, standard error
+without the JVM's stack frames, and the exit code, and prints the C++
+program's output, how each run ended and the first line that differs.
+`--main <class>` chooses among several classes with a main method,
+`--no-compare` only runs the C++ program, `--timeout <seconds>` (default 60,
+0 for none) stops each run and everything it started, and
+`--output-limit <characters>` (default 20000) caps the output reported for
+each stream. With `--format json` the result has `status` (`ok`, `differs`,
+`failed`, `crashed`, `timeout` or `build-failed`), `cpp` and `jvm` (exit
+code, `signal`, `timedOut`, `durationMillis`, `stdout` and `stderr` with
+their byte counts and whether they were truncated), `comparison` (`equal`,
+`differs` or `skipped`, with `firstDifference` of each stream: `line`, `cpp`
+and `jvm`) and `build`.
+
 Check whether code can be translated before writing anything:
 
 ```sh
@@ -204,7 +234,8 @@ the `log`.
 The CLI exits with status 0 on success (or a clean check), 1 when translation
 fails or a check finds problems, and 2 for invalid arguments. `j2c build`
 exits with 0 when `make` succeeds, else 1; `j2c test` with 0 when no test
-failed, else 1. `j2c fix` exits
+failed, else 1; `j2c run` with 0 when the program behaved as on the JVM (or,
+with `--no-compare`, exited with 0), else 1. `j2c fix` exits
 with 0 when no problem is left that needs changes by hand (after applying,
 or that the preview cannot fix), else 1. `j2c report` exits with 0 whenever
 it prints a report.
@@ -320,7 +351,7 @@ claude mcp add j2c -- java -jar /path/to/j2c-cli.jar mcp --root .
 ```
 
 The tools are `j2c_check`, `j2c_fix`, `j2c_report`, `j2c_translate`,
-`j2c_build`, `j2c_test`, `j2c_explain` and `j2c_capabilities`; the server also has the prompts
+`j2c_build`, `j2c_test`, `j2c_run`, `j2c_explain` and `j2c_capabilities`; the server also has the prompts
 `j2c-migrate` and `j2c-assess`, and resources for the problem catalog, the
 runtime's contract and translated files.
 The server keeps check results between calls, so checking again after an

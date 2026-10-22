@@ -1806,6 +1806,64 @@ the agent's work, ordered by value for effort:
      agent through the Claude Agent SDK, measuring success rate and cost.
      It runs nightly or on demand.
 
+   **`j2c_run` done (2026-10-22):**
+   - `j2c run --output <dir> [options] <inputs> [-- <args>]` and the
+     `j2c_run` MCP tool (`ProgramRunner`) translate against a runtime
+     (`--runtime`/`runtime`, default `bundled`) with `--line-directives`,
+     find the classes with a main method from the generated `*-main.cpp`
+     files (`--main`/`main` chooses one, qualified or simple; several
+     without it, none, or an unknown name are usage errors), and build only
+     that binary (`make bin/<path>` through `Builder`, so make, the WSL
+     fallback, `--make`, `--wsl`, `--wsl-distro`, `--jobs` and the located
+     build diagnostics are shared with `j2c build` and `j2c test`).
+   - The C++ program runs in `<output>/run/cpp` (emptied first) with the
+     arguments and `--stdin <file>`/`stdin` (UTF-8 text in MCP), in WSL
+     through `wsl --exec env LC_ALL=C timeout -k 5 <s>`, so no shell reads
+     the arguments (`$HOME`, `a*b` and spaces pass unchanged). The JVM side
+     compiles `TranslateResult.javaFiles` with the running JDK's `javac`
+     (`javax.tools`, `--release 17`, the request's source and class paths
+     without the runtime's sources) into `<output>/run/classes` and runs the
+     class in `<output>/run/jvm` with `Locale.US` and UTF-8 flags: in WSL
+     when the build ran there (`--java`, else `J2C_WSL_JAVA`, else WSL's
+     `java`, else the Windows JDK with a `jvm.reason` note). A JRE without
+     `javac` or one before 17 makes `jvm.status` `unavailable`; javac errors
+     make it `compile-failed` with `jvm.diagnostics`.
+   - Comparison, with `runtime-programs.js`'s rules: stdout equal after
+     CRLF to LF, stderr equal without `\tat ...`/`\t... n more` frames,
+     and equal exit codes; `firstDifference` (`line`, `cpp`, `jvm`) per
+     stream. `status`: `ok`, `differs`, `failed` (not compared, non-zero
+     exit), `crashed` (`cpp.signal` from 128 + n on Linux/WSL), `timeout`
+     (`--timeout`/`timeout`, default 60 s per run, kills the process tree
+     and `timeout(1)` in WSL) or `build-failed`. Each stream keeps up to
+     16 MiB for the comparison and returns `--output-limit`/`outputLimit`
+     characters (default 20000) with its byte count and `...Truncated`.
+     Progress: the build's files, then `Running <main>`, `Compiling with
+     javac`, `Running <main> on the JVM`; cancelling stops make or the
+     program. JSON schema version stays 5 (a new command's shape). The
+     `j2c-migrate` prompt calls it as its step 7.
+   - Tests: `test-cli-run.js` (run by `test:cli`) uses a stub make whose
+     stub program records its arguments, working directory and stdin and
+     prints canned output, against the real `javac` and `java`: the same
+     output as `test/runtime/hello`, a difference and a missing line with
+     their first lines, a different exit code, stdin with an uncaught
+     exception (frames ignored), `--main` among two mains and its errors,
+     `--no-compare`, a crash (SIGSEGV on Linux), the output limit, the
+     timeout (the stub is gone afterwards), a failed build and usage
+     errors; then a real run of `test/runtime/stdin` (with `hello` beside
+     it) against the bundled runtime whose output and exit code match the
+     JVM's (in WSL with GCC 13.3, both with `J2C_WSL_JAVA` and with the
+     Windows JDK fallback). `test-mcp.js` covers the schema, a stubbed call
+     with arguments and stdin, a difference, `compare: false` and refused
+     arguments and outputs; `test-mcp-sessions.js` progress and
+     cancellation of a hanging program.
+   - Open: re-running retranslates every file, so make rebuilds the whole
+     runtime (about a minute) each time (the same for `j2c test`); an
+     output directory whose name has spaces breaks the Makefile's `NAME`
+     (pass `--name`, as for `j2c build`); arguments containing double
+     quotes may not reach a WSL program unchanged (Windows command-line
+     quoting); the JVM run uses the JDK running J2C for `javac`, so J2C on
+     a JRE cannot compare.
+
 ## Phase 13 — Unit test translation (JUnit to GoogleTest)
 
 A project's own unit tests are the best evidence that a translation is

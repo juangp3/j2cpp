@@ -271,6 +271,25 @@ C++20-targeted output.
   progress per compiled file and per finished test, and cancellation stops
   `make` or the tests), and the `j2c-migrate` prompt calls it with `tests`.
   JSON schema version 5.
+- `j2c run --output <directory> <inputs> [-- <arguments>]` translates a
+  program against the J2C runtime (`--runtime`, default `bundled`) with
+  `--line-directives`, builds its main class (`make bin/<Class>`; a failed
+  build reports its errors at their Java lines), runs it with the arguments
+  and `--stdin <file>` in a fresh working directory, compiles the same Java
+  files with the running JDK's `javac` and runs the class on the JVM (in
+  WSL when the build ran there: `--java`, `J2C_WSL_JAVA` or WSL's `java`),
+  and compares standard output, standard error without stack frames, and
+  the exit code. The result has each run's exit code, signal, duration and
+  output (up to `--output-limit` characters per stream, default 20000), the
+  first differing line of each stream, and `status` (`ok`, `differs`,
+  `failed`, `crashed`, `timeout` or `build-failed`). `--main` chooses among
+  several main classes, `--no-compare` skips the JVM, and `--timeout`
+  (default 60 s, 0 for none) stops each run and everything it started. It
+  exits with 0 when the status is `ok`, else 1. The `j2c_run` MCP tool does
+  the same (`main`, `args`, `stdin`, `compare`, `timeout`, `outputLimit`,
+  `runtime`, `jobs`; never runs Maven or Gradle; progress per compiled file
+  and run, and cancellation stops `make` or the program), and the
+  `j2c-migrate` prompt calls it.
 
 ### Java language support
 
