@@ -156,6 +156,20 @@ C++20-targeted output.
   against the runtime; CI checks that all three give the outcomes in
   `expected-results.json`, and that the JVM and the runtime give its
   failure messages (73 tests, 44 messages).
+- `--mocks` generates a gMock class for each top-level and member interface
+  of the translated files (`mock/<package>/Mock<Interface>.hpp`, class
+  `<package>::Mock<Interface>`), for C++ tests written by hand. Abstract
+  methods, inherited ones too, are mocked with `MOCK_METHOD` and the erased
+  C++ types; default methods keep their Java bodies; a method overriding an
+  inherited one with another erasure gets the bridge a Java class would
+  have. The Makefile builds `USER_TEST_SRCS` into the tests binary and links
+  gMock (`GMOCK_CFLAGS`, `GMOCK_LIBS`). Methods with more than 15
+  parameters, and inherited erased return types no C++ override accepts,
+  are reported as `J2C-MOCK-UNSUPPORTED`. Also the `mocks` argument of
+  `j2c_check`, `j2c_translate`, `j2c_build` and `j2c_test` (whose results
+  list `mockFiles`; `--format json` translations too), and the `j2c.mocks`
+  setting. CI builds a hand-written gMock test against the generated mocks
+  and compiles every mock of `test/src`.
 
 ### AI agents
 

@@ -30,7 +30,8 @@ Last rechecked on 2026-10-11 against local `modern-release`.
   `--format json`, the output guard, problem IDs with `j2c explain`,
   `j2c capabilities`, the Problems panel, lambdas and method references,
   Phase 9 gaps G1–G6, the `j2c mcp` server with VS Code registration
-  (Phase 11), and `--tests` with JUnit assertions (Phase 13 T1–T3b).
+  (Phase 11), `--tests` with JUnit assertions, `j2c test` and `--mocks`
+  (Phase 13 T1–T5).
   `CHANGELOG.md`'s `0.6.0 — Preview` section lists it all and is the
   release notes.
 - **Versions.** Maven and the VS Code extension are both `0.6.0`. The
@@ -1880,7 +1881,7 @@ mapped to `EXPECT_*` macros (Java equality, exceptions on failure, lambdas in
 | T3a | JUnit assertions and assumptions (JUnit 4 and 5) translated into `j2c_junit.hpp` helpers with JUnit's rules and messages, needing no runtime: a failed assertion throws a Java `AssertionError`; `assertThrows` uses the class literal's type; assumptions skip. Unsupported forms (`assertAll`, `assertTimeout`, lazy conditions, Hamcrest, AssertJ, Truth, non-literal `assertThrows` classes) are reported as `J2C-TEST-UNSUPPORTED-ASSERTION`. | — | Done (2026-10-11) |
 | T3b | With `--runtime`, assertions compare JDK objects (`String`, boxed numbers, lists, maps) with Java's `equals` and give JUnit's messages: values shown with `toString`, JUnit 5's `message ==>` prefix, `Supplier<String>` messages called only on failure, and JUnit 4's own forms (in `j2c::junit::junit4`), including `ComparisonFailure`'s compacted strings; the `AssertionError` carries the message. JUnit 4's expected-exception failures use JUnit's messages. The fixtures run with real JUnit 5.10 and 4.13 on the JVM (`junit-jvm.js`), and every outcome and recorded message is compared with `expected-results.json`, as are the GoogleTest runs against stubs and against the runtime (`junit-gtest.js`) | Phase 10 milestone 1 | Done (2026-10-15) |
 | T4 | `j2c_test` agent tool: translate, build, run, and return results per test mapped to Java | T2, T3, Phase 12 item 4 | Done (2026-10-21) |
-| T5 | Optional gMock classes generated from Java interfaces, for new C++ tests | T2 | Planned |
+| T5 | Optional gMock classes generated from Java interfaces, for new C++ tests: `--mocks` (MCP `mocks`, `j2c.mocks`) writes `mock/<package>/Mock<Interface>.hpp` per top-level and member interface, with `MOCK_METHOD` for every abstract method (inherited too) in erased C++ types, default methods kept, bridges where a Java class has them; Makefile `USER_TEST_SRCS`, `GMOCK_CFLAGS`, `GMOCK_LIBS`; `J2C-MOCK-UNSUPPORTED` for what gMock cannot express | T2 | Done (2026-10-22) |
 
 Tests for T1 and T2:
 
@@ -1999,6 +2000,56 @@ T4 (done 2026-10-21):
   failed"); without `--runtime` the binary needs the hooks a runtime
   provides (`junit-gtest.js` links `test/cpp/j2c_test_hooks.cpp`), which
   `j2c test` cannot add; a native Windows toolchain is untested.
+
+T5 (done 2026-10-22):
+
+- `--mocks` (also in `--check`, `build` and `test`; the `mocks` argument of
+  `j2c_check`, `j2c_translate`, `j2c_build` and `j2c_test`; the `j2c.mocks`
+  setting) runs `MockWriter` for each top-level and member interface of the
+  selected units, after the unit's own C++. The mock derives virtually from
+  the translated interface. Which C++ functions it must define is worked out
+  from the declarations the header writers emit for each interface of the
+  hierarchy: declared methods (pure when abstract, skipped when a base
+  already declares them), bridges of default methods, and the names
+  `Header.dupeNames` redeclares as pure (now static, so both use it). The
+  Java method that implements each one decides what the mock does:
+  `MOCK_METHOD` for an abstract method with that C++ signature, a call to
+  the default method when C++ redeclared it as pure, and a bridge with
+  `dynamic_cast` when the implementing method has another erasure. The
+  return type is the one every declaration accepts (covariant returns), and
+  the complete types that needs are included and become hard dependencies.
+- Generic types and methods are erased as elsewhere, so nothing is a
+  template. Not mocked, by design: default methods (their Java bodies call
+  the mocks), static and private methods, `java.lang.Object`'s methods
+  redeclared by an interface, local interfaces and annotation types.
+  `J2C-MOCK-UNSUPPORTED` (at the interface's name) reports a mocked method
+  with more than 15 parameters and a signature inherited with erased return
+  types no single override accepts; both stop the translation.
+- The Makefile lists `MOCK_HDRS`, builds `USER_TEST_SRCS` (hand-written
+  files in `test/`) into the tests binary with `-Imock`, and links
+  `GMOCK_LIBS` (`pkg-config gmock`, else `-lgmock`) when there are mocks.
+  Translate results list `mockFiles` (JSON schema version 5 still).
+- Tests: `test/src/.../Java17Mocks.java` has interfaces with overloads,
+  arrays, varargs, a C++ keyword, a generic method, defaults, a static
+  method, two superinterfaces, a covariant return, a bridge, a default that
+  C++ redeclares as pure, 15 parameters and unrelated erased returns made
+  mockable by a redeclaration, plus translated code calling them.
+  `test-cli-mocks.js` (run by `test:cli`) checks the files, JSON, Makefile
+  and mock text, nothing without `--mocks`, a clean `--check --mocks` of
+  `test/src`, and the two `J2C-MOCK-UNSUPPORTED` problems of `test/mocks`.
+  `mocks-gtest.js` (`npm run mocks:gtest`, CI after the GoogleTest steps,
+  under UBSan) builds `test/cpp/Java17MocksTest.cpp` (10 GoogleTest tests
+  with `EXPECT_CALL`, `InSequence` and `StrictMock`, passing the mocks to
+  the translated code) through `make tests USER_TEST_SRCS=...`, and
+  compiles all 110 mocks of `test/src`, asserting none is abstract.
+  Verified locally in WSL with GoogleTest 1.14.0 (gMock built from
+  `/usr/src/googletest`, as the script does when `libgmock-dev` is
+  missing) and GCC 13.3. `test-mcp.js` covers the schemas and a
+  translation with `mocks`; `test-extension.js` the setting.
+- Open: a mock declares only the overloads it defines, so calling a
+  hidden default overload needs the interface type (calls from translated
+  code go through it); mocks are not generated for JDK interfaces outside
+  the selection.
 
 Not yet covered: `assertIterableEquals`, `assertLinesMatch`, nested-array
 `assertArrayEquals`, JUnit 4's `assertThrows` (`ThrowingRunnable`) and the

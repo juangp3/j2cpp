@@ -28,6 +28,13 @@ Translatability** to Java editor and Explorer context menus.
   step through the Java source. On Windows, `make` runs in WSL when it is not
   on the `PATH` (`j2c.build.wsl`, `j2c.build.wslDistribution`; WSL needs GNU
   make and g++ 13 or newer); `j2c.build.make` names another make program.
+- With `j2c.tests` on, Check also reports JUnit test features that
+  translated tests cannot run, and Translate generates GoogleTest wrappers.
+  With `j2c.mocks` on, Translate also generates a gMock class for each Java
+  interface (`mock/<package>/Mock<Interface>.hpp`) for C++ tests you write
+  (`make tests USER_TEST_SRCS=test/my_test.cpp` in the output folder), and
+  Check reports interface methods gMock cannot mock
+  (`J2C-MOCK-UNSUPPORTED`).
 
 Problems from either command appear in the **Problems** panel at their source
 lines; a clean run clears them. Problems with a mechanical fix (such as `this`

@@ -339,6 +339,63 @@ extensions, parameterized, repeated and dynamic tests, `@Nested` classes,
 timeouts, `@TestInstance(PER_CLASS)`, and private or parameterized test
 methods. Each has a problem ID and a suggested fix.
 
+### gMock classes for new C++ tests
+
+`--mocks` generates a [gMock](https://google.github.io/googletest/gmock_for_dummies.html)
+class for each top-level and member interface of the translated files, so
+C++ tests written by hand can pass mocks to the translated code:
+`mock/<package>/Mock<Interface>.hpp` declares `<package>::Mock<Interface>`,
+which derives from the translated interface.
+
+```sh
+java -jar target/j2c-cli.jar --mocks --output generated src/main/java
+cp repository_test.cpp generated/test/
+make -C generated tests USER_TEST_SRCS=test/repository_test.cpp
+```
+
+```cpp
+#include <gmock/gmock.h>
+#include <demo/MockRepository.hpp>
+#include <demo/Service.hpp>
+
+TEST(Service, savesOnce)
+{
+    demo::MockRepository repository;
+    EXPECT_CALL(repository, save(::testing::_)).Times(1);
+    demo::Service(&repository).run();
+}
+```
+
+- Every abstract method is mocked with `MOCK_METHOD`, including those
+  inherited from superinterfaces, with the C++ types the translator uses:
+  generic types and generic methods are erased (`T get(int)` in a
+  `Repository<T>` is `MOCK_METHOD(::java::lang::Object*, get, (int32_t),
+  (override))`), arrays and varargs are J2C arrays, and overloads are
+  separate mocks (match them with typed matchers such as
+  `::testing::A<int32_t>()` when their arity is the same).
+- Default methods are not mocked: they keep their Java bodies, which call
+  the mocked methods. Static and private methods are not virtual, and the
+  `java.lang.Object` methods an interface redeclares (`equals`, `hashCode`,
+  `toString`) keep Object's implementation, as in translated classes.
+- A method overriding an inherited one with another erasure (`void
+  accept(Item)` for `Sink<Item>.accept(T)`) gets the bridge a translated
+  Java class would have, so calls through either C++ signature reach the
+  one mock.
+- `make tests` builds the files in `USER_TEST_SRCS` (in `test/`) into the
+  GoogleTest binary, with `-Imock`, and links gMock (`pkg-config gmock`, or
+  set `GMOCK_CFLAGS` and `GMOCK_LIBS`) and GoogleTest. Without `--runtime`,
+  link a C++ implementation of the runtime hooks with `TEST_LDLIBS`, as
+  for `--tests`.
+
+What gMock cannot express stops the translation (`--check --mocks` lists
+it) as `J2C-MOCK-UNSUPPORTED`: a method with more than 15 parameters, the
+most `MOCK_METHOD` takes, and a method inherited with erased return types
+that no single C++ override accepts, such as `Number` and `Comparable` for
+a `value()` that returns `Integer` in Java (declare it in the interface).
+`npm run mocks:gtest` in `vscode/` builds and runs the repository's own
+example, `test/cpp/Java17MocksTest.cpp`, and compiles every mock generated
+from `test/src`.
+
 ## Using J2C with AI agents
 
 `j2c mcp` serves J2C as a Model Context Protocol server, so agents such as

@@ -135,10 +135,10 @@ source paths and the output directory must be inside it. Class path entries
 
 | Tool | Writes | Arguments | Result |
 | --- | --- | --- | --- |
-| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `runtime`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
-| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force`, `lineDirectives` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `lineDirectives`, `projects`, `warnings` |
-| `j2c_fix` | With `apply: true` | The same as `j2c_check`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
-| `j2c_report` | No | The same as `j2c_check` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
+| `j2c_check` | No | `paths` (required), `sourcePaths`, `classPath`, `sealedTypes`, `encoding`, `tests`, `mocks`, `runtime`, `project`, `buildTool` | `status` (`ok` or `problems`), `problems`, `summary`, `projects`, `warnings` |
+| `j2c_translate` | Yes | The same, plus `output` (required), `name`, `force`, `lineDirectives` | `status`, `output`, `makefile`, `generatedFiles`, `testFiles`, `mockFiles`, `lineDirectives`, `projects`, `warnings` |
+| `j2c_fix` | With `apply: true` | The same as `j2c_check` except `mocks`, plus `apply` | `status`, `applied`, `fixed`, `changedFiles`, `diff`, `deferred`, `problems`, `summary` |
+| `j2c_report` | No | The same as `j2c_check` except `mocks` | `status`, `totals`, `blockers`, `testBlockers`, `jdk`, `nextSteps`, `projects`, `warnings`; the content also has the report as Markdown |
 | `j2c_build` | Build products in `output` | `output` (required), `target` (`all`, `mains` or `tests`), `jobs`; with `paths` (and the `j2c_translate` arguments except `buildTool` and `lineDirectives`) it translates first | `status` (`ok` or `failed`), `exitCode`, `diagnostics`, `summary`, `makeCommand`, `log`, `logTruncated`, `translated` |
 | `j2c_test` | Translation and build products in `output` | `paths` and `output` (required), the `j2c_translate` arguments except `tests`, `buildTool` and `lineDirectives`, plus `runtime`, `filter`, `timeout` (seconds, default 300, 0 for none) and `jobs` | `status` (`ok`, `failed`, `timeout` or `build-failed`), `tests`, `summary`, `exitCode`, `gtestFilter`, `testCommand`, `build`, `log`, `testFiles` |
 | `j2c_run` | Translation, build products and the runs' working directories in `output` | `paths` and `output` (required), the `j2c_translate` arguments except `tests`, `buildTool` and `lineDirectives`, plus `runtime` (default `bundled`), `main`, `args`, `stdin`, `compare` (default true), `timeout` (seconds per run, default 60, 0 for none), `outputLimit` (characters per stream, default 20000) and `jobs` | `status` (`ok`, `differs`, `failed`, `crashed`, `timeout` or `build-failed`), `main`, `mains`, `cpp`, `jvm`, `comparison`, `build` |
@@ -157,6 +157,17 @@ Pass `tests: true` to both tools for projects with JUnit tests (JUnit JARs in
 tests cannot run, and `j2c_translate` generates GoogleTest wrappers, listed
 in `testFiles`, that `make -C <output> test` builds and runs; `j2c_test`
 builds and runs them and returns each result at its Java method.
+
+Pass `mocks: true` to generate a gMock class for each top-level and member
+interface, for C++ tests written by hand: `j2c_translate` lists them in
+`mockFiles` (`mock/<package>/Mock<Interface>.hpp`, class
+`<package>::Mock<Interface>` deriving from the translated interface). Every
+abstract method, inherited ones too, is a `MOCK_METHOD` with the erased C++
+types; default methods keep their Java bodies. Put the tests in
+`<output>/test/` and build them with `make -C <output> tests
+USER_TEST_SRCS=test/<file>.cpp`, which links gMock. `j2c_check` with
+`mocks` reports what gMock cannot mock as `J2C-MOCK-UNSUPPORTED` (more than
+15 parameters, or inherited return types that erase to unrelated types).
 
 Each problem has a stable `id`, `file`, `line`, `column` (1-based), `message`,
 `hint` and `fixes`. Problems in the Java code are a normal `j2c_check` result,
@@ -580,6 +591,8 @@ that differs). `--main`, `--stdin <file>`, `--no-compare`, `--timeout` and
 `outputLimit` do; `--java <program>` names the `java` to run (in WSL when
 the build ran there), and `--make`, `--wsl`, `--wsl-distro` and `--jobs`
 work as for `build`. It exits with 0 when the status is `ok`, else 1.
+`--mocks` (in translations, `--check`, `build` and `test`) generates the
+gMock classes that `mocks: true` does, and reports `J2C-MOCK-UNSUPPORTED`.
 `j2c fix` takes the same inputs and options as `--check` and prints the same
 result as `j2c_fix`; without `--format json` it prints the diff on stdout and
 a summary on stderr. It exits with 0 when no problem is left that needs
@@ -600,7 +613,7 @@ by `schemaVersion`, which increases whenever a field is added, changed or
 removed; ignore fields you do not know. Version 2 added `fixes` to problems
 and the `fix` command; version 3 the `report` command; version 4 the `build`
 command and `lineDirectives` in translate results; version 5 the `test`
-and `run` commands.
+and `run` commands, and `mockFiles` in translate results (`--mocks`).
 
 ## Safety
 
