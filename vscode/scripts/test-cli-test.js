@@ -371,7 +371,9 @@ function missingToolchain(result) {
 	if (result.status === "error" && /^Could not run make/.test(result.message)) {
 		return result.message;
 	}
-	if (result.status === "build-failed" && (result.build.log || []).some((line) => /gtest\/gtest\.h: No such file|cannot find -lgtest/.test(line))) {
+	const lines = result.status === "build-failed"
+		? (result.build.log || []).concat((result.build.diagnostics || []).map((diagnostic) => diagnostic.message)) : [];
+	if (lines.some((line) => /gtest\/gtest\.h: No such file|cannot find -lgtest/.test(line))) {
 		return "GoogleTest is not installed";
 	}
 	return null;
