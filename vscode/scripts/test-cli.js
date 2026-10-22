@@ -1282,6 +1282,10 @@ try {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}
 
+	// Selected files are validated before anything is written; dependencies
+	// with Java errors get a header and a warning
+	require("./test-cli-validation").checkValidation(runCli, tempDirectory);
+
 	// Maven and Gradle project auto-setup
 	require("./test-cli-projects").checkProjects(runCli, tempDirectory);
 

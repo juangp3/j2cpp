@@ -291,12 +291,28 @@ async function checkProgressAndCancellation(cliJar, workspace, env) {
 		assert.strictEqual(translated.result.isError, false, JSON.stringify(translated.result));
 		assert(fs.existsSync(path.join(root, "big out", "Makefile")));
 		const fullTime = translated.receivedAt - client.progress(3)[0].receivedAt;
+		// Validating every file, then writing, with one increasing count
+		const translateProgress = client.progress(3);
+		const firstWrite = translateProgress.findIndex((message) => /^(Processing|Wrote) /.test(message.params.message));
+		// (notifications are at least 100 ms apart, so some are skipped)
+		assert(firstWrite >= 0, JSON.stringify(translateProgress.map((message) => message.params)));
+		assert(!translateProgress.slice(firstWrite).some((message) => /^Validat/.test(message.params.message)),
+			JSON.stringify(translateProgress.map((message) => message.params)));
+		for (let i = 1; i < translateProgress.length; ++i) {
+			assert(translateProgress[i].params.progress > translateProgress[i - 1].params.progress);
+		}
+		for (const message of translateProgress) {
+			assert(message.params.total === undefined || message.params.total >= message.params.progress);
+		}
 
 		// Cancelling a running translation: no response, and it stops
 		client.call(5, "j2c_translate", { paths: ["src"], output: "big out" }, { progressToken: "t5" });
 		// Queued behind it, then cancelled before it starts
 		client.call(6, "j2c_check", { paths: ["src"] });
-		await client.until(() => client.progress("t5").length >= 3, "translation progress");
+		// Every file is validated before anything is written; cancel while
+		// writing
+		await client.until(() => client.progress("t5").filter((message) =>
+			/^(Processing|Wrote) /.test(message.params.message)).length >= 3, "translation progress");
 		const cancelledAt = Date.now();
 		client.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 5, reason: "test" } });
 		client.send({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 6 } });

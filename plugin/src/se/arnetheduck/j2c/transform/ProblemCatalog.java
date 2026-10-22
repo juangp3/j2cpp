@@ -32,6 +32,8 @@ public final class ProblemCatalog {
 	public static final String TEST_UNSUPPORTED_ASSERTION = "J2C-TEST-UNSUPPORTED-ASSERTION";
 	/** A warning: translation goes on without the dependency class path */
 	public static final String PROJECT_CLASSPATH_UNRESOLVED = "J2C-PROJECT-CLASSPATH-UNRESOLVED";
+	/** A warning: a dependency unit with Java errors got only a header */
+	public static final String DEPENDENCY_ERRORS = "J2C-DEPENDENCY-ERRORS";
 
 	public static final class Entry {
 		public final String id;
@@ -168,6 +170,17 @@ public final class ProblemCatalog {
 						+ "should succeed), install Maven or Gradle or add the project's wrapper, "
 						+ "or pass the dependency JARs with --classpath. --no-build-tool skips "
 						+ "running the build tool, and --project none turns detection off.");
+		add(DEPENDENCY_ERRORS,
+				"Dependency with Java errors translated as a header only (warning)",
+				"A Java file that the selected code depends on, but that was not "
+						+ "selected itself, does not compile. Instead of failing, J2C writes "
+						+ "its types' headers and stubs from what the compiler could resolve, "
+						+ "as it does for library classes, and no implementation. This is a "
+						+ "warning; the generated C++ may still fail to compile or link where "
+						+ "the program uses that file's code.",
+				"Fix the Java errors in the dependency (j2c --check, or j2c_check, on "
+						+ "that file lists them), add its missing dependencies with --classpath or "
+						+ "--sourcepath, or select it to have them reported as errors.");
 	}
 
 	private static void add(String id, String title, String explanation,

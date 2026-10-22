@@ -787,6 +787,15 @@ async function testProjectSetting() {
 			column: 0,
 			message: "Maven was not found",
 			hint: "Install Maven"
+		}, {
+			id: "J2C-DEPENDENCY-ERRORS",
+			kind: "dependency with errors",
+			severity: "warning",
+			file: input,
+			line: 7,
+			column: 3,
+			message: "Dependency has 1 Java error(s), so only its header and stubs were generated",
+			hint: "Fix the Java errors"
 		}]
 	};
 	const warned = createHarness({
@@ -799,6 +808,13 @@ async function testProjectSetting() {
 	assert.strictEqual(warning.severity, 1);
 	assert.strictEqual(warning.code, "J2C-PROJECT-CLASSPATH-UNRESOLVED");
 	assert(warning.message.includes("How to fix: Install Maven"));
+	assert.strictEqual(warning.range.startLine, 0);
+	// A dependency warning goes at its first error
+	const [dependencyWarning] = warned.diagnostics.entries.get(input);
+	assert.strictEqual(dependencyWarning.severity, 1);
+	assert.strictEqual(dependencyWarning.code, "J2C-DEPENDENCY-ERRORS");
+	assert.strictEqual(dependencyWarning.range.startLine, 6);
+	assert.strictEqual(dependencyWarning.range.startCharacter, 2);
 	assert(warned.information[0].includes("No problems found"), JSON.stringify(warned.information));
 	const log = warned.outputs[0].lines.join("");
 	assert(log.includes("maven project"), log);

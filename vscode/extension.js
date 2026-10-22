@@ -598,12 +598,15 @@ function publishReport(diagnostics, report) {
 			quickFixes.get(key).push({ id: problem.id, line, column, fixes: problem.fixes });
 		}
 	}
-	// Warnings, such as an unresolved class path, go on the build file but
-	// are not counted as problems that stop translation
+	// Warnings, such as an unresolved class path (on the build file) or a
+	// dependency with Java errors (at its first error), are not counted as
+	// problems that stop translation
 	const warnings = report.warnings || [];
 	for (const warning of warnings) {
+		const line = Math.max((warning.line || 1) - 1, 0);
+		const column = Math.max((warning.column || 1) - 1, 0);
 		const diagnostic = new vscode.Diagnostic(
-			new vscode.Range(0, 0, 0, Number.MAX_SAFE_INTEGER),
+			new vscode.Range(line, column, line, Number.MAX_SAFE_INTEGER),
 			warning.hint ? `${warning.message}\nHow to fix: ${warning.hint}` : warning.message,
 			vscode.DiagnosticSeverity.Warning
 		);

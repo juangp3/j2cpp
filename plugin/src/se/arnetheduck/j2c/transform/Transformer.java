@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -122,6 +123,12 @@ public class Transformer {
 
 	private final Set<String> done = new HashSet<String>();
 
+	/** Selected units checked by validate, which the writers trust */
+	private final Set<SourceUnit> validated = new TreeSet<SourceUnit>(
+			new ICUComparator());
+
+	private final List<Problem> warnings = new ArrayList<Problem>();
+
 	public List<Snippet> snippets = new ArrayList<Snippet>();
 
 	protected AST currentAST;
@@ -145,7 +152,7 @@ public class Transformer {
 
 	/** The GoogleTest tests written by process, with their Java methods */
 	public List<GeneratedTest> generatedTests() {
-		return java.util.Collections.unmodifiableList(generatedTests);
+		return Collections.unmodifiableList(generatedTests);
 	}
 
 	/** A method declaration's file and the line of its name */
@@ -183,13 +190,17 @@ public class Transformer {
 	}
 
 	/**
-	 * Translates the units and the types they depend on. The monitor counts
-	 * written units (beginTask with an unknown total, then worked(1) after
-	 * each) and stops the translation with OperationCanceledException when
-	 * cancelled, leaving what was written so far.
+	 * Translates the units and the types they depend on. The units are
+	 * validated first (see {@link #validate}), so a selected unit with
+	 * problems stops the translation before anything is written. The monitor
+	 * then counts written units (beginTask with an unknown total, then
+	 * worked(1) after each) and stops the translation with
+	 * OperationCanceledException when cancelled, leaving what was written so
+	 * far.
 	 */
 	public void process(IProgressMonitor monitor, SourceUnit... units)
 			throws Exception {
+		validate(monitor, units);
 		monitor.beginTask("Translating", IProgressMonitor.UNKNOWN);
 		monitor.subTask("Moving old files");
 		renameOld();
@@ -255,6 +266,54 @@ public class Transformer {
 
 		System.out.println("Done (" + (System.currentTimeMillis() - start)
 				+ " ms).");
+	}
+
+	/**
+	 * Checks every unit, as {@link #check} does, and throws a
+	 * TranslationException with all of their problems when any has one, before
+	 * anything is written. Units validated earlier are not checked again, so
+	 * a caller can validate before preparing the output and then call
+	 * {@link #process}. The monitor counts validated units.
+	 */
+	public void validate(final IProgressMonitor monitor, SourceUnit... units)
+			throws Exception {
+		selection.addAll(Arrays.asList(units));
+		List<SourceUnit> pending = new ArrayList<SourceUnit>();
+		for (SourceUnit unit : units) {
+			if (!validated.contains(unit)) {
+				pending.add(unit);
+			}
+		}
+		if (pending.isEmpty()) {
+			return;
+		}
+		final List<Problem> problems = new ArrayList<Problem>();
+		monitor.beginTask("Validating " + pending.size() + " file(s)",
+				pending.size());
+		project.parse(pending, monitor, new SourceProject.UnitHandler() {
+			@Override
+			public void accept(SourceUnit source, CompilationUnit ast)
+					throws Exception {
+				List<Problem> found = problems(source, ast);
+				if (!found.isEmpty()) {
+					problems.addAll(QuickFixes.addFixes(project, source, found));
+				}
+				validated.add(source);
+				monitor.subTask("Validated " + source.file().getPath());
+				monitor.worked(1);
+			}
+		});
+		if (!problems.isEmpty()) {
+			throw new TranslationException(join(problems), problems);
+		}
+	}
+
+	/**
+	 * Warnings about the translation: dependency units with Java errors,
+	 * which only got a header (J2C-DEPENDENCY-ERRORS)
+	 */
+	public List<Problem> warnings() {
+		return Collections.unmodifiableList(warnings);
 	}
 
 	private static void checkCanceled(IProgressMonitor monitor) {
@@ -471,7 +530,16 @@ public class Transformer {
 							cur = ext;
 						}
 						try {
-							List<Problem> problems = problems(source, ast);
+							// Selected units were all validated before writing
+							List<Problem> problems = validated.contains(source) ? Collections
+									.<Problem> emptyList() : problems(source, ast);
+							if (!selection.contains(source)
+									&& hasCompileError(problems)) {
+								// A dependency that does not compile: its
+								// bindings still give a header and stubs
+								writeHeaderOnly(source, ast, problems);
+								return;
+							}
 							if (!problems.isEmpty()) {
 								problems = QuickFixes.addFixes(project, source,
 										problems);
@@ -490,6 +558,62 @@ public class Transformer {
 						}
 					}
 				});
+	}
+
+	private static boolean hasCompileError(List<Problem> problems) {
+		for (Problem problem : problems) {
+			if (ProblemCatalog.COMPILE_ERROR.equals(problem.id)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Writes a dependency unit with Java errors as it would a type without
+	 * source: headers and stubs from its types' bindings, and no
+	 * implementation. Reports a J2C-DEPENDENCY-ERRORS warning at its first
+	 * error.
+	 */
+	private void writeHeaderOnly(SourceUnit source, CompilationUnit ast,
+			List<Problem> problems) throws Exception {
+		Problem first = null;
+		int errors = 0;
+		for (Problem problem : problems) {
+			if (ProblemCatalog.COMPILE_ERROR.equals(problem.id)) {
+				if (first == null) {
+					first = problem;
+				}
+				errors++;
+			}
+		}
+		Problem warning = Problem.of(ProblemCatalog.DEPENDENCY_ERRORS,
+				"dependency with errors", "Dependency has " + errors
+						+ " Java error(s), so only its header and stubs were "
+						+ "generated; the first: " + first.message).at(
+				first.file, first.line, first.column);
+		warnings.add(warning);
+		System.err.println("J2C: warning: " + warning + " [" + warning.id
+				+ "]");
+
+		cur = ext;
+		for (AbstractTypeDeclaration type : (Iterable<AbstractTypeDeclaration>) ast
+				.types()) {
+			ITypeBinding tb = type.resolveBinding();
+			if (tb == null) {
+				continue;
+			}
+			writeHeader(source, tb);
+			addDoneNested(tb);
+		}
+	}
+
+	/** Member types, whose headers TypeBindingHeaderWriter also writes */
+	private void addDoneNested(ITypeBinding tb) {
+		for (ITypeBinding nested : tb.getDeclaredTypes()) {
+			addDone(nested, false);
+			addDoneNested(nested);
+		}
 	}
 
 	private void recordParameterNames(CompilationUnit ast) {
