@@ -160,7 +160,15 @@ builds and runs them and returns each result at its Java method.
 Each problem has a stable `id`, `file`, `line`, `column` (1-based), `message`,
 `hint` and `fixes`. Problems in the Java code are a normal `j2c_check` result,
 not a tool error. `j2c_translate` reports them as an error, because no output
-was produced.
+was produced: every selected file is checked before anything is written, so
+the output directory is left as it was.
+
+A file that is only a dependency (on a source path, not in `paths`) and has
+Java errors does not fail `j2c_translate`: it gets a header and stubs, no
+implementation, and `warnings` holds `J2C-DEPENDENCY-ERRORS` (with
+`severity: "warning"`) at its first error. The C++ may then fail to build
+where it uses that file; fix the file, or put it in `paths` to see its
+errors.
 
 ### Maven and Gradle projects
 

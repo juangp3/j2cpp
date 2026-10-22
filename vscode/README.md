@@ -71,7 +71,10 @@ extension asks before translating, because translation moves the folder's
 contents to a backup in the temporary folder.
 
 Commands run with a progress notification that can be cancelled; a cancelled
-translation may leave a partially written output directory. Only one command
+translation may leave a partially written output directory. A translation
+with problems in any selected file writes nothing. A dependency file with
+Java errors only gets a header, with a `J2C-DEPENDENCY-ERRORS` warning at
+its first error. Only one command
 runs at a time. The J2C output channel logs the extension version with each
 run.
 

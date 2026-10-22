@@ -28,6 +28,16 @@ C++20-targeted output.
 - Translation refuses to replace a non-empty output directory that J2C did
   not create (its contents would be moved to a backup) unless `--force` is
   given; the extension asks first.
+- Translation checks every selected file before writing anything, and
+  reports the problems of all of them at once. A translation that fails
+  this way leaves the output directory as it was: earlier output is not
+  moved to the backup, and an empty directory gets no `.j2c-output` marker.
+- A Java file that is only a dependency (on the source path, not selected)
+  and does not compile no longer fails the translation: like a library
+  class, it gets a header and stubs from what the compiler resolved, and no
+  implementation. The warning `J2C-DEPENDENCY-ERRORS`, at its first error,
+  is printed to stderr and listed in `warnings` in JSON. Selected files with
+  errors still fail.
 
 ### Runtime (preview)
 

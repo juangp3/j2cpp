@@ -125,7 +125,14 @@ parents.
 The output directory must be empty or earlier J2C output, which is marked with
 a `.j2c-output` file. Translation first moves the directory's current
 contents to a backup in the temporary folder, so J2C refuses other non-empty
-directories unless you pass `--force`.
+directories unless you pass `--force`. Every selected file is checked before
+that: when one has problems, the translation fails with all of them and
+leaves the directory as it was.
+
+Files that are only dependencies (found on the source path, not selected)
+and do not compile are translated like library classes, as a header and
+stubs without an implementation, with the warning `J2C-DEPENDENCY-ERRORS`
+(in `warnings` in JSON) instead of an error.
 
 Each problem has a stable ID (such as `J2C-LAMBDA-ANONYMOUS-THIS`).
 `j2c explain <id>` describes it and how to fix it; `j2c explain` lists them

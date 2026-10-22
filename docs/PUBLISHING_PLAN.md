@@ -250,12 +250,24 @@ Features added after the review (2026-10-10):
   verbatim as invalid C++), `case X ->` switch expressions on enums and
   strings, and `String` switch statements.
 
+Done later (2026-10-22), from the deferred list:
+
+- A dependency unit (on the source path, not selected) with Java errors no
+  longer fails the run. As upstream did, it falls back to header-only
+  output: `TypeBindingHeaderWriter` writes its headers and stubs from the
+  bindings, and the run reports a `J2C-DEPENDENCY-ERRORS` warning at its
+  first error (`warnings` in JSON). Selected units with errors still fail.
+  Checked by `test-cli-validation.js`.
+- `Transformer.validate` checks every selected unit (Java errors and
+  unsupported constructs) before anything is written, and fails with all of
+  their problems. The CLI and MCP validate before writing the `.j2c-output`
+  marker and moving earlier output to the backup, so a failed run leaves the
+  output directory as it was. Validation is its own counted progress phase
+  before the written units. Checked by `test-cli-validation.js` and
+  `test-mcp-sessions.js`; the `test/src` output is unchanged.
+
 Deferred (not release blockers):
 
-- A Java error in a dependency unit, not just a selected one, fails the whole
-  run. Upstream fell back to header-only output for such units.
-- Validation runs per unit as it is processed, so a failure can leave earlier
-  output written. Validating every selected unit first would avoid that.
 - `if`-chain switches (enum and `String`) whose cases all return trigger a
   harmless GCC `-Wreturn-type` warning.
 - The shaded CLI JAR is 10 MB. `minimizeJar` is risky with Eclipse's
@@ -606,9 +618,9 @@ The gaps below remain. They fall into three groups:
   when it is called rather than when it is created.
 - Reflection, serialization and class loading are unsupported.
 
-The deferred items listed under Phase 5 also remain: falling back to
-header-only output for dependency units with errors, and validating every
-selected unit before writing anything.
+The Phase 5 items on falling back to header-only output for dependency
+units with errors, and validating every selected unit before writing
+anything, were done on 2026-10-22 (see Phase 5).
 
 #### G10 — Bound method reference on a reassigned local
 
