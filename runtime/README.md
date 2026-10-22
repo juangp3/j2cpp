@@ -2,9 +2,9 @@
 
 A C++ implementation of the Java class library for translated programs,
 used with `j2c --runtime bundled` (this directory, packaged in the CLI JAR)
-or `j2c --runtime runtime` (a checkout's copy). It covers milestones R1 to R6 in
+or `j2c --runtime runtime` (a checkout's copy). It covers milestones R1 to R7 in
 `docs/PUBLISHING_PLAN.md` (Phase 10), R6 being regular expressions, text
-input and files:
+input and files, and R7 threads (see [Threads](#threads)):
 
 - **`java.lang`:**
   - `String` (with `format` and `formatted`), `StringBuilder` and the boxed
@@ -130,6 +130,80 @@ Differences that remain:
     `usePattern`, transparent bounds and the `StringBuffer` overloads
     (absent).
 
+## Threads
+
+`synchronized` blocks and methods, `Object.wait`, `notify` and `notifyAll`,
+`java.lang.Thread` and `ThreadLocal` run on POSIX threads, and a subset of
+`java.util.concurrent` is written on top of them in Java:
+
+- **Monitors** are reentrant and live in a striped table
+  (`cpp/src/j2c_threads.cpp`), not in each object: a monitor is taken from
+  its stripe's free list when a thread first locks or waits on an object,
+  and goes back when no thread holds it, enters it or waits on it. The
+  generated code calls the `lock` and `unlock` hooks through an RAII
+  object, so every exit releases the monitor, exceptions included. Each
+  thread in `wait` has its own waiter node, so `notify` wakes exactly the
+  longest waiting thread, and an interrupt or a timeout cannot swallow a
+  notification meant for another one. `wait` and `notify` without the
+  monitor throw `IllegalMonitorStateException("current thread is not
+  owner")`, as on the JVM.
+- **`Thread`**: `start`, `run`, `join` (with timeouts), `sleep`,
+  `interrupt`, `isInterrupted` and `interrupted`, names (`main`,
+  `Thread-0`, ...), daemons (inherited from the creating thread),
+  priorities (recorded only), `holdsLock`, `yield`, `toString`, and the
+  thread, default and printing uncaught-exception handlers ("Exception in
+  thread "Thread-0" ..."). `sleep` and `join` wait on monitors, so an
+  interrupt ends them, and `Object.wait`, with `InterruptedException`; it
+  does not end blocking I/O. When `main` returns or throws, the program
+  waits for the threads that are not daemons, as the JVM does, then ends
+  even if daemon threads still run. `System.exit` ends the process at once
+  from any thread.
+- **`java.util.concurrent`**: `AtomicInteger`, `AtomicLong`,
+  `AtomicBoolean` and `AtomicReference` (volatile fields, which J2C makes
+  `std::atomic`, and natives for the read-modify-write operations);
+  `ExecutorService` through `Executors.newFixedThreadPool` and
+  `newSingleThreadExecutor`, with `submit`, `execute`, `invokeAll`,
+  `invokeAny`, `shutdown`, `shutdownNow` and `awaitTermination`, threads
+  named `pool-1-thread-1` and replaced when a task of `execute` throws, as
+  in the JDK; `Future` and `FutureTask`, with `ExecutionException`,
+  `CancellationException` and `TimeoutException`; `CountDownLatch`;
+  `ReentrantLock` with `Condition`; `TimeUnit`; and `ConcurrentHashMap`.
+- **Synchronized views**: `Collections.synchronizedList`,
+  `synchronizedSet`, `synchronizedMap` and `synchronizedCollection`.
+- **Shared state is thread-safe**: `PrintStream` (so `System.out`) and
+  `BufferedOutputStream` hold their monitors as the JDK's do, so lines that
+  threads print do not mix; `printStackTrace` holds the stream for the
+  whole trace; string interning (every string literal) and the `class_`
+  cache take locks; `Math.random` is synchronized; and static initializers
+  run once, the other threads waiting for the first (the generated
+  `clinit` keeps its recursion flag per thread).
+
+`ConcurrentHashMap` guards its table with one lock instead of per-bin
+locks, so threads do not update it in parallel; the compute methods run
+their functions under the lock, which makes them atomic as in the JDK. Its
+table grows as the JDK's does (initial sizes, the threshold, the order in
+which a resize splits a bin), so a printed map lists entries in the JVM's
+order. Its iterators walk a snapshot taken when they are created.
+
+Limits, each failing loudly (absent, so a program using them does not
+compile, unless noted):
+- Thread groups, `getState`, `getStackTrace` of other threads, `stop`,
+  `suspend` and `resume`; uncaught-exception handlers for the main thread
+  (an exception `main` throws always prints); virtual threads.
+- `Executors.newCachedThreadPool`, the scheduled and work-stealing pools,
+  `ThreadPoolExecutor`, `CompletableFuture`, `Semaphore`, `CyclicBarrier`,
+  the blocking queues, `ReadWriteLock`, `LongAdder`, the atomic arrays and
+  field updaters, `Condition.awaitUntil` (no `java.util.Date`), and
+  `ConcurrentHashMap`'s parallel bulk operations, `keys()` and
+  `elements()`.
+- `ReentrantLock` ignores fairness, and has no methods that inspect queued
+  threads. `invokeAny` waits for its tasks in order and returns the first
+  successful result, which the specification allows.
+- Every atomic access is sequentially consistent, also the plain, opaque,
+  acquire and release ones.
+- POSIX threads only. A `native synchronized` method does not lock: its
+  hand-written body must.
+
 ## Text input and files
 
 Streams buffer as the JDK's do, so a program sees the same output and the
@@ -188,7 +262,8 @@ runtime/
   cpp/native/    C++ for `native` methods; each file replaces the stub J2C
                  generates at the same path (native/java/lang/Object-native.cpp)
   cpp/src/       C++ hooks generated code calls: _j string literals, class_,
-                 unimplemented_, init_jvm and make_args
+                 unimplemented_, init_jvm, make_args, and lock and unlock
+                 (synchronized), with the monitors and thread registry
 ```
 
 With `--runtime`, J2C reads `java.*` from `runtime/java` instead of the
@@ -243,10 +318,17 @@ The program's main file (`Main.cpp.tmpl`) replaces every global
 - `J2C_GC_STRESS=n` (a macro, in `CFLAGS`) collects every `n` allocations,
   for tests.
 
-Limits: the program must be single-threaded (threads are not registered
-with the collector), it needs GNU ld for `--wrap`, only `make mains`
-programs get the collector (not `make test`), and run `make clean` when
-switching `J2C_GC`. Primitive arrays are scanned too, so an `int` that
+Threads are registered with the collector: `Main.cpp` defines
+`GC_THREADS` before including `gc.h`, and `Thread.start` calls
+`pthread_create`, which `gc.h` turns into `GC_pthread_create`, so the new
+thread's stack is scanned. (`std::thread` would not do: its state object
+comes from the collector's heap and is reachable from nowhere until the new
+thread registers.) Thread objects stay reachable from a registry while
+they run, and monitors from the static stripe table.
+
+Limits: it needs GNU ld for `--wrap`, only `make mains` programs get the
+collector (not `make test`), and run `make clean` when switching
+`J2C_GC`. Primitive arrays are scanned too, so an `int` that
 happens to look like an address can keep an object alive (the collector is
 conservative). AddressSanitizer cannot be combined with it.
 

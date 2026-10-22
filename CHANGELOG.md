@@ -59,6 +59,15 @@ C++20-targeted output.
     expressions), `java.nio.file.Files` and `Path`, and the UTF-8,
     ISO-8859-1 and US-ASCII charsets, with the JVM's buffering, malformed
     input handling and exception messages.
+  - threads: `Thread` (start, join, sleep, interrupt, names, daemons, the
+    uncaught-exception handlers and printout), `ThreadLocal`,
+    `Object.wait`, `notify` and `notifyAll`, and `java.util.concurrent`'s
+    atomics, `Executors.newFixedThreadPool` with `Future`,
+    `CountDownLatch`, `ReentrantLock` with `Condition`, `TimeUnit` and
+    `ConcurrentHashMap`, plus `Collections.synchronizedList` and
+    `synchronizedMap`. Program exit waits for the non-daemon threads.
+    `System.out` and the other shared pieces (string interning, class
+    initialization, `Math.random`) are thread-safe.
 
   `HashMap` and `HashSet` iterate in the JVM's order, so printed maps match.
 - `--runtime bundled` uses the runtime packaged in the CLI JAR, so no
@@ -86,7 +95,7 @@ C++20-targeted output.
 - `make J2C_GC=boehm` links a program with the Boehm garbage collector,
   which then serves every allocation (Java objects and the runtime's C++
   containers), so memory is reclaimed. Exceptions in flight stay reachable
-  while `finally` blocks run. Programs must be single-threaded, and
+  while `finally` blocks run. Threads are registered with the collector;
   `make test` binaries are not covered.
 - CI translates each program in `test/runtime`, builds it under
   UndefinedBehaviorSanitizer, and compares its output and exit status with
@@ -95,6 +104,11 @@ C++20-targeted output.
   under 100 MB of resident memory with the collector. A program's
   `input.txt` is its standard input, and each run starts in an empty
   working directory, so programs can write files.
+- `synchronized` methods now hold the monitor of `this`, or of the class
+  when static; before, the modifier was dropped silently. A `synchronized`
+  block on `null` throws `NullPointerException`, and static initializers run
+  once when several threads reach a class at the same time. Generated
+  Makefiles build with `-pthread`.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.

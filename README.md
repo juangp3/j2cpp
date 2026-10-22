@@ -426,8 +426,8 @@ programs with the Boehm garbage collector (`libgc-dev` on Debian and Ubuntu,
 found with `pkg-config bdw-gc`, or set `GC_CFLAGS` and `GC_LIBS`), which then
 serves every allocation, so memory is reclaimed as in Java. Run `make clean`
 when switching it on or off. It needs GNU ld (`--wrap`), covers `make mains`
-but not `make test`, and the program must be single-threaded; finalizers
-never run.
+but not `make test`, and finalizers never run. Threads that the runtime's
+`Thread.start` creates are registered with the collector.
 
 The following syntax is detected and stops translation with a `file:line`
 diagnostic instead of producing incorrect C++:

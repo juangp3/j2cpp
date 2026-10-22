@@ -592,8 +592,10 @@ The gaps below remain. They fall into three groups:
   collector, which the non-GC run requires to exceed the bound). Without
   the `__cxa_throw` wrapper, the program prints corrupt exception messages
   at `-O2`.
-- **Limits:** single-threaded programs only; GNU ld; `make mains` but not
-  `make test`; primitive arrays are scanned conservatively; no ASan.
+- **Limits:** GNU ld; `make mains` but not `make test`; primitive arrays
+  are scanned conservatively; no ASan. Threads (R7, 2026-10-21) are
+  registered with the collector: `Thread.start` calls `pthread_create`,
+  which `gc.h` with `GC_THREADS` turns into `GC_pthread_create`.
 
 #### G9 — Smaller semantic differences (documentation only)
 
@@ -878,6 +880,29 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   output); tested by `test-cli-runtime.js`, which translates with copies of
   the runtime before and after `j2c-desugar` in the temporary folder.
 
+#### G63–G64 — Found while writing the runtime (threads, R7)
+
+- **G63, synchronized methods did not lock** (fixed 2026-10-21): the
+  `synchronized` modifier was dropped silently, so a synchronized method
+  ran unlocked, and `synchronized (null)` did not throw. A synchronized
+  method now opens its body with the RAII helper of synchronized blocks
+  (`synchronized synchronized_method_(this)`, or `(class_())` when static),
+  released on every exit, exceptions included; a block's expression goes
+  through `npc`. The `lock` and `unlock` hooks come from the runtime
+  (`runtime/cpp/src/j2c_threads.cpp`), or from the user's runtime without
+  `--runtime`. Tested by `test/runtime/threads` (counters, reentrancy,
+  release on exception, `synchronized (null)`), `Java17Features` (built in
+  CI) and `test-cli.js`. A `native synchronized` method does not lock; its
+  hand-written body must.
+- **G64, static initializers were not thread-safe** (fixed 2026-10-21):
+  `clinit()` guarded recursion with a shared `static bool in_cl_init`, so a
+  second thread arriving while the first ran the initializer skipped it and
+  saw uninitialized static fields. The flag is now `thread_local`: the
+  initializing thread still sees its class as initialized when it recurses,
+  as in Java, and other threads block on the guard of the function-local
+  static until the initializer finishes. Tested by `Java17Features` and
+  `test-cli.js`.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
@@ -1142,6 +1167,44 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
      `streams-io`; `runtime-programs.js` feeds `input.txt` to standard input
      and runs each side in a new working directory, and runs WSL's `java`
      when the C++ program runs in WSL. Found G61 (Phase 9), now fixed.
+7. **R7:** threads and `synchronized`.
+   **Done (2026-10-21):**
+   - Monitors: a reentrant monitor per object in a striped table
+     (`runtime/cpp/src/j2c_threads.cpp`), so `Object` does not grow; a
+     stripe's monitor is taken from a free list when an object is first
+     locked or waited on and returned when it is idle. `synchronized`
+     blocks and methods (G63) lock through the `lock`/`unlock` hooks;
+     `Object.wait`, `notify` and `notifyAll` keep a waiter node per thread,
+     so a notification goes to exactly one waiter and is not lost to a
+     timeout or interrupt, and throw `IllegalMonitorStateException` with
+     the JVM's message.
+   - `java.lang.Thread` on POSIX threads: `Runnable` and subclass forms,
+     `start`, `join`, `sleep`, `interrupt` (it ends `wait`, `sleep` and
+     `join`; not blocking I/O), names (`Thread-0`, `main`), daemons,
+     priorities (recorded), `holdsLock`, the uncaught-exception handlers
+     and the JVM's "Exception in thread ..." printout; `ThreadLocal`.
+     Program exit waits for the non-daemon threads, then abandons daemon
+     ones; `System.exit` ends the process at once.
+   - `java.util.concurrent`: the atomics (`std::atomic` natives),
+     `ExecutorService` through `Executors.newFixedThreadPool` and
+     `newSingleThreadExecutor` (JDK thread names, dead workers replaced),
+     `Future`/`FutureTask`, `invokeAll`/`invokeAny`, `CountDownLatch`,
+     `ReentrantLock` with `Condition`, `TimeUnit`, and `ConcurrentHashMap`
+     under one lock but with the JDK's table growth and resize order, so a
+     printed map matches; `Collections.synchronizedList`, `Set`, `Map` and
+     `Collection`.
+   - Thread safety of shared state: `PrintStream` and
+     `BufferedOutputStream` hold their monitors as the JDK's do (lines from
+     threads do not mix), `printStackTrace` holds the stream, string
+     interning and the `class_` cache take locks, `Math.random` is
+     synchronized, and static initializers run once (G64).
+   - With `J2C_GC=boehm`, `Main.cpp` defines `GC_THREADS` and threads start
+     through `GC_pthread_create`, so their stacks are scanned; the Makefile
+     builds with `-pthread`.
+   - Tested by `test/runtime/threads`, `threads-wait` (producers and
+     consumers, ping-pong with `notify`, interrupts, timed waits, nested
+     monitors), `threads-uncaught`, `threads-daemon` and `concurrent`, with
+     and without the collector, and locally under ThreadSanitizer.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
@@ -1253,8 +1316,8 @@ Milestones, each finished only when its differential tests pass:
    allocation-loop test must keep resident memory bounded. Done
    (2026-10-14) as R5.
 4. **Later, driven by probes and real programs:** streams, `String.format`,
-   regular expressions (done as R6), threads and `synchronized`, and file
-   I/O.
+   regular expressions (done as R6), threads and `synchronized` (done as
+   R7), and file I/O.
 
 Tests — differential testing:
 

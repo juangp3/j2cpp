@@ -96,9 +96,10 @@ jobs:
         env:
           # Replacing operator new rules out AddressSanitizer
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
-        # The allocation test and the programs that allocate most; the nightly
-        # Corpus workflow runs every program with the collector
-        run: node vscode/scripts/runtime-programs.js --gc boehm --program allocation,collections,streams,rethrow
+        # The allocation test, the programs that allocate most, and two that
+        # allocate from several threads; the nightly Corpus workflow runs
+        # every program with the collector
+        run: node vscode/scripts/runtime-programs.js --gc boehm --program allocation,collections,streams,rethrow,concurrent,threads-wait
       - name: Probe translation gaps
         if: matrix.java-version == '17'
         working-directory: vscode
