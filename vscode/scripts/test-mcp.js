@@ -176,9 +176,15 @@ function checkRunTool() {
 		assert.deepStrictEqual(recorded.args, ["one", "two words"]);
 		assert.strictEqual(recorded.stdin, "typed\n");
 		assert.strictEqual(result.cpp.workingDirectory, path.join(root, "ran", "run", "cpp"));
-		assert.strictEqual(result.jvm.status, "ran");
-		assert.strictEqual(result.jvm.stdout, "hi from translated Java\none\ntwo words\n");
-		assert.strictEqual(result.comparison.status, "equal");
+		// The JVM run compiles with the running JDK's javac, which needs 17
+		const jvm = sessions.javaMajorVersion() >= 17;
+		if (jvm) {
+			assert.strictEqual(result.jvm.status, "ran");
+			assert.strictEqual(result.jvm.stdout, "hi from translated Java\none\ntwo words\n");
+			assert.strictEqual(result.comparison.status, "equal");
+		} else {
+			assert.strictEqual(result.jvm.status, "unavailable", JSON.stringify(result.jvm));
+		}
 		// The bundled runtime by default; the translation is offered as resources
 		assert(fs.existsSync(path.join(root, "ran", "runtime", "j2c_runtime.cpp")));
 		for (const [id, text] of [[2, "compare must be a boolean"], [3, "timeout must be an integer"],
@@ -198,6 +204,9 @@ function checkRunTool() {
 		assert.deepStrictEqual(fs.readdirSync(outside), outsideBefore);
 
 		// A difference is data, not a tool failure
+		if (!jvm) {
+			return;
+		}
 		const differs = session([call(1, "j2c_run", base)], { env: { ...env, J2C_FAKE_PROGRAM_STDOUT: file("differs.txt") } })
 			.get(1).result;
 		assert.strictEqual(differs.isError, false);

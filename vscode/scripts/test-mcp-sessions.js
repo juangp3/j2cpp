@@ -573,5 +573,6 @@ module.exports = {
 	checkRunCancellation,
 	checkIncremental,
 	checkOldProgress,
-	checkProgressAndCancellation
+	checkProgressAndCancellation,
+	javaMajorVersion
 };
