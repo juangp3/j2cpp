@@ -21,10 +21,9 @@
 namespace {
 
 // Thread objects are kept reachable by the registry (j2c_thread_started),
-// or, for the main thread, by mainThread: the collector may not scan
+// or, for the main thread, by j2c_main_thread: the collector may not scan
 // thread-local storage
 thread_local java::lang::Thread* current = nullptr;
-java::lang::Thread* mainThread = nullptr;
 
 extern "C" void* threadMain(void* argument)
 {
@@ -39,13 +38,19 @@ extern "C" void* threadMain(void* argument)
 
 }
 
+// The main thread's Thread, in static data where the collector looks. External
+// and volatile, so the optimizer keeps the store that nothing reads (without
+// it, -O2 dropped the store and the collector freed the main thread's Thread,
+// whose interrupt flag wait() then read as garbage).
+java::lang::Thread* volatile j2c_main_thread = nullptr;
+
 java::lang::Thread* java::lang::Thread::currentThread()
 {
     clinit();
     if (current == nullptr) {
         // The main thread, the first time it asks
         current = j2cMainThread();
-        mainThread = current;
+        j2c_main_thread = current;
         j2c_interrupt_flag = &current->interrupted_;
     }
     return current;
