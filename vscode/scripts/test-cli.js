@@ -1281,6 +1281,8 @@ try {
 		require("./test-cli-test").checkTest(runCli, tempDirectory);
 		// j2c run
 		require("./test-cli-run").checkRun(runCli, tempDirectory);
+		// gMock classes from interfaces (--mocks)
+		require("./test-cli-mocks").checkMocks(runCli, tempDirectory);
 	} else {
 		console.log("Java 17 translation checks skipped (requires Java 17+)");
 	}

@@ -48,8 +48,9 @@ final class J2cService {
 	 * added, changed or removed. 2 added problem fixes, the fix command, and
 	 * the project setup fields (projects, warnings, buildTools); 3 the report
 	 * command; 4 the build command (Builder.json) and lineDirectives in
-	 * translate results; 5 the test command (TestRunner.json) and the run
-	 * command (ProgramRunner.json).
+	 * translate results; 5 the test command (TestRunner.json), the run
+	 * command (ProgramRunner.json) and, before 5 was released, mockFiles in
+	 * translate results.
 	 */
 	static final int SCHEMA_VERSION = 5;
 
@@ -61,6 +62,8 @@ final class J2cService {
 		boolean force;
 		/** Check and wrap JUnit tests for GoogleTest */
 		boolean tests;
+		/** Generate gMock classes from the interfaces */
+		boolean mocks;
 		/** A J2C runtime directory replacing the running JDK's library */
 		File runtime;
 		String name;
@@ -178,6 +181,7 @@ final class J2cService {
 						new Path(new File(".").getAbsolutePath()),
 						request.sealedTypes);
 				checker.setTests(request.tests);
+				checker.setMocks(request.mocks);
 				return checker.check(progress.monitor(), listener, units);
 			}
 		};
@@ -191,7 +195,8 @@ final class J2cService {
 			}
 			problems = cache.check(prepared.sourcePaths, prepared.classPaths,
 					request.runtime == null, request.sealedTypes + " tests="
-							+ request.tests + " runtime=" + request.runtime
+							+ request.tests + " mocks=" + request.mocks
+							+ " runtime=" + request.runtime
 							+ " encoding=" + request.encoding.name(), buildFiles,
 					request.encoding, prepared.units, checker, progress);
 			System.err.println("J2C: " + cache.last());
@@ -237,6 +242,7 @@ final class J2cService {
 		Transformer transformer = new Transformer(prepared.project, name,
 				new Path(output.getPath()), request.sealedTypes);
 		transformer.setTests(request.tests);
+		transformer.setMocks(request.mocks);
 		transformer.setLineDirectives(request.lineDirectives);
 		if (request.runtime != null) {
 			transformer.setRuntimeCpp(new File(request.runtime, "cpp"));
@@ -649,6 +655,13 @@ final class J2cService {
 			}
 		}
 		json.put("testFiles", tests);
+		List<String> mocks = new ArrayList<String>();
+		for (String file : result.generatedFiles) {
+			if (file.startsWith("mock/") && file.endsWith(".hpp")) {
+				mocks.add(file);
+			}
+		}
+		json.put("mockFiles", mocks);
 		json.put("lineDirectives", result.lineDirectives);
 		json.put("problems", Collections.emptyList());
 		putProjects(json, result.projects);
@@ -830,7 +843,9 @@ final class J2cService {
 				"A run command (j2c run, the j2c_run tool) that translates a "
 						+ "program against the J2C runtime, builds and runs it, runs "
 						+ "the same main class on the JVM, and compares their output "
-						+ "and exit codes"));
+						+ "and exit codes",
+				"gMock classes generated from Java interfaces (--mocks), for "
+						+ "hand-written C++ tests of the translated code"));
 		json.put("limitations", Arrays.asList(
 				"Generated programs need a C++ implementation of the JDK classes they use; "
 						+ "JDK classes are generated as stubs that call unimplemented_()",

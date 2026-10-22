@@ -63,9 +63,9 @@ jobs:
           make -C "$out"
           g++ -std=c++20 -fwrapv $CFLAGS -I"$out/src" -I"$out/ext/src" test/cpp/Java17LambdasSmoke.cpp -L"$out/bin" -l"$(basename "$out")" -l"$(basename "$out")-ext" -o "$out/bin/smoke"
           "$out/bin/smoke"
-      - name: Install GoogleTest, the Boehm collector and GNU time
+      - name: Install GoogleTest, gMock, the Boehm collector and GNU time
         if: matrix.java-version == '17'
-        run: sudo apt-get update && sudo apt-get install -y libgtest-dev libgc-dev time
+        run: sudo apt-get update && sudo apt-get install -y libgtest-dev libgmock-dev libgc-dev time
       # Some fixture tests fail on purpose; every outcome is compared with
       # test/junit*/expected-results.json instead
       - name: Run translated JUnit tests with GoogleTest (stubbed JDK classes)
@@ -78,6 +78,13 @@ jobs:
         env:
           CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
         run: node vscode/scripts/junit-gtest.js --runtime
+      # The gMock classes of --mocks, used by the hand-written
+      # test/cpp/Java17MocksTest.cpp, and every mock of test/src compiled
+      - name: Run a hand-written gMock test against classes generated with --mocks
+        if: matrix.java-version == '17'
+        env:
+          CFLAGS: -fsanitize=undefined -fno-sanitize-recover=all
+        run: node vscode/scripts/mocks-gtest.js
       - name: Run the JUnit fixtures with real JUnit on the JVM and compare with the expected results
         if: matrix.java-version == '17'
         run: node vscode/scripts/junit-jvm.js

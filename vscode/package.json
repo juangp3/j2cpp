@@ -31,6 +31,7 @@
     "junit:gtest": "node scripts/junit-gtest.js",
     "junit:gtest:runtime": "node scripts/junit-gtest.js --runtime",
     "junit:jvm": "node scripts/junit-jvm.js",
+    "mocks:gtest": "node scripts/mocks-gtest.js",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -130,6 +131,11 @@
           "type": "boolean",
           "default": false,
           "description": "Check JUnit 4 and 5 tests and generate GoogleTest wrappers that run them (`make test` in the output folder). Requires the JUnit JARs in j2c.classPath, unless the workspace is a Maven or Gradle project (see j2c.project)."
+        },
+        "j2c.mocks": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Generate a gMock class for each translated Java interface (`mock/<package>/Mock<Interface>.hpp`), for C++ tests you write by hand (`make tests USER_TEST_SRCS=test/my_test.cpp` in the output folder). Abstract methods are mocked; default methods keep their Java bodies. Needs gMock (`libgmock-dev`) to build the tests."
         },
         "j2c.runtime": {
           "type": "string",

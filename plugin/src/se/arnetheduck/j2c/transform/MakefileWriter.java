@@ -19,6 +19,8 @@ public class MakefileWriter {
 		public final Set<String> tests = new TreeSet<String>();
 		/** A J2C runtime's hand-written C++, relative to the root */
 		public final Set<String> runtime = new TreeSet<String>();
+		/** gMock classes generated from interfaces, relative to the root */
+		public final Set<String> mocks = new TreeSet<String>();
 	}
 
 	private final IPath root;
@@ -33,7 +35,7 @@ public class MakefileWriter {
 				list(sel.natives, ""), list(ext.impls, "ext/"),
 				list(ext.stubs, "ext/"), list(ext.natives, "ext/"),
 				list(sel.mains, ""), list(sel.tests, ""),
-				list(ext.runtime, ""));
+				list(ext.runtime, ""), list(sel.mocks, ""));
 	}
 
 	private static String list(Collection<String> items, String prefix) {

@@ -758,7 +758,12 @@ public class Header {
 
 	private void printSuperCalls() {
 		if (type.isInterface()) {
-			List<IMethodBinding> dupes = dupeNames(type);
+			List<ITypeBinding> covariant = new ArrayList<ITypeBinding>();
+			List<IMethodBinding> dupes = dupeNames(type,
+					ctx.resolve(Object.class), covariant);
+			for (ITypeBinding returnType : covariant) {
+				hardDep(returnType);
+			}
 			for (IMethodBinding dupe : dupes) {
 				access = printAccess(out, Modifier.PUBLIC, access);
 
@@ -823,16 +828,15 @@ public class Header {
 	 * In C++, if a method with the same name exists in two base classes,
 	 * ambiguity ensues even if the methods are overloads (name resolution comes
 	 * before overload resolution). This method returns a list of such
-	 * duplicates.
-	 *
-	 * @param type
-	 * @return
+	 * duplicates, which interfaces redeclare as pure. The more derived return
+	 * types chosen for covariance are added to covariant, as their complete
+	 * types are needed.
 	 */
-	private List<IMethodBinding> dupeNames(ITypeBinding type) {
+	static List<IMethodBinding> dupeNames(ITypeBinding type,
+			ITypeBinding object, List<ITypeBinding> covariant) {
 		List<IMethodBinding> ret = new ArrayList<IMethodBinding>();
 
-		List<ITypeBinding> bases = TypeUtil.bases(type,
-				ctx.resolve(Object.class));
+		List<ITypeBinding> bases = TypeUtil.bases(type, object);
 		for (ITypeBinding b0 : bases) {
 			b0 = b0.getErasure(); // This will get us erased method declarations
 			for (ITypeBinding b1 : bases) {
@@ -858,7 +862,7 @@ public class Header {
 											.isSubTypeCompatible(
 													m2.getReturnType()
 															.getErasure())) {
-										hardDep(m0.getReturnType());
+										covariant.add(m0.getReturnType());
 										m2 = ret.set(i, m0);
 									}
 								}

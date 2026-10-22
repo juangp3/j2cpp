@@ -439,6 +439,9 @@ async function prepare(session, target, writesOutput) {
 	if (configuration.get("tests", false)) {
 		args.push("--tests");
 	}
+	if (configuration.get("mocks", false)) {
+		args.push("--mocks");
+	}
 	if (writesOutput && configuration.get("lineDirectives", false)) {
 		args.push("--line-directives");
 	}

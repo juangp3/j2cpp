@@ -67,6 +67,8 @@ public class Transformer {
 	private boolean junitAssertions;
 	/** Whether generated C++ carries #line directives (see LineDirectives) */
 	private boolean lineDirectives;
+	/** Whether interfaces get gMock classes (see MockWriter) */
+	private boolean mocks;
 
 	private final Stats direct = new Stats();
 	private final Stats deps = new Stats();
@@ -164,6 +166,11 @@ public class Transformer {
 			this.file = file;
 			this.line = line;
 		}
+	}
+
+	/** Generate gMock classes for the interfaces in the selection */
+	public void setMocks(boolean mocks) {
+		this.mocks = mocks;
 	}
 
 	/** Emit #line directives mapping the generated C++ to the Java source */
@@ -553,6 +560,10 @@ public class Transformer {
 								collectTests(ast);
 							}
 							writeImpl(monitor, source, ast);
+							if (mocks && selection.contains(source)) {
+								MockWriter.write(Transformer.this, root, ast,
+										sel.mocks);
+							}
 						} finally {
 							currentAST = null;
 						}
@@ -729,6 +740,10 @@ public class Transformer {
 
 		if (tests && selection.contains(source)) {
 			problems.addAll(JUnitSupport.problems(source.file(), ast));
+		}
+
+		if (mocks && selection.contains(source)) {
+			problems.addAll(MockWriter.problems(this, source.file(), ast));
 		}
 
 		// Lambdas and method references are rewritten into anonymous classes

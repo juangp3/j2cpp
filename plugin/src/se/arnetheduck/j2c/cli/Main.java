@@ -23,7 +23,8 @@ public class Main {
 	private static final String USAGE = "Usage: j2c (--output <directory> | --check) "
 			+ "[--sourcepath <paths>] [--classpath <paths>] [--name <name>] "
 			+ "[--sealed-types <advisory|reject>] [--encoding <charset>] "
-			+ "[--format <text|json>] [--force] [--tests] [--runtime <bundled|directory>] "
+			+ "[--format <text|json>] [--force] [--tests] [--mocks] "
+			+ "[--runtime <bundled|directory>] "
 			+ "[--project <auto|none|directory>] [--no-build-tool] "
 			+ "<java-file-or-source-directory-or-project>..." + NL
 			+ "       j2c fix [--apply] [--format <text|json>] [--sourcepath <paths>] "
@@ -59,6 +60,9 @@ public class Main {
 			+ "create; its contents are moved to a backup in the temporary folder." + NL
 			+ "--tests checks JUnit tests and generates GoogleTest wrappers that run "
 			+ "them (make test)." + NL
+			+ "--mocks generates a gMock class (mock/<package>/Mock<Interface>.hpp) "
+			+ "for each interface, for C++ tests built with make tests "
+			+ "USER_TEST_SRCS=<files in test/>." + NL
 			+ "fix shows the mechanical fixes of problems as a unified diff; "
 			+ "--apply writes them into the Java files." + NL
 			+ "report prints a migration readiness report: how much translates, "
@@ -232,6 +236,8 @@ public class Main {
 				request.force = true;
 			} else if ("--tests".equals(arg)) {
 				request.tests = true;
+			} else if ("--mocks".equals(arg)) {
+				request.mocks = true;
 			} else if ("--runtime".equals(arg)) {
 				request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 			} else if ("--project".equals(arg)) {
@@ -532,6 +538,8 @@ public class Main {
 			request.force = true;
 		} else if (build && "--tests".equals(arg)) {
 			request.tests = true;
+		} else if ("--mocks".equals(arg)) {
+			request.mocks = true;
 		} else if ("--runtime".equals(arg)) {
 			request.runtime = J2cService.runtime(value(args, ++i, arg), null);
 		} else if ("--project".equals(arg)) {

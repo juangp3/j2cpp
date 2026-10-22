@@ -506,6 +506,8 @@ final class McpServer {
 		@SuppressWarnings("unchecked")
 		Map<String, Object> fixProperties = (Map<String, Object>) fixSchema
 				.get("properties");
+		// Mock problems have no mechanical fixes
+		fixProperties.remove("mocks");
 		fixProperties.put("apply", property("boolean",
 				"Write the fixes into the Java files (default false: only preview "
 						+ "them as a unified diff)"));
@@ -525,6 +527,8 @@ final class McpServer {
 						Boolean.TRUE.equals(arguments.get("apply")), progress));
 			}
 		});
+		Map<String, Object> reportSchema = inputSchema(false);
+		((Map<?, ?>) reportSchema.get("properties")).remove("mocks");
 		register(new Tool(tool("j2c_report", "Migration readiness report",
 				"Reports how much of the Java code translates (files, types and "
 						+ "methods with no problem from j2c_check), the blockers by "
@@ -534,7 +538,7 @@ final class McpServer {
 						+ "provides, and next steps. Writes nothing. Returns JSON and "
 						+ "the same report as Markdown.",
 				// Like j2c_check, it may run the project's build tool
-				inputSchema(false), true, false, true)) {
+				reportSchema, true, false, true)) {
 			@Override
 			Map<String, Object> call(Map<?, ?> arguments, Progress progress)
 					throws Exception {
@@ -752,6 +756,7 @@ final class McpServer {
 			request.sealedTypes = Main.sealedTypes(sealedTypes);
 		}
 		request.tests = Boolean.TRUE.equals(arguments.get("tests"));
+		request.mocks = Boolean.TRUE.equals(arguments.get("mocks"));
 		String runtime = optionalString(arguments, "runtime");
 		if (runtime != null) {
 			request.runtime = J2cService.runtime(runtime, root);
@@ -965,6 +970,10 @@ final class McpServer {
 		properties.put("tests", property("boolean", translate
 				? "Generate GoogleTest wrappers that run the JUnit tests (make test)"
 				: "Also report JUnit test features that translated tests cannot run"));
+		properties.put("mocks", property("boolean", translate
+				? "Generate a gMock class (mock/<package>/Mock<Interface>.hpp) for "
+						+ "each interface, for hand-written C++ tests (mockFiles)"
+				: "Also report interface methods that gMock classes cannot mock"));
 		properties.put("runtime", property("string",
 				"bundled translates against the J2C runtime packaged in J2C, so "
 						+ "programs run without writing C++ (java.* comes from the "

@@ -30,6 +30,7 @@ public final class ProblemCatalog {
 	public static final String TEST_PRIVATE_METHOD = "J2C-TEST-PRIVATE-METHOD";
 	public static final String TEST_PARAMETERS = "J2C-TEST-PARAMETERS";
 	public static final String TEST_UNSUPPORTED_ASSERTION = "J2C-TEST-UNSUPPORTED-ASSERTION";
+	public static final String MOCK_UNSUPPORTED = "J2C-MOCK-UNSUPPORTED";
 	/** A warning: translation goes on without the dependency class path */
 	public static final String PROJECT_CLASSPATH_UNRESOLVED = "J2C-PROJECT-CLASSPATH-UNRESOLVED";
 	/** A warning: a dependency unit with Java errors got only a header */
@@ -159,6 +160,18 @@ public final class ProblemCatalog {
 				"JUnit can inject parameters such as TestInfo through extensions; the "
 						+ "wrappers call test and lifecycle methods without arguments.",
 				"Remove the parameters, and obtain what they provided in another way.");
+		add(MOCK_UNSUPPORTED,
+				"Interface method that a gMock class cannot mock",
+				"With --mocks, every top-level and member interface gets a gMock class "
+						+ "that mocks its abstract methods with MOCK_METHOD and their erased "
+						+ "C++ types. gMock's MOCK_METHOD takes at most 15 parameters, and an "
+						+ "override needs one C++ return type that every inherited declaration "
+						+ "accepts, which erasure can lose (a generic method's return type "
+						+ "erasing to a type unrelated to another declaration's).",
+				"Give the method fewer parameters (for example a parameter object), or "
+						+ "declare the method in the interface with a return type that is a "
+						+ "subtype of every inherited one. Otherwise translate without --mocks "
+						+ "and write the fake class in C++ or Java.");
 		add(PROJECT_CLASSPATH_UNRESOLVED,
 				"Dependency class path not resolved (warning)",
 				"J2C detected a Maven or Gradle build and uses its source roots, but could "

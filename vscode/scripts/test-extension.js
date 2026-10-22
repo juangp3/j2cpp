@@ -690,6 +690,21 @@ async function testTestsSettingPassesFlag() {
 	});
 	await harness.commands.get("j2c.check")({ fsPath: input });
 	assert(harness.spawned[0][1].includes("--tests"), "j2c.tests checks JUnit tests");
+	assert(!harness.spawned[0][1].includes("--mocks"), "No mocks unless j2c.mocks is set");
+}
+
+// j2c.mocks generates gMock classes, and checks what they cannot mock
+async function testMocksSettingPassesFlag() {
+	const root = path.join(tempDirectory, "mocks workspace");
+	const input = makeFile(path.join(root, "src", "Repository.java"));
+	const bundledJar = makeFile(path.join(tempDirectory, "mocks extension", "lib", "j2c-cli.jar"));
+	const harness = createHarness({
+		config: { mocks: true },
+		extensionPath: path.dirname(path.dirname(bundledJar)),
+		workspaceFolders: [createWorkspace(root)]
+	});
+	await harness.commands.get("j2c.check")({ fsPath: input });
+	assert(harness.spawned[0][1].includes("--mocks"), "j2c.mocks checks the interfaces");
 }
 
 // j2c.runtime: bundled by default, none for the JDK with stubs (no
@@ -983,6 +998,7 @@ async function main() {
 		await testOutputDirectoryGuard();
 		await testMcpServerDefinitions();
 		await testTestsSettingPassesFlag();
+		await testMocksSettingPassesFlag();
 		await testRuntimeSetting();
 		await testProjectSetting();
 		await testNoTargetIsReported();

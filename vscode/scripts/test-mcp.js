@@ -235,8 +235,17 @@ try {
 		"}",
 		""
 	].join("\n"));
+	fs.writeFileSync(path.join(sourceDirectory, "Greeter.java"), [
+		"package demo;",
+		"public interface Greeter {",
+		"\tString greet(String name, int times);",
+		"}",
+		""
+	].join("\n"));
 	const hi = path.join("src", "demo", "Hi.java");
 	const broken = path.join("src", "demo", "Broken.java");
+	const greeter = path.join("src", "demo", "Greeter.java");
+	fs.mkdirSync(path.join(root, "mocked"));
 
 	const responses = session([
 		{
@@ -256,6 +265,8 @@ try {
 		call(11, "j2c_check", { paths: "not an array" }),
 		{ jsonrpc: "2.0", id: 12, method: "unknown/method" },
 		{ jsonrpc: "2.0", id: 13, method: "ping" },
+		call(15, "j2c_translate", { paths: [greeter], output: "mocked", mocks: true }),
+		call(16, "j2c_check", { paths: [greeter], mocks: true }),
 		"{ not json",
 		{
 			jsonrpc: "2.0", id: 14, method: "initialize",
@@ -383,8 +394,22 @@ try {
 	assert.strictEqual(responses.get(12).error.code, -32601);
 	assert.deepStrictEqual(responses.get(13).result, {});
 	assert.strictEqual(responses.get(null).error.code, -32700);
+	// mocks: a gMock class per interface, listed in mockFiles
+	const mocked = responses.get(15).result.structuredContent;
+	assert.strictEqual(mocked.status, "ok", JSON.stringify(mocked));
+	assert.deepStrictEqual(mocked.mockFiles, ["mock/demo/MockGreeter.hpp"]);
+	assert(fs.readFileSync(path.join(root, "mocked", "mock", "demo", "MockGreeter.hpp"), "utf8")
+		.includes("MOCK_METHOD(::java::lang::String*, greet, (::java::lang::String*, int32_t), (override));"));
+	assert.deepStrictEqual(translated.structuredContent.mockFiles, [], "No mocks without mocks: true");
+	assert.strictEqual(responses.get(16).result.structuredContent.status, "ok");
+	for (const name of ["j2c_check", "j2c_translate", "j2c_build", "j2c_test"]) {
+		assert.strictEqual(byName.get(name).inputSchema.properties.mocks.type, "boolean", name);
+	}
+	for (const name of ["j2c_fix", "j2c_report"]) {
+		assert.strictEqual(byName.get(name).inputSchema.properties.mocks, undefined, name);
+	}
 	// Every request with an id got exactly one response; the notification none
-	assert.strictEqual(responses.size, 15);
+	assert.strictEqual(responses.size, 17);
 
 	// paths: ["."] in a Maven project: its source roots and class path
 	const mavenRoot = projects.copyFixtures(path.join(tempDirectory, "projects"))["maven-simple"];
