@@ -1204,7 +1204,11 @@ Each needs a fixture. Counts are from compiling the P1 closure of java.base.
    - Tested by `test/runtime/threads`, `threads-wait` (producers and
      consumers, ping-pong with `notify`, interrupts, timed waits, nested
      monitors), `threads-uncaught`, `threads-daemon` and `concurrent`, with
-     and without the collector.
+     and without the collector, and without data races under ThreadSanitizer
+     (`CFLAGS=-fsanitize=thread`; run the binaries with `setarch -R`, as
+     TSan rejects the address-space randomization of recent kernels).
+     The collector run found that `-O2` dropped the only store keeping the
+     main thread's `Thread` reachable; it is now an external volatile.
 
 ### Step 1 (option b) — Runtime integration (target: 0.6.x)
 
