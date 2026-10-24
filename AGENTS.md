@@ -27,6 +27,8 @@ Guidance for AI coding agents (and people) changing this repository. For
   translating.
 - `test/cpp/`: native smoke tests run against generated code.
 - `test/probes/`: feature probes with expected outcomes.
+- `test/agent-bench/`: agent benchmark tasks and their graders (see its
+  README); `npm run bench:selftest` checks the graders without an agent.
 - `test/projects/`: small Maven and Gradle projects for project auto-setup
   (`ProjectSetup`), checked by `vscode/scripts/test-cli-projects.js`.
 - `runtime/`: the J2C runtime (`--runtime`), Java sources translated by J2C

@@ -1,0 +1,11 @@
+{
+	"title": "A lambda in an anonymous class's field initializer that uses this (J2C-LAMBDA-ANONYMOUS-THIS, no quick fix)",
+	"tier": "B",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "counters.BenchDriver"
+}

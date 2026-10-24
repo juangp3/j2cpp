@@ -1,0 +1,11 @@
+{
+	"title": "super.m() in a lambda inside an anonymous class (J2C-LAMBDA-ANONYMOUS-THIS, no quick fix)",
+	"tier": "B",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "shapes.BenchDriver"
+}

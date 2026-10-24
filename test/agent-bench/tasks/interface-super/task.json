@@ -1,0 +1,11 @@
+{
+	"title": "Lambdas and method references that call Iface.super (J2C-LAMBDA-INTERFACE-SUPER); j2c_fix fixes them",
+	"tier": "A",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "fixdemo.BenchDriver"
+}

@@ -1,0 +1,4 @@
+[shape a]
+[shape b c]
+shape
+true

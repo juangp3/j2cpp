@@ -1,0 +1,4 @@
+5 6 7
+true
+5 2
+counter at 6, counter at 3

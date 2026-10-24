@@ -1,0 +1,5 @@
+[apple, fig, pear]
+[pear, fig, apple]
+true
+true
+true

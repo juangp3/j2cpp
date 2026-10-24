@@ -1,0 +1,11 @@
+{
+	"title": "instanceof patterns in field initializers (J2C-PATTERN-OUTSIDE-METHOD); j2c_fix fixes them",
+	"tier": "A",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "fixdemo.BenchDriver"
+}

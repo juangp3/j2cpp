@@ -1865,6 +1865,151 @@ the agent's work, ordered by value for effort:
      quoting); the JVM run uses the JDK running J2C for `javac`, so J2C on
      a JRE cannot compare.
 
+   **Agent benchmark plan (2026-10-24):**
+
+   The benchmark measures how often an agent finishes a J2C task through
+   the MCP server, and with how many turns and tokens. Its results show
+   where the tool descriptions, problem hints, quick fixes and the skill
+   fall short. The grading is deterministic; no model judges another.
+
+   - **No API key (decided 2026-10-24).** Each trial is a headless Claude
+     Code run (`claude -p`) under the developer's own login, so it uses the
+     Claude subscription's usage limits rather than a paid API account. It
+     is run by hand only, with no schedule and no CI job: CI has no login,
+     and every scheduled run would use up the limits. The Agent SDK is not
+     used, so the benchmark adds no npm dependency.
+   - **Layout:** `test/agent-bench/`, plain Node scripts like
+     `vscode/scripts`. Each task is `tasks/<id>/`:
+     - `task.json`: the prompt, the tier, the files the agent may change,
+       the success checks and their parameters, and the time limit.
+     - `workspace/`: the starting Java project.
+     - `reference/`: a correct solution, used only by the self-test.
+     - `hidden/`: drivers and expected output. The agent never sees this.
+   - **Tiers and first tasks**, about 12 at first. Each comes from an
+     existing fixture where one exists:
+     - A, quick fixes: `test/fix/src` (`J2C-LAMBDA-ANONYMOUS-THIS`,
+       `J2C-LAMBDA-INTERFACE-SUPER`, `J2C-PATTERN-OUTSIDE-METHOD`) and the
+       `test/fix/junit` timeouts. Success: `j2c_check` is clean, `javac`
+       compiles, and the hidden driver's JVM output matches the original
+       program's.
+     - B, manual rewrites: problems with no quick fix (`test/fix/unfixable`,
+       plus other `ProblemCatalog` IDs that have only a hint). Success: the
+       same checks as A.
+     - C, running the program: a small program with problems and stdin.
+       Success: `j2c_run` returns `ok` against the bundled runtime.
+     - D, tests: a JUnit project in the style of `test/report`. Success:
+       `j2c_test` passes the same tests as JUnit on the JVM, and the tests
+       are unchanged.
+     - E, assessment: `j2c-assess` on `test/report`. The agent writes its
+       counts and problem IDs to `answer.json`, and success means they equal
+       `j2c report --json`.
+     - Negative control: a task that cannot be fixed without changing what
+       the program does. Success: the files are unchanged and the answer
+       names the problem ID. This catches an agent that rewrites until the
+       checker is quiet.
+   - **Every task checks:**
+     - The protected files are unchanged (hashed): tests, and everything
+       outside the allowed files. `hidden/` is never copied to the
+       workspace.
+     - The Java still compiles. J2C has no way to suppress a problem, so
+       the only way to silence one without fixing it is to change or delete
+       code, which the driver catches.
+   - **Runner:** `run.js`, with `--task`, `--tier`, `--trials k` (default 1,
+     to save usage), `--model`, `--config`, `--jobs` (default 1) and
+     `--dry-run`. Each trial:
+     1. Copies `workspace/` outside the repository (under `$TMPDIR`), so
+        Claude Code does not find the repository's `CLAUDE.md` and
+        `AGENTS.md` in a parent folder, and makes a git commit there, so
+        the diff can be taken.
+     2. Runs `claude -p "<prompt>" --output-format stream-json --verbose`
+        in the copy, with:
+        - `--mcp-config` naming only `java -jar target/j2c-cli.jar mcp
+          --root .`, and `--strict-mcp-config`.
+        - `--tools` set to `Read`, `Edit`, `Write`, `Glob` and `Grep`, plus
+          `Bash` only in the `bash` configuration.
+        - `--allowedTools` set to those tools and `mcp__j2c__*`, with
+          `--permission-mode dontAsk`.
+        - `--setting-sources ""` and `--no-session-persistence`.
+        - A process timeout from `task.json` (the CLI has no turn limit).
+
+        Not `--bare`: it reads only `ANTHROPIC_API_KEY`, never the login.
+     3. Grades the copy.
+
+     The configurations are:
+     - `mcp`: the J2C tools and file tools.
+     - `skill`: the same, plus the plugin with `--plugin-dir
+       agents/claude/plugin`. The plugin's `.mcp.json` must not start its
+       `npx` server; `--strict-mcp-config` should prevent that, and the
+       runner checks it.
+     - `bash`: the same as `mcp`, plus `Bash`.
+
+     Before the agent starts, the runner checks the `init` message: the
+     `j2c` server is connected, no other MCP server is listed, and no
+     `CLAUDE.md` or memory was loaded. A trial that fails this check is an
+     infrastructure error and does not count as a failure. Step 2 starts
+     by confirming with one trial that `--setting-sources ""` keeps the
+     user's `~/.claude/CLAUDE.md` and auto memory out.
+   - **Metrics per trial**, from the `result` message:
+     - Outcome: `subtype`, `num_turns`, `duration_ms` and
+       `permission_denials`.
+     - Tokens per model from `modelUsage`. `total_cost_usd` is kept as the
+       API-equivalent cost, for comparing configurations; nothing is billed.
+     - Calls per tool, counted from the assistant messages' `tool_use`
+       blocks.
+     - The size of the diff, and which checks failed.
+
+     Results go to `target/agent-bench/<run>/results.json`, with each
+     transcript as JSONL beside it. The summary has, per task and
+     configuration, the pass rate over trials, the mean turns and tokens,
+     and the tokens per success. `--update` rewrites the scoreboard in
+     `docs/AGENT_BENCHMARK.md`, with the date, model and Claude Code
+     version of the run.
+   - **Self-test with no model calls:** `selftest.js` (`npm run
+     bench:selftest` in `vscode/`) runs no agent. For each task it checks
+     that the untouched workspace fails its checks and that `reference/`
+     passes them. It also checks a tampered solution: an edited test, a
+     deleted method, or a negative control that was "fixed". CI runs it on
+     every push, so graders cannot rot between runs.
+   - **Order:**
+     1. Task format, graders, the self-test and the first A and B tasks
+        (about 2 days). **Done (2026-10-24):** `test/agent-bench/` (see its
+        README):
+        - `lib/tasks.js` has the checks `protected`, `javac`, `driver`,
+          `j2c-check` and `answer`.
+        - `selftest.js` (`npm run bench:selftest`, run by CI on Java 17)
+          checks each task's untouched workspace, reference, an added
+          file, and its tampers.
+        - Seven tasks:
+          - Tier A: `anonymous-this`, `interface-super` and
+            `pattern-fields`, from `test/fix`, with the `j2c fix` result as
+            the reference.
+          - Tier B: `anonymous-field-lambda` and `anonymous-super-lambda`
+            (`J2C-LAMBDA-ANONYMOUS-THIS` with no fix), `captured-wildcard`
+            (`J2C-LAMBDA-NON-DENOTABLE-TYPE`) and
+            `intersection-type-variable`
+            (`J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE`, whose driver also
+            serializes the comparator).
+        - Each task has a tamper that `j2c --check` accepts but that
+          changes behavior, such as `AnonymousThis.this` for `self`, a
+          field initialized after the constructor sets `item`, or a
+          comparator that is no longer `Serializable`. The driver rejects
+          each one.
+        - The `test/fix/junit` timeout tasks move to tier D, which needs a
+          test runner for its checks.
+     2. The runner, metrics and summary, then a first run of a few tasks
+        (about 1–2 days).
+     3. Tasks for tiers C, D and E, and the negative controls (about 2
+        days).
+     4. The scoreboard and the docs (`AGENTS.md`, `CHANGELOG`; about half a
+        day).
+     5. Runs by hand after changes to the tool descriptions, problem hints
+        or skill. Each failure analysis goes to Phase 9 (a translator gap)
+        or to those texts, and the task is run again to confirm the fix.
+   - **Open questions:**
+     - How many trials a full run can afford within the subscription's
+       limits. The first run in step 2 measures the tokens per trial.
+     - Whether to compare models (`--model`), which multiplies the usage.
+
 ## Phase 13 — Unit test translation (JUnit to GoogleTest)
 
 A project's own unit tests are the best evidence that a translation is

@@ -1,0 +1,11 @@
+{
+	"title": "Lambdas that use this inside an anonymous class (J2C-LAMBDA-ANONYMOUS-THIS); j2c_fix fixes them",
+	"tier": "A",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "fixdemo.BenchDriver"
+}

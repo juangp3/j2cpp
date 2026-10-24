@@ -1,0 +1,11 @@
+{
+	"title": "Serializable intersection casts that mention a type variable (J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE)",
+	"tier": "B",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "order.BenchDriver"
+}

@@ -1,0 +1,11 @@
+{
+	"title": "A method reference whose inferred type is a captured wildcard (J2C-LAMBDA-NON-DENOTABLE-TYPE)",
+	"tier": "B",
+	"checks": [
+		"protected",
+		"javac",
+		"driver",
+		"j2c-check"
+	],
+	"driver": "sizes.BenchDriver"
+}

@@ -25,6 +25,7 @@
     "test:mcp": "node scripts/test-mcp.js",
     "test:distribution": "node scripts/check-distribution.js",
     "probe": "node scripts/probe.js",
+    "bench:selftest": "node ../test/agent-bench/selftest.js",
     "corpus": "node scripts/corpus.js",
     "runtime": "node scripts/runtime-programs.js",
     "runtime:gc": "node scripts/runtime-programs.js --gc boehm",
