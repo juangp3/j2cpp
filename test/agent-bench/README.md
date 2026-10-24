@@ -2,9 +2,64 @@
 
 These tasks measure how often an agent completes J2C work through the MCP
 server. The plan is in Phase 12 item 9 of `docs/PUBLISHING_PLAN.md`.
-Grading is deterministic, and no model judges another. The runner
-(`run.js`, step 2 of the plan) will run each task as a headless Claude Code
-session (`claude -p`) under the developer's own login, so no API key is used.
+Grading is deterministic, and no model judges another. Each trial is a
+headless Claude Code session (`claude -p`) under the developer's own login.
+It uses the subscription's usage limits, and no API key.
+
+## Running
+
+```sh
+cd vscode && npm run bench -- --task anonymous-this    # or: node test/agent-bench/run.js [options]
+```
+
+The options:
+
+- `--task <ids>` and `--tier <tiers>` select tasks (all by default).
+- `--trials <k>`: trials per task and configuration (default 1).
+- `--model <model>`: the model (default `claude-opus-5-5`).
+- `--config <mcp,skill,bash>`: the configurations (default `mcp`):
+  - `mcp`: the J2C tools and the file tools.
+  - `skill`: the same, plus the plugin's skill (`--plugin-dir
+    agents/claude/plugin`).
+  - `bash`: the same as `mcp`, plus `Bash`.
+- `--jobs <n>`: trials run at once (default 1).
+- `--keep`: keep each trial's workspace.
+- `--claude <program>`: the Claude Code program (default `claude`).
+- `--dry-run`: print the commands only.
+
+Run it in Linux or WSL, with the CLI JAR built (`mvn -q package
+-DskipTests`).
+
+Each trial runs in a copy of the workspace under the temporary folder, so no
+`CLAUDE.md` or `AGENTS.md` from the repository applies. The session gets:
+
+- `--restricted`: file tools confined to that folder, and settings files
+  ignored.
+- `--strict-mcp-config` with only `j2c mcp --root <workspace>`.
+- `--tools` and `--allowedTools` set to the file tools and `mcp__j2c`,
+  with `--permission-mode dontAsk`.
+- `--no-session-persistence`.
+- `--disable-slash-commands`, except in `skill`.
+
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and the calling session's
+`CLAUDE*` variables are removed from the environment. A session whose `init`
+message reports an API key source stops the run. A session that has a
+server other than a connected `j2c`, or no J2C tools, is an infrastructure
+error and is not graded.
+
+Results go to `target/agent-bench/<date>/`:
+
+- `results.json`, with the summary and every trial.
+- Per trial, `transcript.jsonl` (the stream-json output), `changes.patch`
+  and `trial.json`.
+
+A trial records:
+
+- the checks;
+- its turns, tokens per model, and calls per tool;
+- its permission denials and the lines it changed;
+- `apiEquivalentUsd`, what the session would cost on the API. Nothing is
+  billed.
 
 ## Tasks
 

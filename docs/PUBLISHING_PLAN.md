@@ -1997,7 +1997,31 @@ the agent's work, ordered by value for effort:
         - The `test/fix/junit` timeout tasks move to tier D, which needs a
           test runner for its checks.
      2. The runner, metrics and summary, then a first run of a few tasks
-        (about 1–2 days).
+        (about 1–2 days). **Done (2026-10-24):** `run.js` (`npm run bench`;
+        see the README).
+        - Confirmed with probe sessions (Claude Code 2.1.310):
+          - `--restricted` refuses a `Read` of a repository file from the
+            workspace, and records it as a permission denial.
+          - With `--restricted`, `--strict-mcp-config` and `--tools`, the
+            session has only the file tools and `mcp__j2c__*`, no skills,
+            and `apiKeySource: "none"`; nothing from `CLAUDE.md` or memory
+            reaches it.
+          - In `skill`, the plugin's `.mcp.json` server is not started, and
+            `j2c:j2c-translate` is listed. Claude Code's built-in skills
+            are listed too, because slash commands stay on.
+        - First run, `claude-opus-5-5`, configuration `mcp`, one trial per
+          task: all seven passed.
+          - Each took 5–6 turns, 13–26 s and about 55,000 tokens (most of
+            them cache reads), about $0.05–0.17 API-equivalent.
+          - The tier B solutions were sound: a `SerializableComparator<T>`
+            interface for the intersection casts, and an unchecked cast to
+            `Iterable<Collection<E>>` for the captured wildcard.
+          - `skill` on `captured-wildcard` also passed, without calling the
+            skill.
+        - Finding: these tasks are too easy to tell configurations or tool
+          changes apart. Step 3 has to add harder tasks: several problems
+          across files, problems mixed with compile errors, project
+          layouts, and tiers C and D.
      3. Tasks for tiers C, D and E, and the negative controls (about 2
         days).
      4. The scoreboard and the docs (`AGENTS.md`, `CHANGELOG`; about half a
