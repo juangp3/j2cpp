@@ -24,9 +24,12 @@ class Progress {
 
 	/**
 	 * Receives each new progress value, with the total when known (else -1)
-	 * and a message. Called on the thread that does the work.
+	 * and a message. Called on the thread that does the work. Frequent
+	 * reports (items worked, compiler output) may be left out; phases and
+	 * the start of a count are not.
 	 */
-	protected void report(long progress, long total, String message) {
+	protected void report(long progress, long total, String message,
+			boolean frequent) {
 	}
 
 	/** Asks the command to stop at its next item or phase */
@@ -53,7 +56,18 @@ class Progress {
 			total = -1;
 			progress = ++count;
 		}
-		report(progress, -1, message);
+		report(progress, -1, message, false);
+	}
+
+	/** One of many steps of the current phase, such as a compiled file */
+	void step(String message) {
+		checkCancelled();
+		long progress;
+		synchronized (this) {
+			total = -1;
+			progress = ++count;
+		}
+		report(progress, -1, message, true);
 	}
 
 	/** Starts counting items, the total when known, else -1 */
@@ -66,7 +80,7 @@ class Progress {
 			total = items < 0 ? -1 : count + items;
 			newTotal = total;
 		}
-		report(progress, newTotal, message);
+		report(progress, newTotal, message, false);
 	}
 
 	/** Finishes items of the count begun last */
@@ -85,7 +99,7 @@ class Progress {
 			progress = count;
 			currentTotal = total;
 		}
-		report(progress, currentTotal, message);
+		report(progress, currentTotal, message, true);
 	}
 
 	/**

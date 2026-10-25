@@ -238,7 +238,8 @@ C++20-targeted output.
 - MCP progress and cancellation: tool calls run on a worker thread, so
   `ping` is answered while one runs (other requests run in order); a call with
   `_meta.progressToken` gets `notifications/progress` (files checked, build
-  tool running, files translated) at most every 100 ms; and
+  tool running, files translated), files at most every 100 ms and every
+  phase (such as running the program) always; and
   `notifications/cancelled` stops a call at its next file or phase, stopping
   the build tool, with no response. A cancelled translation leaves the files
   written so far and the `.j2c-output` marker.

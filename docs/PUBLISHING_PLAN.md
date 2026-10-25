@@ -1789,7 +1789,8 @@ the agent's work, ordered by value for effort:
    - `Progress` counts phases and items: the CLI passes `Progress.NONE`, the
      server one per call that sends `notifications/progress`
      (`progressToken`, increasing `progress`, `total` when known, `message`
-     from protocol version 2025-03-26 on) at most every 100 ms and never
+     from protocol version 2025-03-26 on), items at most every 100 ms and
+     phases always, and never
      after the response. Reported: looking for changed files, the build
      tool resolving the class path, files checked (with the total), and
      translated files and dependency headers (no total).

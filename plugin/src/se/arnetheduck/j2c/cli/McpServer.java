@@ -114,12 +114,13 @@ final class McpServer {
 		}
 
 		@Override
-		protected void report(long progress, long total, String message) {
+		protected void report(long progress, long total, String message,
+				boolean frequent) {
 			if (progressToken == null) {
 				return;
 			}
 			long now = System.nanoTime();
-			if (lastReport != 0
+			if (frequent && lastReport != 0
 					&& now - lastReport < TimeUnit.MILLISECONDS
 							.toNanos(PROGRESS_INTERVAL_MILLIS)) {
 				return;

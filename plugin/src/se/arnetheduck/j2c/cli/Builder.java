@@ -299,7 +299,7 @@ final class Builder {
 			}
 		}
 		for (String file : compiled) {
-			progress.phase("Compiled " + file);
+			progress.step("Compiled " + file);
 		}
 		return seen;
 	}

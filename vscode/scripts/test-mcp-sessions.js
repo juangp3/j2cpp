@@ -424,7 +424,7 @@ async function checkBuildCancellation(cliJar, workspace, env) {
 		await client.until(() => client.progress("make").some((message) =>
 			/^Compiled src\/demo\/[AB]\.cpp$/.test(message.params.message)), "a compiled file");
 		const messages = client.progress("make").map((message) => message.params.message);
-		// Progress is sent at most every 100 ms, so B may replace A
+		// Compiled files are sent at most every 100 ms, so B may replace A
 		assert(/^Running .* in /.test(messages[0]), JSON.stringify(messages));
 		const pid = Number(fs.readFileSync(pidFile, "utf8"));
 		const cancelledAt = Date.now();
@@ -524,8 +524,10 @@ async function checkRunCancellation(cliJar, workspace, env) {
 	try {
 		client.call(1, "j2c_run", { paths: ["hello"], output: "out" }, { progressToken: "run" });
 		await client.until(() => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8") !== "", "the program's pid");
-		// Progress is sent at most every 100 ms, so the stub build's last
-		// phases may be left out
+		// Phases are never left out (only compiled files are, when less than
+		// 100 ms apart), though the notification may arrive after the pid
+		await client.until(() => client.progress("run").some((message) => message.params.message === "Running Hello"),
+			"the Running Hello phase");
 		const messages = client.progress("run").map((message) => message.params.message);
 		assert(messages.some((message) => /^Running .* in /.test(message)), JSON.stringify(messages));
 		const progress = client.progress("run").map((message) => message.params.progress);
@@ -538,7 +540,8 @@ async function checkRunCancellation(cliJar, workspace, env) {
 		const stopTime = capabilities.receivedAt - cancelledAt;
 		assert(stopTime < 15000, `The program was stopped after ${stopTime} ms`);
 		await client.close();
-		assert.strictEqual(client.responses(1).length, 0, "A cancelled call gets no response");
+		assert.strictEqual(client.responses(1).length, 0,
+			`A cancelled call gets no response: ${JSON.stringify(client.responses(1)).slice(0, 2000)}`);
 		assert(gone(pid), "The stub program was stopped");
 		assert(!client.progress("run").some((message) => /on the JVM$/.test(message.params.message)),
 			"The JVM run never started");

@@ -498,10 +498,12 @@ Problems are listed by file path, each file's in the order they are found,
 in every check.
 
 A `tools/call` with `_meta.progressToken` gets `notifications/progress`
-while it runs, at most every 100 ms, with an increasing `progress`, `total`
+while it runs, with an increasing `progress`, `total`
 when known, and a `message` (left out for protocol version 2024-11-05):
 looking for changed files, the build tool resolving the class path, files
 checked (out of `total`), and translated files and headers (no total).
+Every phase is sent; files checked, translated or compiled are sent at most
+every 100 ms.
 None are sent after the response.
 
 Requests run one at a time, in the order they arrive, so a `resources/read`

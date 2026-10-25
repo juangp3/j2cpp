@@ -47,17 +47,25 @@ class McpClient {
 		}
 	}
 
-	/** Resolves once predicate() is true */
+	/**
+	 * Resolves once predicate() is true: checked on every message, and every
+	 * 50 ms for conditions outside the protocol, such as a stub's pid file
+	 */
 	until(predicate, what, timeout = 180000) {
 		if (predicate()) {
 			return Promise.resolve();
 		}
 		return new Promise((resolve, reject) => {
-			const waiter = { predicate, resolve };
+			const waiter = { predicate, resolve: () => {
+				clearInterval(waiter.poll);
+				resolve();
+			} };
 			waiter.timer = setTimeout(() => {
+				clearInterval(waiter.poll);
 				this.waiters.splice(this.waiters.indexOf(waiter), 1);
 				reject(new Error(`Timed out waiting for ${what}; stderr:\n${this.stderr.slice(-2000)}`));
 			}, timeout);
+			waiter.poll = setInterval(() => this.notify(), 50);
 			this.waiters.push(waiter);
 		});
 	}
