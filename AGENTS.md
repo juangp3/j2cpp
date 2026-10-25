@@ -33,7 +33,9 @@ Guidance for AI coding agents (and people) changing this repository. For
   (`ProjectSetup`), checked by `vscode/scripts/test-cli-projects.js`.
 - `runtime/`: the J2C runtime (`--runtime`), Java sources translated by J2C
   plus hand-written C++ natives and hooks; `test/runtime/` holds programs CI
-  runs against it and compares with `java`.
+  runs against it and compares with `java`. The runtime matches JDK 17's
+  messages and formats, as CI runs; a newer `java` (such as 21 or 25) makes
+  `npm run runtime` report differences that are not regressions.
 - `licenses/`: notices for bundled dependencies, checked against the build.
 - `agents/`: agent guidance and distribution: the Claude Code skill and
   plugin, Copilot instructions and cloud agent configuration, and the npm

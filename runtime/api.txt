@@ -1390,6 +1390,7 @@ java.lang.annotation.Annotation
 	equals(java.lang.Object)
 	hashCode()
 	toString()
+java.lang.invoke.LambdaMetafactory java.lang.Object
 java.lang.invoke.MethodHandles java.lang.Object
 java.lang.invoke.MethodHandles$Lookup java.lang.Object
 java.lang.runtime.ObjectMethods java.lang.Object

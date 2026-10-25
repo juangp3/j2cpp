@@ -603,6 +603,29 @@ try {
 	// --runtime bundled: the same runtime, packaged in the JAR
 	require("./test-cli-runtime").checkBundledRuntime(runCli, tempDirectory, cliJar);
 
+	// A lambda J2C reports instead of translating is only that problem with a
+	// runtime too, not also a compile error about LambdaMetafactory (G65)
+	const reportedLambda = path.join(tempDirectory, "reported lambda", "g65");
+	fs.mkdirSync(reportedLambda, { recursive: true });
+	fs.writeFileSync(path.join(reportedLambda, "Anonymous.java"), [
+		"package g65;",
+		"public class Anonymous {",
+		"\tstatic Runnable make() {",
+		"\t\treturn new Runnable() {",
+		"\t\t\tpublic void run() {",
+		"\t\t\t\tRunnable inner = () -> System.out.println(this);",
+		"\t\t\t\tinner.run();",
+		"\t\t\t}",
+		"\t\t};",
+		"\t}",
+		"}",
+		""
+	].join("\n"));
+	const lambdaWithRuntime = JSON.parse(runCli(["--check", "--format", "json", "--runtime", runtimeDirectory,
+		path.dirname(reportedLambda)]).stdout);
+	assert.deepStrictEqual(lambdaWithRuntime.problems.map((problem) => `${problem.id}@${problem.line}`),
+		["J2C-LAMBDA-ANONYMOUS-THIS@6"], JSON.stringify(lambdaWithRuntime.problems));
+
 	// A surrogate escape followed by a hex digit splits the C++ literal (G44)
 	const textSource = fs.readFileSync(path.join(repositoryRoot, "test", "runtime", "text", "Text.java"), "utf8");
 	assert(textSource.includes("\"a\\ud83d\\ude00b\""), "Text.java keeps the G44 case");

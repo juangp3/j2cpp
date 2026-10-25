@@ -919,7 +919,7 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
 #### G65 — Found while writing the agent benchmark (Phase 12 item 9)
 
 - **G65, a spurious compile error beside an untranslatable lambda with
-  `--runtime`** (open): when a lambda or method reference is reported (for
+  `--runtime`** (fixed 2026-10-25): when a lambda or method reference is reported (for
   example `J2C-LAMBDA-ANONYMOUS-THIS`) and the check runs against a runtime,
   J2C also reports `J2C-COMPILE-ERROR` at line 1: "The type
   java.lang.invoke.LambdaMetafactory cannot be resolved. It is indirectly
@@ -928,8 +928,9 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   The real problem fixes it, but the extra error at a meaningless line
   misleads agents and people. Reproduce with an anonymous `Runnable` whose
   `run()` contains `Runnable r = () -> System.out.println(this);`, checked
-  with `--runtime bundled`. Fix: drop that compile error when the file has
-  a lambda problem, or give the runtime a `LambdaMetafactory` declaration.
+  with `--runtime bundled`. The runtime now declares an empty
+  `java.lang.invoke.LambdaMetafactory`, as it declares `MethodHandles`, so
+  only the lambda problem is reported. Tested by `test-cli.js`.
 
 ### How to test a gap fix
 
@@ -2273,6 +2274,50 @@ remaining forms listed under `J2C-TEST-UNSUPPORTED-ASSERTION`. When two
 values print alike, JUnit 5 adds their identity hashes, which differ from
 the JVM's.
 
+## Release plan (2026-10-25)
+
+Everything in Phases 10–13 is built, but nothing is released yet: shipping
+is the step that delivers the most of it. The work that needs no one at a
+keyboard comes first; the manual steps wait in one list.
+
+| Stage | Content | Status |
+| --- | --- | --- |
+| R0 | `* text=auto` in `.gitattributes`, so a Windows checkout opened from WSL no longer shows every file changed; the progress fix (phases are never throttled); G65; the full local suite | Done (2026-10-25) |
+| R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | In progress |
+| R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Planned, 0.6.1 if not before the freeze |
+| R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Waits for the usage limit |
+| R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
+
+Decisions:
+
+- The first release is **0.6.0 (preview)** with everything on the branch.
+  The 0.7.0 and 0.8.0 rows of Phase 10's mapping are folded into it, since
+  nothing was released in between.
+- `J2C-LAMBDA-NON-DENOTABLE-TYPE` stays a reported problem. Of its four
+  uses in commons-collections, only the captured wildcard
+  (`IterableUtils.sumSizesToInt`) has a mechanical rewrite. The intersection
+  types (`MapUtils.getByteValue`) need a target type that Java source cannot
+  write, and implementing the raw interface instead breaks inference at the
+  call site. A partial fix would not get the project to "builds".
+
+Manual steps, in order, when someone is at the keyboard (Phase 8 has the
+commands):
+
+1. Start Marketplace publisher verification and get a token (it can take
+   days, so it goes first).
+2. Allow pushing `modern-release` and the tag. Pushing the tag only makes a
+   draft release.
+3. Check that the draft's assets match `SHA256SUMS`, then publish it.
+4. Publish the same VSIX to the Marketplace.
+5. Publish the release's npm tarball, then the MCP registry entry.
+6. Add a square icon (512–2048 px PNG) to `agents/claude/plugin` before
+   submitting the plugin to Anthropic's directory: the first icon submitted
+   is kept. `claude plugin validate` passes without it; it only warns.
+7. Install the plugin from the marketplace, and try Copilot agent mode and
+   the Copilot cloud agent configuration.
+8. Check translation in a clean VS Code profile, and rename the default
+   branch to `main`.
+
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.
@@ -2297,7 +2342,11 @@ the JVM's.
 - [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
 - [ ] Agent tools checked with a real client: Copilot agent mode lists the
       J2C tools, and Claude Code completes the check, fix and translate
-      workflow (Phase 11).
+      workflow (Phase 11). Claude Code half done (2026-10-24): headless
+      Claude Code 2.1.310 sessions of the agent benchmark loaded the server
+      and used `j2c_check` and `j2c_fix` to finish eight tasks; `claude plugin
+      validate` passes for the marketplace and the plugin. Left: Copilot,
+      and the plugin installed from the marketplace.
 - [x] Distribution files prepared and checked against the release version
       (`server.json`, `@juangp3/j2c-mcp`, Claude Code plugin and
       marketplace, Copilot cloud agent configuration; Phase 12 item 6).

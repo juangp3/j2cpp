@@ -122,6 +122,9 @@ C++20-targeted output.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.
+- A lambda that J2C reports instead of translating (such as one using `this`
+  of an anonymous class) is no longer also reported, with a runtime, as a
+  compile error about `java.lang.invoke.LambdaMetafactory` at line 1.
 
 ### Unit tests
 
@@ -173,6 +176,13 @@ C++20-targeted output.
 
 ### AI agents
 
+- An agent benchmark (`test/agent-bench`, for development): 13 tasks across
+  quick fixes, manual rewrites, negative controls, running against the
+  runtime, JUnit tests and assessment. They are graded deterministically
+  (protected files, `javac`, hidden drivers, `j2c --check`, `j2c run`,
+  `j2c test` with mutants, the report) and run as headless Claude Code
+  sessions under the developer's login (`npm run bench`). `npm run
+  bench:selftest` checks the graders without an agent, in CI.
 - `j2c mcp` serves J2C as a Model Context Protocol server with `j2c_check`,
   `j2c_translate`, `j2c_explain`, and `j2c_capabilities` tools, confined to a
   workspace root, for Claude Code, Claude Desktop, Copilot, and other MCP
