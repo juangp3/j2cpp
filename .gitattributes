@@ -1,3 +1,6 @@
+# Text files are stored with LF; each checkout uses its own line endings, so
+# a Windows checkout opened from WSL does not show every file as changed
+* text=auto
 # Runtime programs read input.txt byte for byte: keep its CR, CRLF and
 # malformed UTF-8 exactly as committed
 test/runtime/*/input.txt -text
