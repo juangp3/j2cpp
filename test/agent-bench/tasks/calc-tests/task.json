@@ -1,0 +1,14 @@
+{
+	"title": "JUnit tests run as GoogleTest: private @BeforeEach, timeouts in JUnit 4 and 5, and a @Nested class (no quick fix)",
+	"tier": "D",
+	"prompt": "Make the JUnit tests in test/ translate to C++ with J2C and pass as GoogleTest tests against J2C's bundled runtime. The j2c MCP tools are available: use tests: true, runtime \"bundled\" and junit-api as a source path (it holds JUnit's API); j2c_test translates, builds and runs the tests. Change only the tests, keep every test and what it checks, and leave src/ and junit-api/ unchanged.",
+	"checks": ["protected", "javac", "j2c-check", "j2c-test"],
+	"sourceRoots": ["src", "test"],
+	"sourcepath": ["junit-api"],
+	"allowed": ["test/**/*.java"],
+	"tests": true,
+	"runtime": "bundled",
+	"minTests": 6,
+	"untouchedFails": ["j2c-check", "j2c-test"],
+	"timeoutSeconds": 1500
+}

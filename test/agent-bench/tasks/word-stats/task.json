@@ -1,0 +1,12 @@
+{
+	"title": "Run a stdin program as C++ against the bundled runtime: java.text and Locale are missing, plus a method reference in an anonymous class",
+	"tier": "C",
+	"prompt": "Make this program translate to C++ with J2C and run against J2C's bundled runtime, printing exactly what it prints on the JVM today for the input in input.txt. The j2c MCP tools are available; j2c_run translates, builds and runs the program and compares it with the JVM. Change only the Java sources.",
+	"checks": ["protected", "javac", "driver", "j2c-check", "j2c-run"],
+	"driver": "stats.WordStats",
+	"driverStdin": "input.txt",
+	"runtime": "bundled",
+	"runStdin": "input.txt",
+	"untouchedFails": ["j2c-check", "j2c-run"],
+	"timeoutSeconds": 1500
+}

@@ -1,0 +1,10 @@
+{
+	"title": "Five problems across three packages of a Maven project, one of them an ordinary compile error",
+	"tier": "B",
+	"checks": ["protected", "javac", "driver", "j2c-check"],
+	"driver": "library.BenchDriver",
+	"sourceRoots": ["src/main/java"],
+	"allowed": ["src/main/java/**/*.java"],
+	"expectedFrom": "reference",
+	"untouchedFails": ["javac", "driver", "j2c-check"]
+}

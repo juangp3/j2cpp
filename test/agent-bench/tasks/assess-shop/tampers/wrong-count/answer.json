@@ -1,0 +1,14 @@
+{
+	"totalFiles": 3,
+	"translatableFiles": 2,
+	"problems": 3,
+	"fixableProblems": 2,
+	"problemIds": [
+		"J2C-COMPILE-ERROR",
+		"J2C-LAMBDA-ANONYMOUS-THIS",
+		"J2C-PATTERN-OUTSIDE-METHOD"
+	],
+	"missingRuntimeApi": [
+		"java.time.LocalDate.now()"
+	]
+}

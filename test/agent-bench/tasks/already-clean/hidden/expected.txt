@@ -1,0 +1,3 @@
+[the quick, brown fox, jumps over, the lazy, dog]
+[a bb, ccc, dddd, eeeee]
+text of 3, nothing, positive 3, other

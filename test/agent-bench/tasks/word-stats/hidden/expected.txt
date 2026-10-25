@@ -1,0 +1,6 @@
+5 lines, 57 words, 24 distinct
+the        9 15.8%
+it         8 14.0%
+of         8 14.0%
+was        8 14.0%
+age        2 3.5%

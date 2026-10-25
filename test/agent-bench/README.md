@@ -63,26 +63,49 @@ A trial records:
 
 ## Tasks
 
+| Task | Tier | What the agent has to do |
+| --- | --- | --- |
+| `anonymous-this`, `interface-super`, `pattern-fields` | A | Problems `j2c_fix` fixes |
+| `anonymous-field-lambda`, `anonymous-super-lambda`, `captured-wildcard`, `intersection-type-variable` | B | One problem with no quick fix |
+| `library-multi` | B | Five problems across three packages of a Maven project, one of them an ordinary compile error |
+| `already-clean` | B | Negative control: the file it is told about already translates; nothing may change |
+| `frozen-module` | B | Negative control: fix `src/app`, leave `src/legacy` alone, and name the problem left there |
+| `word-stats` | C | Run a stdin program against the bundled runtime with the JVM's output: `java.text` and `Locale` are missing |
+| `calc-tests` | D | JUnit 4 and 5 tests run as GoogleTest: private `@BeforeEach`, timeouts, and a `@Nested` class |
+| `assess-shop` | E | Write the migration report's facts to `answer.json`, changing nothing |
+
 Each task is a folder `tasks/<id>/`:
 
-- `task.json`: the title, the tier, the checks to run, and the driver class.
-  Optional fields:
-  - `prompt` (a default prompt is in `lib/tasks.js`).
-  - `sourceRoots` (default `["src"]`).
+- `task.json`: the title, the tier, and the checks to run. Optional fields:
+  - `prompt`: what the agent is asked (a default is in `lib/tasks.js`).
+  - `sourceRoots`: default `["src"]`.
+  - `sourcepath`: extra source folders in the workspace, for `javac` and
+    J2C (such as `junit-api`).
   - `allowed`: globs of the files the agent may change (default
     `["**/*.java"]`).
   - `ignored`: extra globs of files the agent may create.
-  - `tests`, `checkSourcepath` and `compileSourcepath`, for JUnit tasks.
-  - `answerIncludes`, for the `answer` check.
+  - `driver`: the class whose output is compared. `driverStdin` is a
+    workspace file given to it as input.
+  - `expectedFrom: "reference"`: record `expected.txt` from the reference,
+    for a workspace that does not compile.
+  - `tests`: check with `--tests`. `runtime`: check, run and test against
+    this runtime (`bundled`).
+  - `checkIgnores`: globs of files whose problems `j2c-check` ignores.
+  - `runStdin`: the input `j2c-run` gives the program.
+  - `minTests`: how many tests `j2c-test` must see pass (default 1).
+  - `answerIncludes`: what the `answer` check looks for.
   - `untouchedFails`: the checks the starting workspace fails (default
     `["j2c-check"]`).
-  - `timeoutSeconds`.
+  - `timeoutSeconds`: the trial's time limit (default 900).
 - `workspace/`: what the agent starts with.
 - `reference/`: a correct solution, laid over `workspace/`. Its optional
   `ANSWER.txt` stands for the agent's final answer.
-- `hidden/`: the drivers, compiled with the workspace's sources, and
-  `expected.txt`, the output of the driver named in `task.json` on the
-  untouched workspace. The agent never sees this folder.
+- `hidden/`: what the agent never sees:
+  - the drivers, compiled with the workspace's sources;
+  - `expected.txt`, the driver's output on the untouched workspace (or on
+    the reference);
+  - `mutants/<name>/`, wrong versions of the code under test, for
+    `j2c-test`.
 - `tampers/<name>/`: wrong solutions laid over `workspace/`, each with a
   `FAILS.txt` naming the checks it must fail.
 
@@ -92,8 +115,18 @@ The checks run in this order:
    added outside `allowed` and `ignored`.
 2. `javac`: the sources and the drivers compile with `--release 17`.
 3. `driver`: the driver's output equals `expected.txt`.
-4. `j2c-check`: `j2c --check` reports no problems.
-5. `answer`: the final answer mentions every `answerIncludes` text.
+4. `j2c-check`: `j2c --check` reports no problems outside `checkIgnores`.
+5. `j2c-run`: `j2c run` gives the JVM's output and exit code (status `ok`).
+6. `j2c-test`: `j2c test` passes at least `minTests` tests and fails none.
+   Run again with each mutant laid over the workspace, at least one test
+   must fail, so the tests still check what they checked.
+7. `answer`: the final answer mentions every `answerIncludes` text.
+8. `report-answer`: `answer.json` holds the same facts as `j2c report
+   --format json` (see `reportFacts` in `lib/tasks.js`).
+
+`j2c-run` and `j2c-test` build the generated C++, so they need GCC 13+ and
+GNU make, and GoogleTest for `j2c-test`. They take 15 s to a minute or more
+per run.
 
 ## Self-test
 
@@ -101,7 +134,9 @@ The checks run in this order:
 cd vscode && npm run bench:selftest   # or: node test/agent-bench/selftest.js [--task <ids>] [--tier <tiers>]
 ```
 
-The self-test runs no agent and makes no model calls. For every task it
+The self-test runs no agent and makes no model calls. It takes several
+minutes, because the tier C and D checks build C++; `--task` and `--tier`
+narrow it. For every task it
 checks that:
 
 - the untouched workspace fails only `untouchedFails`;

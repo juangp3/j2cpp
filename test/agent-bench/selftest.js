@@ -71,9 +71,17 @@ try {
 			path.join(task.directory, "reference"));
 		fs.writeFileSync(path.join(added, "j2c-bench-added.txt"), "not allowed\n");
 		fs.rmSync(path.join(added, "ANSWER.txt"), { force: true });
-		const addedResult = bench.grade(task, added, { answer: readAnswer(path.join(task.directory, "reference")) });
+		const addedResult = bench.grade(task, added, { only: ["protected"] });
 		if (!failed(addedResult).includes("protected")) {
 			problems.push("an added file should fail protected");
+		}
+		// ...but not J2C's output, marked by .j2c-output
+		fs.rmSync(path.join(added, "j2c-bench-added.txt"));
+		fs.mkdirSync(path.join(added, "out", "src"), { recursive: true });
+		fs.writeFileSync(path.join(added, "out", ".j2c-output"), "");
+		fs.writeFileSync(path.join(added, "out", "src", "Main.cpp"), "");
+		if (failed(bench.grade(task, added, { only: ["protected"] })).includes("protected")) {
+			problems.push("a J2C output folder should pass protected");
 		}
 		const tampers = path.join(task.directory, "tampers");
 		const tamperNames = fs.existsSync(tampers) ? fs.readdirSync(tampers).sort() : [];

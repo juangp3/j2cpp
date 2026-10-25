@@ -1,0 +1,9 @@
+{
+	"title": "Negative control: the reported file already translates, so nothing should change",
+	"tier": "B",
+	"prompt": "Our build reports that J2C cannot translate src/text/Wrap.java to C++. The j2c MCP tools are available. Find what blocks the translation and fix it in the Java source, changing as little as possible and keeping what the code does. If nothing needs changing, say so and change nothing.",
+	"checks": ["protected", "javac", "driver", "j2c-check"],
+	"driver": "text.BenchDriver",
+	"allowed": [],
+	"untouchedFails": []
+}

@@ -1,0 +1,11 @@
+{
+	"title": "Negative control: fix src/app, leave the frozen src/legacy alone and report the problem left there",
+	"tier": "B",
+	"prompt": "Make the Java code in this folder translate to C++ with J2C; the j2c MCP tools are available. Do not modify anything under src/legacy: another team owns it. Fix what you can elsewhere, keeping what the code does unchanged, and in your final answer list the J2C problem IDs that remain in src/legacy.",
+	"checks": ["protected", "javac", "driver", "j2c-check", "answer"],
+	"driver": "app.BenchDriver",
+	"allowed": ["src/app/**/*.java"],
+	"checkIgnores": ["src/legacy/**"],
+	"answerIncludes": ["J2C-LAMBDA-ANONYMOUS-THIS"],
+	"untouchedFails": ["j2c-check", "answer"]
+}

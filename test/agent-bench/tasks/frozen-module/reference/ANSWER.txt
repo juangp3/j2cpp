@@ -1,0 +1,1 @@
+src/app now translates. src/legacy/Codec.java still has J2C-LAMBDA-ANONYMOUS-THIS (the lambda in twice() uses this of the anonymous Encoder); I left it unchanged as asked.

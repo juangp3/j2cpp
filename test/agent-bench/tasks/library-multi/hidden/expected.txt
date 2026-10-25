@@ -1,0 +1,14 @@
+Dune (1965) / Dune (1~
+Emma (1815) / Emma (1~
+Ubik (1969) / Ubik (1~
+Persuasion (1817) / Persuas~
+Austen: Emma
+Austen: Persuasion
+false
+Main catalog: 4 books
+[Main catalo~]
+[Dune, Ubik]
+Main catalog: 4 books, 2 since 1900, 4 shelved
+Emma .. Ubik
+Dune .. Ubik
+true

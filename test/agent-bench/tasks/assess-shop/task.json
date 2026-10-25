@@ -1,0 +1,13 @@
+{
+	"title": "Assessment: report how much of a project translates, without changing it",
+	"tier": "E",
+	"prompt": "Assess how ready the Java code in src/ is for translation to C++ with J2C; the j2c MCP tools are available. Use J2C's migration readiness report with its default options (no runtime option). Change no Java file. Write your findings to answer.json in this folder as one JSON object with exactly these keys: totalFiles (number of Java files), translatableFiles (files that translate as they are), problems (number of J2C problems), fixableProblems (how many of them J2C can fix mechanically), problemIds (the distinct J2C problem IDs, as an array), and missingRuntimeApi (an array of every JDK member the code uses that the report says J2C's bundled runtime lacks, each written as type.member, for example java.lang.String.format(String, Object[])).",
+	"checks": [
+		"protected",
+		"report-answer"
+	],
+	"allowed": [],
+	"untouchedFails": [
+		"report-answer"
+	]
+}

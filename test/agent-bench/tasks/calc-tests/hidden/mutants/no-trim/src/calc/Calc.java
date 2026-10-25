@@ -1,0 +1,22 @@
+package calc;
+
+public class Calc {
+	public static int gcd(int a, int b) {
+		a = Math.abs(a);
+		b = Math.abs(b);
+		while (b != 0) {
+			int r = a % b;
+			a = b;
+			b = r;
+		}
+		return a;
+	}
+
+	public static int parsePositive(String text) {
+		int value = Integer.parseInt(text);
+		if (value <= 0) {
+			throw new IllegalArgumentException("not positive: " + value);
+		}
+		return value;
+	}
+}

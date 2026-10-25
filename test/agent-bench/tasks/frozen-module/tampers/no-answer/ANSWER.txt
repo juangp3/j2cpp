@@ -1,0 +1,1 @@
+Done: src/app translates now.

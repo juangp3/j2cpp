@@ -1,0 +1,1 @@
+j2c_check reports no problems in src/text/Wrap.java; nothing needed changing.

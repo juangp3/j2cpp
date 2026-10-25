@@ -916,6 +916,21 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   static until the initializer finishes. Tested by `Java17Features` and
   `test-cli.js`.
 
+#### G65 — Found while writing the agent benchmark (Phase 12 item 9)
+
+- **G65, a spurious compile error beside an untranslatable lambda with
+  `--runtime`** (open): when a lambda or method reference is reported (for
+  example `J2C-LAMBDA-ANONYMOUS-THIS`) and the check runs against a runtime,
+  J2C also reports `J2C-COMPILE-ERROR` at line 1: "The type
+  java.lang.invoke.LambdaMetafactory cannot be resolved. It is indirectly
+  referenced from required type...". The lambda that the desugarer leaves
+  in place makes JDT look for `LambdaMetafactory`, which the runtime lacks.
+  The real problem fixes it, but the extra error at a meaningless line
+  misleads agents and people. Reproduce with an anonymous `Runnable` whose
+  `run()` contains `Runnable r = () -> System.out.println(this);`, checked
+  with `--runtime bundled`. Fix: drop that compile error when the file has
+  a lambda problem, or give the runtime a `LambdaMetafactory` declaration.
+
 ### How to test a gap fix
 
 Every fix goes through the same layers, each catching a different class of
@@ -2023,7 +2038,38 @@ the agent's work, ordered by value for effort:
           across files, problems mixed with compile errors, project
           layouts, and tiers C and D.
      3. Tasks for tiers C, D and E, and the negative controls (about 2
-        days).
+        days). **Tasks done (2026-10-24); trials to rerun:**
+        - Six new tasks:
+          - `library-multi` (tier B): five problems across three packages
+            of a Maven project, one a plain compile error; its expected
+            output comes from the reference.
+          - `already-clean` and `frozen-module`: negative controls.
+            `frozen-module` ignores the problems left in `src/legacy` and
+            needs their ID in the answer.
+          - `word-stats` (C): `java.text` and `Locale` are missing from the
+            runtime, and the new `j2c-run` check requires `j2c run`
+            status `ok`.
+          - `calc-tests` (D): the new `j2c-test` check requires at least
+            six passing tests, and that each of four hidden mutants of
+            `Calc` makes one fail.
+          - `assess-shop` (E): `report-answer` compares `answer.json` with a
+            live `j2c report --format json`.
+        - The full self-test (13 tasks) takes about 4 minutes, since C and
+          D build C++.
+        - Trials (`claude-opus-5-5`, `mcp`, one each):
+          - `already-clean` passed.
+          - `library-multi`, `word-stats` and `frozen-module` hit the
+            subscription's weekly limit (`api_error_status` 429). The runner
+            now treats that as an infrastructure error and stops the run.
+          - `calc-tests` wrote J2C's output into `out/` in the workspace,
+            which `protected` rejected; folders marked `.j2c-output` are now
+            allowed.
+          - `assess-shop` answered for `--runtime bundled` (0 translatable
+            files, 6 problems), which the prompt's wording allowed. The
+            prompt now asks for the report's default options.
+          - Those five are to be run again after the limit resets.
+        - Found G65 (Phase 9): a misleading `LambdaMetafactory` compile
+          error beside an untranslatable lambda with `--runtime`.
      4. The scoreboard and the docs (`AGENTS.md`, `CHANGELOG`; about half a
         day).
      5. Runs by hand after changes to the tool descriptions, problem hints

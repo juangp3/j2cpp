@@ -221,7 +221,10 @@ async function runTrial(task, config, trial, settings) {
 	record.claudeCodeVersion = init ? init.claude_code_version : null;
 	record.sessionModel = init ? init.model : null;
 	record.infrastructureError = initProblem(init)
-		|| (!result && !session.timedOut ? `claude exited with ${session.code}: ${session.stderr.trim().slice(-2000)}` : null);
+		|| (!result && !session.timedOut ? `claude exited with ${session.code}: ${session.stderr.trim().slice(-2000)}` : null)
+		// A refused API call, such as a reached usage limit (429), is not the agent's failure
+		|| (result && result.api_error_status ? `API error ${result.api_error_status}: ${(result.result || "").slice(0, 300)}` : null);
+	record.usageLimit = Boolean(result && result.api_error_status === 429);
 	record.apiKeySource = init ? init.apiKeySource : null;
 	record.timedOut = session.timedOut;
 	record.wallMs = Date.now() - started;
@@ -355,7 +358,8 @@ async function main() {
 			const record = await runTrial(task, config, trial, settings);
 			if (record) {
 				records.push(record);
-				if (record.apiKeySource && record.apiKeySource !== "none") {
+				// An API key would bill an account; a usage limit fails every later trial too
+				if ((record.apiKeySource && record.apiKeySource !== "none") || record.usageLimit) {
 					stopped = record.infrastructureError;
 				}
 			}
