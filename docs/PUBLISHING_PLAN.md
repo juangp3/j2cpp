@@ -1932,9 +1932,16 @@ the agent's work, ordered by value for effort:
      with arguments and stdin, a difference, `compare: false` and refused
      arguments and outputs; `test-mcp-sessions.js` progress and
      cancellation of a hanging program.
-   - Open: re-running retranslates every file, so make rebuilds the whole
-     runtime (about a minute) each time (the same for `j2c test`); an
-     output directory whose name has spaces breaks the Makefile's `NAME`
+   - Fixed in R4 (2026-10-26): re-running retranslated every file, so make
+     rebuilt the whole runtime (about a minute) each time (the same for
+     `j2c test`). Translation now keeps `obj/` and `bin/` and gives the
+     files that come out the same their earlier modification time;
+     `obj/flags.txt` holds the compiler and flags, so changing them
+     compiles everything again.
+   - Open: the backups of earlier output go to `<tmp>/<name>1` to `5`,
+     shared by every output directory with the same name, so two
+     translations into different directories named `out` at once can fail
+     moving files (seen while timing R4); an output directory whose name has spaces breaks the Makefile's `NAME`
      (pass `--name`, as for `j2c build`); arguments containing double
      quotes may not reach a WSL program unchanged (Windows command-line
      quoting); the JVM run uses the JDK running J2C for `javac`, so J2C on
@@ -2357,7 +2364,7 @@ keyboard comes first; the manual steps wait in one list.
 | R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Done (2026-10-26): commons-math 918 problems to 0 (checks; its build stops at G68), commons-text 4 to 0 (builds, with `commons-secure-xml`), javaparser 431 to 424; fixed G66 and G67 on the way. The other 23 projects are unchanged |
 | R5 | Release 0.6.0: tag `v0.6.0` on `b534a9d` (CI run 40367756837), GitHub pre-release, VS Code Marketplace (`juangp3.j2c`), npm (`@juangp3/j2c-mcp`), MCP registry (`io.github.juangp3/j2c`) | Done (2026-10-26). G68 (commons-math builds) and G69 follow in 0.6.1 |
 | R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Done (2026-10-26): 39 of 39 trials passed (`claude-opus-5-5`, `mcp`), in [AGENT_BENCHMARK.md](AGENT_BENCHMARK.md). The rerun found a misleading hint (`J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE`), fixed before the baseline |
-| R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
+| R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | Done (2026-10-26): translating again keeps `obj/` and `bin/`, restores the modification time of every generated file that comes out the same, and the Makefile rebuilds objects when the compiler or flags change (`obj/flags.txt`), archives when its file lists change, and now reads every object's dependency file (stubs, natives and `ext/` were missing). Hello against the bundled runtime, on a Linux file system: 13.3 s each run before; 12.8 s, then 6.3–7.3 s with 0 of 538 files compiled and no archive or link. `test-cli-build.js` checks it |
 
 Decisions:
 

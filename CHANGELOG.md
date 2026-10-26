@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Building
+
+- Translating again into the same output directory keeps the build's
+  objects and libraries, and the files that come out the same keep their
+  modification time, so `make`, `j2c build`, `j2c run` and `j2c test`
+  compile only what changed. A second `j2c run` against the bundled runtime
+  compiled all of its 538 files again; it now compiles none. Changing the
+  compiler or its flags (`CXX`, `CFLAGS`) compiles everything again, and
+  every object now depends on the headers it includes (the stubs, natives
+  and dependencies did not).
+
 ### Translation
 
 - An enhanced `for` over an array converts each element to the loop

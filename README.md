@@ -157,7 +157,12 @@ a `.j2c-output` file. Translation first moves the directory's current
 contents to a backup in the temporary folder, so J2C refuses other non-empty
 directories unless you pass `--force`. Every selected file is checked before
 that: when one has problems, the translation fails with all of them and
-leaves the directory as it was.
+leaves the directory as it was. The build's objects and libraries (`obj/` and
+`bin/`) stay, and a generated file that comes out the same keeps its earlier
+modification time, so `make` (and `j2c build`, `j2c run` and `j2c test`)
+compiles again only what changed: after the first build, a run against the
+runtime no longer compiles it all again. Changing the compiler or its flags
+(`CXX`, `CFLAGS`) compiles everything again.
 
 Files that are only dependencies (found on the source path, not selected)
 and do not compile are translated like library classes, as a header and

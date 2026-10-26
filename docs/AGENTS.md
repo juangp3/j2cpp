@@ -258,7 +258,10 @@ a compile error, J2C restores the files and says so in `message`.
 The output directory must be empty or earlier J2C output, which carries a
 `.j2c-output` marker. Translation moves the directory's current contents to a
 backup in the temporary folder. `force: true` allows any directory; agents
-should ask the user before using it.
+should ask the user before using it. The build's objects stay, so building,
+running or testing again into the same output directory compiles only the
+files whose C++ changed: reuse the output directory between calls rather
+than a new one each time.
 
 ### Migration readiness report
 

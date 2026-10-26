@@ -340,6 +340,41 @@ function checkRealBuild(runCli, tempDirectory) {
 	assert.strictEqual(error.cpp.file, counterCpp);
 	assert.strictEqual(error.cpp.line, physicalLine(counterCpp, "count += j2c_undeclared;"));
 	console.log("j2c build compiled test/build and mapped an error to its Java line");
+	checkReuse(runCli, output, environment, compiled(report).length);
+}
+
+/** The files make compiled, from a build report's log */
+function compiled(report) {
+	assert.strictEqual(report.logTruncated, false);
+	return report.log.filter((line) => line.startsWith("Compile ")).map((line) => line.slice("Compile ".length));
+}
+
+/**
+ * Translating again keeps make's objects: only a generated file that changed
+ * is compiled, nothing at all when none did, and everything when the flags
+ * change
+ */
+function checkReuse(runCli, output, environment, total) {
+	assert(total > 1, `${total} file(s) compiled`);
+	const build = (env) => {
+		const result = runCli(["build", "--format", "json", "--output", output, buildSources], { env });
+		assert.strictEqual(result.status, 0, result.stderr);
+		const report = JSON.parse(result.stdout);
+		assert.strictEqual(report.status, "ok", JSON.stringify(report));
+		return report;
+	};
+	// Counter.cpp is translated again over the broken one
+	assert.deepStrictEqual(compiled(build(environment)), ["src/builddemo/Counter.cpp"]);
+	const again = build(environment);
+	assert.deepStrictEqual(compiled(again), []);
+	assert(!again.log.some((line) => line.startsWith("Archive ")), again.log.join("\n"));
+	// WSL does not pass the environment on to make
+	if (!isWindows) {
+		const flags = build({ ...environment, CFLAGS: "-DJ2C_REUSE_CHECK" });
+		assert.strictEqual(compiled(flags).length, total);
+		assert.deepStrictEqual(compiled(build(environment)).length, total);
+	}
+	console.log("j2c build compiled again only what changed after translating again");
 }
 
 function checkBuild(runCli, tempDirectory) {

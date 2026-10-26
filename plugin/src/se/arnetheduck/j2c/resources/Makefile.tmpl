@@ -24,6 +24,13 @@ endif
 BIN := bin
 OBJ := obj
 
+# J2C keeps obj/ when it translates again, so objects are rebuilt when the
+# compiler or its flags change: FLAGS_FILE holds them, and is rewritten only
+# when they differ
+FLAGS_FILE := $(OBJ)/flags.txt
+FLAGS_TEXT := $(CXX) $(CPPFLAGS) $(CXXFLAGS)
+$(shell mkdir -p $(OBJ) && printf '%%s\n' '$(subst ','\'',$(FLAGS_TEXT))' > $(FLAGS_FILE).new && if cmp -s $(FLAGS_FILE).new $(FLAGS_FILE); then rm -f $(FLAGS_FILE).new; else mv -f $(FLAGS_FILE).new $(FLAGS_FILE); fi)
+
 NAME := %1$s
 
 LIB = lib$(NAME).a
@@ -107,36 +114,38 @@ define cc-command
 @echo Compile $<; $(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 endef
 
-$(OBJS):$(OBJ)/%%.o: $(SRC)/%%.cpp | print-opts
+$(OBJS):$(OBJ)/%%.o: $(SRC)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 	
-$(STUB_OBJS):$(OBJ)/%%.o: $(STUB)/%%.cpp | print-opts
+$(STUB_OBJS):$(OBJ)/%%.o: $(STUB)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
-$(NATIVE_OBJS):$(OBJ)/%%.o: $(NATIVE)/%%.cpp | print-opts
+$(NATIVE_OBJS):$(OBJ)/%%.o: $(NATIVE)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
-$(EXT_OBJS):$(OBJ)/%%.o: ext/$(SRC)/%%.cpp | print-opts
+$(EXT_OBJS):$(OBJ)/%%.o: ext/$(SRC)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
-$(EXT_STUB_OBJS):$(OBJ)/%%.o: ext/$(STUB)/%%.cpp | print-opts
+$(EXT_STUB_OBJS):$(OBJ)/%%.o: ext/$(STUB)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
-$(EXT_NATIVE_OBJS):$(OBJ)/%%.o: ext/$(NATIVE)/%%.cpp | print-opts
+$(EXT_NATIVE_OBJS):$(OBJ)/%%.o: ext/$(NATIVE)/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
-$(RUNTIME_OBJS):$(OBJ)/runtime/%%.o: runtime/%%.cpp | print-opts
+$(RUNTIME_OBJS):$(OBJ)/runtime/%%.o: runtime/%%.cpp $(FLAGS_FILE) | print-opts
 	$(cc-command)
 
 %%.a:
 	@echo Archive $@
 	@mkdir -p $(dir $@)
 	@rm -f $@
-	@ar rcs $@ $^
+	@ar rcs $@ $(filter %%.o,$^)
 
-$(BIN)/$(LIB): $(OBJS) $(STUB_OBJS) $(NATIVE_OBJS)
+# Also after the Makefile: J2C keeps the libraries when it translates again,
+# and a library whose sources were removed must be archived again
+$(BIN)/$(LIB): $(OBJS) $(STUB_OBJS) $(NATIVE_OBJS) Makefile
 
-$(BIN)/$(EXT_LIB): $(EXT_OBJS) $(EXT_STUB_OBJS) $(EXT_NATIVE_OBJS) $(RUNTIME_OBJS)
+$(BIN)/$(EXT_LIB): $(EXT_OBJS) $(EXT_STUB_OBJS) $(EXT_NATIVE_OBJS) $(RUNTIME_OBJS) Makefile
 
 $(MAINS):$(BIN)/%%:$(SRC)/%%-main.cpp $(LIBS)
 	@mkdir -p $(dir $@); 
@@ -144,7 +153,7 @@ $(MAINS):$(BIN)/%%:$(SRC)/%%-main.cpp $(LIBS)
 
 mains: $(MAINS)
 
-$(TEST_OBJS):$(OBJ)/test/%%.o: test/%%.cpp | print-opts
+$(TEST_OBJS):$(OBJ)/test/%%.o: test/%%.cpp $(FLAGS_FILE) | print-opts
 	@mkdir -p $(dir $@);
 	@echo Compile $<; $(CXX) $(CPPFLAGS) -Itest -Imock $(GMOCK_CFLAGS) $(GTEST_CFLAGS) $(CXXFLAGS) -c -o $@ $<
 
@@ -160,9 +169,14 @@ test: $(TESTS_BIN)
 clean:
 	rm -rf $(OBJ) $(BIN)
 
+$(FLAGS_FILE): ;
+
 print-opts:
 	@echo Building with \"$(CXX) $(CPPFLAGS) $(CXXFLAGS)\"
 	
 .PHONY: all mains tests test clean print-opts
 
--include $(OBJS:%%.o=%%.d) $(TEST_OBJS:%%.o=%%.d) $(RUNTIME_OBJS:%%.o=%%.d)
+-include $(OBJS:%%.o=%%.d) $(STUB_OBJS:%%.o=%%.d) $(NATIVE_OBJS:%%.o=%%.d) \
+	$(EXT_OBJS:%%.o=%%.d) $(EXT_STUB_OBJS:%%.o=%%.d) \
+	$(EXT_NATIVE_OBJS:%%.o=%%.d) $(RUNTIME_OBJS:%%.o=%%.d) \
+	$(TEST_OBJS:%%.o=%%.d)

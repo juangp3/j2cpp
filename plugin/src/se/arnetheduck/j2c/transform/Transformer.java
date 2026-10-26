@@ -2,6 +2,10 @@ package se.arnetheduck.j2c.transform;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -210,6 +214,7 @@ public class Transformer {
 		validate(monitor, units);
 		monitor.beginTask("Translating", IProgressMonitor.UNKNOWN);
 		monitor.subTask("Moving old files");
+		Map<String, Previous> previous = previous();
 		renameOld();
 
 		long start = System.currentTimeMillis();
@@ -262,6 +267,7 @@ public class Transformer {
 
 		MakefileWriter mw = new MakefileWriter(root);
 		mw.write(name, sel, ext);
+		keepTimes(previous);
 
 		monitor.done();
 
@@ -450,6 +456,68 @@ public class Transformer {
 		return name;
 	}
 
+	/** A generated file as it was before this translation */
+	private static final class Previous {
+		final byte[] digest;
+		final FileTime time;
+
+		Previous(byte[] digest, FileTime time) {
+			this.digest = digest;
+			this.time = time;
+		}
+	}
+
+	/** Whether renameOld moves a file to the backup */
+	private static boolean isMoved(String name) {
+		return name.equals("Makefile") || name.endsWith(".hpp")
+				|| name.endsWith(".cpp");
+	}
+
+	/** The generated files in the output, by relative path */
+	private Map<String, Previous> previous() throws IOException {
+		Map<String, Previous> previous = new HashMap<String, Previous>();
+		List<String> files = new ArrayList<String>();
+		listFiles(root.toFile(), "", files);
+		for (String rel : files) {
+			if (isMoved(rel)) {
+				File file = new File(root.toFile(), rel);
+				previous.put(rel, new Previous(digest(file), Files
+						.getLastModifiedTime(file.toPath())));
+			}
+		}
+		return previous;
+	}
+
+	/**
+	 * Gives each generated file that is the same as before its earlier
+	 * modification time. renameOld keeps obj/ and bin/, so make then compiles
+	 * only what changed, instead of the whole runtime each time, and archives
+	 * the libraries again only when the Makefile's file lists change.
+	 */
+	private void keepTimes(Map<String, Previous> previous) throws IOException {
+		List<String> files = new ArrayList<String>();
+		listFiles(root.toFile(), "", files);
+		for (String rel : files) {
+			Previous before = previous.get(rel);
+			if (before == null) {
+				continue;
+			}
+			File file = new File(root.toFile(), rel);
+			if (MessageDigest.isEqual(before.digest, digest(file))) {
+				Files.setLastModifiedTime(file.toPath(), before.time);
+			}
+		}
+	}
+
+	private static byte[] digest(File file) throws IOException {
+		try {
+			return MessageDigest.getInstance("SHA-256").digest(Files
+					.readAllBytes(file.toPath()));
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	private void renameOld() throws IOException {
 		File r = root.toFile();
 		File p = new File(System.getProperty("java.io.tmpdir"));
@@ -486,12 +554,9 @@ public class Transformer {
 				if (f.isDirectory()) {
 					moveFiles(f, new File(to, f.getName()));
 					f.delete(); // Will only delete empty folders
-				} else if (f.getName().endsWith(".o")
-						|| f.getName().endsWith(".a")) {
-					f.delete();
-				} else if (f.getName().equals("Makefile")
-						|| f.getName().endsWith(".hpp")
-						|| f.getName().endsWith(".cpp")) {
+				} else if (isMoved(f.getName())) {
+					// Only the sources move: objects and libraries stay, for
+					// make to reuse (see keepTimes)
 					File tf = new File(to, f.getName());
 
 					if (!f.renameTo(tf)) {
