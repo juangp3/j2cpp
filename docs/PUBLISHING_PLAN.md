@@ -2283,7 +2283,7 @@ keyboard comes first; the manual steps wait in one list.
 | Stage | Content | Status |
 | --- | --- | --- |
 | R0 | `* text=auto` in `.gitattributes`, so a Windows checkout opened from WSL no longer shows every file changed; the progress fix (phases are never throttled); G65; the full local suite | Done (2026-10-25) |
-| R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | Done (2026-10-25) at `8719d6e`: the local suite passes (prepublish, probes, the benchmark self-test, JUnit on the JVM and as GoogleTest, mocks); `npm run runtime` differs only where JDK 25's messages differ from JDK 17's. CI on the pushed commit is the remaining check |
+| R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | Done (2026-10-25) at `8719d6e`: the local suite passes (prepublish, probes, the benchmark self-test, JUnit on the JVM and as GoogleTest, mocks); `npm run runtime` differs only where JDK 25's messages differ from JDK 17's. CI passed on it after the push: run 40351364721, Java 11 and 17 (2026-10-26) |
 | R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Planned, 0.6.1 if not before the freeze |
 | R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Waits for the usage limit |
 | R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
@@ -2336,7 +2336,8 @@ commands):
 - [x] Extension configuration and failure handling are tested (mocked host).
 - [ ] Interactive VS Code translation verified in a clean profile.
 - [x] Generated-C++ compile proof passes in CI for representative fixtures.
-- [ ] CI passes on the exact frozen release commit (run ID recorded).
+- [x] CI passes on the exact frozen release commit (run ID recorded):
+      run 40351364721 on `172e8eb` (2026-10-26), Java 11 and 17 both green.
 - [x] Release workflow builds artifacts from the tag, writes checksums and
       notes, and drafts a pre-release; rollback path documented.
 - [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
