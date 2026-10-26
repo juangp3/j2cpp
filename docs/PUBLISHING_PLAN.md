@@ -971,15 +971,24 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   commons-math now builds.
 
 - **G69, JDT's internal errors printed with `--runtime` and a dependency
-  JAR** (open): translating `test/projects/maven-simple` with
-  `--runtime bundled` (the extension's default) prints four `Status ERROR:
+  JAR** (fixed 2026-10-26): translating `test/projects/maven-simple` with
+  `--runtime bundled` (the extension's default) printed four `Status ERROR:
   org.eclipse.jdt.core code=4 Could not retrieve declared methods
-  java.lang.NullPointerException ... "this.scope" is null`. The JAR
-  (`commons-cli`) was compiled against the full JDK, and JDT fails to
-  resolve some of its methods against the smaller runtime. The output still
-  builds, but the lines look like a failure. Found in the 0.6.0 VS Code
-  check. Either keep JDT's log out of the output, or report which JAR
-  types use JDK classes the runtime lacks, as a J2C warning.
+  java.lang.NullPointerException ... "this.scope" is null`. Found in the
+  0.6.0 VS Code check. The cause is not the JAR's use of missing JDK
+  classes: writing the header of a class-path type that is `Serializable`
+  (`commons-cli`'s `Options`), J2C reads the methods of its bases, the
+  runtime's own `java.io.Serializable` and `java.lang.Object`. Those are
+  source types whose compile scope JDT has already released, so
+  `TypeBinding.getDeclaredMethods` catches a `NullPointerException`, logs
+  it and returns no methods, a few times before it succeeds. The generated
+  headers are unchanged (`toString() override`, the virtual bases).
+  Outside Eclipse, JDT's `Util.log` prints the status straight to
+  `System.err`, with no hook, so the CLI now filters those lines
+  (`cli/JdtLog`) and prints one note instead. `test-cli.js` reproduces it
+  with a `Serializable` class compiled into a class folder. If a later
+  translation turns out to depend on those methods, preparing the runtime's
+  bases before the scope is released would be the real fix.
 
 ### How to test a gap fix
 

@@ -11,6 +11,10 @@
 - An abstract class that inherits the same abstract method from its
   superclass and from an interface can call it; the call was ambiguous in
   C++.
+- Translating with `--runtime` and a dependency on the class path no longer
+  prints JDT's internal `Status ERROR: ... Could not retrieve declared
+  methods` lines, which looked like a failure. The output did not change;
+  one note on stderr now says that JDT logged an internal error.
 
 ### Extension and agents
 

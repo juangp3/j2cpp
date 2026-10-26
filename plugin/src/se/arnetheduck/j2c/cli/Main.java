@@ -111,6 +111,7 @@ public class Main {
 			+ "again compiles only changed files and the files that use them.";
 
 	public static void main(String[] args) {
+		JdtLog.install();
 		boolean json = isJson(args);
 		String command = command(args);
 		PrintStream stdout = json ? utf8(System.out) : System.out;

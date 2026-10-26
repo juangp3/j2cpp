@@ -626,6 +626,28 @@ try {
 	assert.deepStrictEqual(lambdaWithRuntime.problems.map((problem) => `${problem.id}@${problem.line}`),
 		["J2C-LAMBDA-ANONYMOUS-THIS@6"], JSON.stringify(lambdaWithRuntime.problems));
 
+	// A class-path type that is Serializable makes JDT log internal errors
+	// while J2C reads the runtime's Object; they become one note, not "Status
+	// ERROR" lines (G69)
+	const jdtLogRoot = path.join(tempDirectory, "jdt log");
+	fs.mkdirSync(path.join(jdtLogRoot, "lib", "g69"), { recursive: true });
+	fs.mkdirSync(path.join(jdtLogRoot, "app", "g69app"), { recursive: true });
+	fs.writeFileSync(path.join(jdtLogRoot, "lib", "g69", "Lib.java"),
+		"package g69;\npublic class Lib implements java.io.Serializable {\n\t@Override public String toString() { return \"lib\"; }\n}\n");
+	fs.writeFileSync(path.join(jdtLogRoot, "app", "g69app", "Use.java"),
+		"package g69app;\npublic class Use { Object make() { return new g69.Lib(); } }\n");
+	const jdtLogClasses = path.join(jdtLogRoot, "classes");
+	const jdtLogJavac = childProcess.spawnSync("javac", ["-d", jdtLogClasses, path.join(jdtLogRoot, "lib", "g69", "Lib.java")],
+		{ encoding: "utf8" });
+	assert.strictEqual(jdtLogJavac.status, 0, jdtLogJavac.stderr);
+	const jdtLogOutput = path.join(jdtLogRoot, "output");
+	fs.mkdirSync(jdtLogOutput);
+	const jdtLogRun = runCli(["--runtime", runtimeDirectory, "--classpath", jdtLogClasses, "--output", jdtLogOutput,
+		path.join(jdtLogRoot, "app")]);
+	assert.strictEqual(jdtLogRun.status, 0, jdtLogRun.stderr);
+	assert(!/^Status /m.test(jdtLogRun.stderr + jdtLogRun.stdout), jdtLogRun.stderr);
+	assert(jdtLogRun.stderr.split("J2C: note: JDT logged an internal error").length - 1 <= 1, jdtLogRun.stderr);
+
 	// A surrogate escape followed by a hex digit splits the C++ literal (G44)
 	const textSource = fs.readFileSync(path.join(repositoryRoot, "test", "runtime", "text", "Text.java"), "utf8");
 	assert(textSource.includes("\"a\\ud83d\\ude00b\""), "Text.java keeps the G44 case");
