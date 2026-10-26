@@ -2425,17 +2425,23 @@ than through an agent's shell (each waits for input):
       workflow (Phase 11). Claude Code half done (2026-10-24): headless
       Claude Code 2.1.310 sessions of the agent benchmark loaded the server
       and used `j2c_check` and `j2c_fix` to finish eight tasks; `claude plugin
-      validate` passes for the marketplace and the plugin. Left: Copilot,
-      and the plugin installed from the marketplace.
+      validate` passes for the marketplace and the plugin, and the plugin
+      installs from the marketplace (2026-10-26). Left: Copilot agent mode
+      in VS Code.
 - [x] Distribution files prepared and checked against the release version
       (`server.json`, `@juangp3/j2c-mcp`, Claude Code plugin and
       marketplace, Copilot cloud agent configuration; Phase 12 item 6).
 - [x] npm package published from the release tarball, and the MCP registry
       entry published with `mcp-publisher` (2026-10-26: `@juangp3/j2c-mcp`
       0.6.0, and `io.github.juangp3/j2c` 0.6.0, active).
-- [ ] Claude Code plugin installed from the marketplace and the Copilot
-      cloud agent configuration tried in a test repository (Phase 8 steps
-      11–12; user steps).
+- [x] Claude Code plugin installed from the marketplace (2026-10-26:
+      `/plugin marketplace add juangp3/j2cpp`, `/plugin install j2c@j2cpp`;
+      the session lists the nine `j2c_*` tools and the `j2c-translate`
+      skill). The Copilot cloud agent configuration is not tested: the
+      account has Copilot Free, which has no cloud agent. A test repository
+      is ready locally (`j2c-copilot-test`: `AnonymousThis.java`, the setup
+      steps, the instructions and an issue text) for when a paid plan is
+      available.
 - [x] Phase 9 gaps G1–G6 fixed and covered by fixtures, runtime smoke tests,
       and probes; G7 and G8 are documented as known limitations.
 
