@@ -1441,6 +1441,9 @@ Risks:
 | 0.7.0 | Step 2, milestone 1: bundled core runtime; Hello World and string programs run (`--runtime bundled` done 2026-10-21) |
 | 0.8.0 | Milestone 2: collections and enums; milestone 3: optional garbage collection |
 
+0.6.0 delivered all of these; what is left is in the
+[roadmap after 0.6.0](#roadmap-after-060-2026-10-26).
+
 ## Phase 11 — AI agent support (implemented 2026-10-11)
 
 Goal: agents (Copilot agent mode, Claude Code, Claude Desktop, any MCP
@@ -2409,6 +2412,92 @@ than through an agent's shell (each waits for input):
   few minutes to appear.
 - The registry's token expires quickly: run `mcp-publisher login github &&
   mcp-publisher publish` together.
+
+## Roadmap after 0.6.0 (2026-10-26)
+
+What is left, by release. It replaces the 0.7.0 and 0.8.0 rows of Phase
+10's mapping, which 0.6.0 already delivered. Each item names where its
+details are. The corpus counts are from `npm run corpus --project <name>`
+with JDK 17 on 2026-10-26.
+
+### 0.6.1: ready
+
+On `main` after the push: G68 (commons-math builds), G69, R4 (re-runs reuse
+the built runtime), the intersection-type hint fixed by the agent benchmark,
+and the icon in the VS Code extension. Release as 0.6.0 was (Phase 8 and
+the notes under the release plan): bump the version, tag, check and publish
+the draft, then the Marketplace, npm and the MCP registry.
+
+### 0.7.0: more real projects, and fewer rough edges
+
+1. **Concurrent translations with the same output name.** The backups go
+   to `<tmp>/<name>1` to `5`, shared by every output folder with that
+   name, so two translations into `out` folders at once can move each
+   other's files (found during R4). Keep the backups per output folder.
+2. **`j2c run` limitations** (Phase 12 item 9): an output folder whose
+   name has spaces breaks the Makefile's `NAME`; double quotes in arguments
+   may not reach a WSL program unchanged; the JVM comparison needs the JDK
+   running J2C, so J2C on a JRE cannot compare.
+3. **Corpus projects to "builds"**, smallest first. `J2C-COMPILE-ERROR` here
+   is the Java not compiling in the corpus set-up (missing generated
+   sources or dependencies), not a J2C gap, until shown otherwise:
+   - jackson-core, 3 `J2C-COMPILE-ERROR`: the generated `PackageVersion`
+     class and the fastdoubleparser dependency.
+   - gson, 8 `J2C-COMPILE-ERROR`: dependencies of its modules. It uses
+     reflection, so it will build but not run (see the runtime below).
+   - guava, 12 `J2C-COMPILE-ERROR`, 4 `J2C-LAMBDA-NON-DENOTABLE-TYPE`,
+     1 `J2C-LAMBDA-ANONYMOUS-THIS`.
+   - javaparser, 398 `J2C-COMPILE-ERROR`, 23 `J2C-LAMBDA-UNRESOLVED`,
+     3 `J2C-LAMBDA-NON-DENOTABLE-TYPE`: generate the JavaCC parser
+     (generate-sources) and add javassist, then recheck the lambda
+     problems, which are probably follow-ons of the unresolved types.
+   - commons-collections, 4 `J2C-LAMBDA-NON-DENOTABLE-TYPE`: kept as
+     reported problems (see the decisions under the release plan). A
+     `j2c fix` for the captured-wildcard case alone would help agents but
+     not get the project to "builds".
+   - TheAlgorithms-Java, 32 `J2C-COMPILE-ERROR`: the project targets Java
+     21. Pin a Java 17-era commit, or wait for Java 21 (below).
+   Each new translator gap goes to Phase 9 with a fixture, as usual.
+
+### 0.8.0: running the projects' own tests
+
+The corpus ladder stops at "builds": no project's tests run as C++ yet.
+Phase 13 has the JUnit 4 and 5 path; what the corpus needs next
+([VALIDATION_PROJECTS.md](VALIDATION_PROJECTS.md)):
+
+1. **JUnit 3** (`TestCase`) in `--tests`: jBCrypt, javaewah, joda-time
+   and Guava.
+2. **Truth and Hamcrest assertions**: javapoet, gson,
+   williamfiset-algorithms and Guava.
+3. **The remaining JUnit assertions** (Phase 13): `assertIterableEquals`,
+   `assertLinesMatch`, nested-array `assertArrayEquals`, JUnit 4's
+   `assertThrows`, and the forms under `J2C-TEST-UNSUPPORTED-ASSERTION`.
+   Parameterized tests (36 files in commons-codec) are reported by T1, not
+   run.
+4. **Mocks** (T5): calling a hidden default overload needs the interface
+   type, and JDK interfaces outside the selection get no mock.
+5. A "tests pass" step on the corpus ladder and its scoreboard, starting
+   with the clean small projects.
+
+### Later
+
+- **Runtime coverage**, driven by the programs that need it (Phase 10):
+  `java.text` and `Locale` (the `word-stats` benchmark task works around
+  them), then whatever the corpus tests reach. Reflection, serialization
+  and class loading are unsupported (G9); gson and parts of commons-lang
+  and Guava need reflection to run.
+- **Java 21 source**: record patterns, pattern matching in `switch`, and
+  sequenced collections; TheAlgorithms-Java needs it.
+- **G69's real fix**: JDT releases the runtime's `Object` and
+  `Serializable` before J2C reads their methods. 0.6.1 hides the log; load
+  those methods earlier if a translation ever depends on them.
+- **Agent benchmark** (Phase 12 item 9, step 5): compare the `skill` and
+  `bash` configurations with `mcp`, add harder tasks, and run the affected
+  tasks after every change to a tool description, hint or skill. Whether
+  to compare models is open: each comparison multiplies the usage.
+- **Distribution**: submit the Claude Code plugin to Anthropic's plugin
+  directory (the icon is ready), and try the Copilot cloud agent with a
+  paid Copilot plan in the prepared `j2c-copilot-test` repository.
 
 ## Go/no-go checklist
 
