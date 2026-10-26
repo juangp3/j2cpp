@@ -2429,14 +2429,18 @@ than through an agent's shell (each waits for input):
 - [x] Draft release assets downloaded and verified against `SHA256SUMS`
       (2026-10-26, release run 40379340115 on `b534a9d`; the VSIX, the npm
       tarball and the JAR hold the same `j2c-cli.jar`).
-- [ ] Agent tools checked with a real client: Copilot agent mode lists the
+- [x] Agent tools checked with a real client: Copilot agent mode lists the
       J2C tools, and Claude Code completes the check, fix and translate
       workflow (Phase 11). Claude Code half done (2026-10-24): headless
       Claude Code 2.1.310 sessions of the agent benchmark loaded the server
       and used `j2c_check` and `j2c_fix` to finish eight tasks; `claude plugin
       validate` passes for the marketplace and the plugin, and the plugin
-      installs from the marketplace (2026-10-26). Left: Copilot agent mode
-      in VS Code.
+      installs from the marketplace (2026-10-26). Copilot agent mode in VS
+      Code (Copilot Free, extension 0.6.0, 2026-10-26) used the extension's
+      server on `j2c-copilot-test`: it rewrote the six
+      `J2C-LAMBDA-ANONYMOUS-THIS` lambdas, the final `j2c_check` was clean,
+      and the `anonymous-this` benchmark driver still prints the expected
+      output.
 - [x] Distribution files prepared and checked against the release version
       (`server.json`, `@juangp3/j2c-mcp`, Claude Code plugin and
       marketplace, Copilot cloud agent configuration; Phase 12 item 6).
