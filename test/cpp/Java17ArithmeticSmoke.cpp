@@ -128,5 +128,10 @@ int main() {
 	Java17Arithmetic::addToElement(values, 1, 4);
 	if ((*values)[1] != 4) return 64;
 	if (Java17Arithmetic::newLength(0) != 0 || Java17Arithmetic::newGridLength(2, 0) != 2) return 65;
+	// for (long value : int[]) widens before shifting (G68): (1 + 2) << 32
+	auto ints = new ::int32_tArray(2);
+	(*ints)[0] = 1;
+	(*ints)[1] = 2;
+	if (Java17Arithmetic::widenedElements(ints) != int64_t(3) << 32) return 66;
 	return 0;
 }

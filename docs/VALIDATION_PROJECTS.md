@@ -76,7 +76,7 @@ compiles. `--update` raises the expectations and rewrites this table.
 | TheAlgorithms-Java | large | 32 | none |
 | commons-lang | large | 0 | builds |
 | javaparser | large | 424 | none |
-| commons-math | large | 0 | checks |
+| commons-math | large | 0 | builds |
 | guava | xl | 17 | none |
 | forge-engine | xl | 0 | builds |
 <!-- corpus-scoreboard:end -->

@@ -479,6 +479,36 @@ public class Java17Lambdas {
 		return pick.get().total;
 	}
 
+	// A class that gets an abstract method from both its superclass and an
+	// interface declares it again, pure, since a call in the class was
+	// ambiguous in C++ (G68, AbstractRealMatrix in commons-math)
+	public interface Dimensioned {
+		int rows();
+	}
+
+	public static abstract class Operator {
+		public abstract int rows();
+	}
+
+	public static abstract class AbstractGrid extends Operator implements
+			Dimensioned {
+		public int cells() {
+			return rows() * rows();
+		}
+	}
+
+	public static class Grid extends AbstractGrid {
+		@Override
+		public int rows() {
+			return 3;
+		}
+	}
+
+	public static int inheritedTwice() {
+		Dimensioned grid = new Grid();
+		return new Grid().cells() + grid.rows();
+	}
+
 	// A member class of a local or anonymous class reads the variables that
 	// class captured, through its outer instances (G67)
 	public static int memberOfLocal(final int base) {

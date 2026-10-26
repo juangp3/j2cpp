@@ -178,4 +178,33 @@ public class Java17Arithmetic {
 	public static String concatNumbersFirst(int i, int j, char c) {
 		return i + j + " ints " + c + i + " " + (c + i + "char") + 1.5 + i;
 	}
+
+	// An enhanced for converts each array element to the variable's type
+	// (widening, unboxing, boxing), which C++'s auto skipped (G68)
+	public static long widenedElements(int[] values) {
+		long total = 0;
+		for (long value : values) {
+			total += value << 32;
+		}
+		return total;
+	}
+
+	public static double unboxedElements(Double[] values) {
+		double total = 0;
+		for (double value : values) {
+			total += value;
+		}
+		return total;
+	}
+
+	public static int boxedElements(int[] values) {
+		int total = 0;
+		for (Integer value : values) {
+			total += value.hashCode();
+		}
+		for (java.lang.Object value : values) {
+			total += value.hashCode();
+		}
+		return total;
+	}
 }

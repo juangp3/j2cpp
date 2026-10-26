@@ -916,7 +916,7 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   static until the initializer finishes. Tested by `Java17Features` and
   `test-cli.js`.
 
-#### G65–G68 — Found by the agent benchmark and the corpus (2026-10-24 to 26)
+#### G65–G69 — Found by the agent benchmark, the corpus and the release check (2026-10-24 to 26)
 
 - **G65, a spurious compile error beside an untranslatable lambda with
   `--runtime`** (fixed 2026-10-25): when a lambda or method reference is reported (for
@@ -952,12 +952,34 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   (`A_g_1_Entry_this->A_g_1_this->y`). Tested by
   `Java17Lambdas.memberOfLocal` and `Java17LambdasSmoke.cpp`.
 
-- **G68, commons-math's remaining C++ compile errors** (open): with G66 and
-  G67 fixed, commons-math checks with no problems and translates, but the
-  build stops at 4 distinct errors: `getRowDimension` and
-  `getColumnDimension` are ambiguous in `AbstractRealMatrix.cpp` (declared
-  by more than one of its supertypes), and `DescriptiveStatistics.cpp`
-  converts a `java::lang::Double*` to `double`. Not yet reduced.
+- **G68, commons-math's remaining C++ compile errors** (fixed 2026-10-26,
+  after 0.6.0): with G66 and G67 fixed, commons-math translated, but its
+  build stopped at two gaps:
+  - An abstract class that inherits one abstract method from its superclass
+    and from an interface, through different bases
+    (`AbstractRealMatrix extends RealLinearOperator implements RealMatrix`,
+    both declaring `getRowDimension()`), made a call to it ambiguous in C++.
+    The class now declares the method again, pure. Tested by
+    `Java17Lambdas.inheritedTwice` and `Java17LambdasSmoke.cpp`.
+  - An enhanced `for` over an array always declared its variable `auto`, so
+    an element that converts to the variable's type was not converted:
+    unboxing (`for (double v : Double[])`, in `DescriptiveStatistics`) and
+    boxing did not compile, and widening (`for (long v : int[])`) silently
+    kept `int` arithmetic. The variable is now declared with its type and
+    the element converted. Tested by `Java17Arithmetic.widenedElements`,
+    `unboxedElements`, `boxedElements` and `Java17ArithmeticSmoke.cpp`.
+  commons-math now builds.
+
+- **G69, JDT's internal errors printed with `--runtime` and a dependency
+  JAR** (open): translating `test/projects/maven-simple` with
+  `--runtime bundled` (the extension's default) prints four `Status ERROR:
+  org.eclipse.jdt.core code=4 Could not retrieve declared methods
+  java.lang.NullPointerException ... "this.scope" is null`. The JAR
+  (`commons-cli`) was compiled against the full JDK, and JDT fails to
+  resolve some of its methods against the smaller runtime. The output still
+  builds, but the lines look like a failure. Found in the 0.6.0 VS Code
+  check. Either keep JDT's log out of the output, or report which JAR
+  types use JDK classes the runtime lacks, as a J2C warning.
 
 ### How to test a gap fix
 

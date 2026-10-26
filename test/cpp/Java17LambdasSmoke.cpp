@@ -63,5 +63,8 @@ int main() {
 	// Local.Inner and Entry.Deeper read base through their outer instances
 	// (G67): 4 * 10 + 5
 	if (Java17Lambdas::memberOfLocal(4) != 45) return 35;
+	// AbstractGrid redeclares rows(), pure, for Operator and Dimensioned
+	// (G68): 3 * 3 + 3
+	if (Java17Lambdas::inheritedTwice() != 12) return 36;
 	return 0;
 }

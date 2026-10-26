@@ -1674,7 +1674,37 @@ public class ImplWriter extends TransformWriter {
 		ITypeBinding eb = expr.resolveTypeBinding();
 		hardDep(eb);
 		deps.setNpc();
-		if (eb.isArray()) {
+		ITypeBinding pb = node.getParameter().getType().resolveBinding();
+		if (eb.isArray() && converts(eb.getComponentType(), pb)) {
+			// The element converts to the variable's type (unboxing, boxing
+			// or widening: double d : Double[]), which auto would skip
+			ITypeBinding cb = eb.getComponentType();
+			printi("for(auto _a : *");
+			npcAccept(expr);
+			println(") {");
+
+			indent++;
+			printi();
+			node.getParameter().accept(this);
+			if (pb.isPrimitive() && cb.isPrimitive()) {
+				println(" = _a;");
+			} else if (pb.isPrimitive()) {
+				hardDep(cb);
+				println(" = npc(_a)->" + pb.getName() + "Value();");
+			} else {
+				ITypeBinding box = node.getAST().resolveWellKnownType(
+						TransformUtil.primitives.get(cb.getName()));
+				hardDep(box);
+				println(" = " + CName.relative(box, type, true)
+						+ "::valueOf(_a);");
+			}
+
+			printi();
+			handleLoopBody(node, node.getBody());
+
+			indent--;
+			printlni("}");
+		} else if (eb.isArray()) {
 			printi("for(auto ");
 			node.getParameter().getName().accept(this);
 			print(" : *");
@@ -1715,6 +1745,12 @@ public class ImplWriter extends TransformWriter {
 		}
 
 		return false;
+	}
+
+	/** Does an element of type from convert to a variable of type to? */
+	private static boolean converts(ITypeBinding from, ITypeBinding to) {
+		return (from.isPrimitive() || to.isPrimitive())
+				&& !from.getErasure().isEqualTo(to.getErasure());
 	}
 
 	@Override

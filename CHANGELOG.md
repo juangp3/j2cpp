@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Translation
+
+- An enhanced `for` over an array converts each element to the loop
+  variable's type. `for (long v : int[])` kept `v` an `int`, so shifts and
+  overflow silently gave wrong results; unboxing (`double v : Double[]`) and
+  boxing (`Integer v : int[]`) did not compile.
+- An abstract class that inherits the same abstract method from its
+  superclass and from an interface can call it; the call was ambiguous in
+  C++.
+
 ## 0.6.0 — Preview
 
 First release of J2C Modern Edition: a standalone Java-to-C++ CLI and a VS

@@ -789,12 +789,25 @@ public class Header {
 				continue;
 			}
 
-			if (Modifier.isAbstract(impl.getModifiers())) {
+			if (Modifier.isAbstract(impl.getModifiers())
+					&& !reachedTwice(impl, decl)) {
 				continue;
 			}
 
 			printSuperCall(decl, impl);
 		}
+	}
+
+	/**
+	 * Does the class get abstract impl and decl through different bases? A
+	 * call in the class is then ambiguous in C++, so the class declares the
+	 * method again, pure (AbstractRealMatrix extends RealLinearOperator
+	 * implements RealMatrix, which both declare getRowDimension())
+	 */
+	private static boolean reachedTwice(IMethodBinding impl,
+			IMethodBinding decl) {
+		return !impl.getDeclaringClass().getErasure()
+				.isSubTypeCompatible(decl.getDeclaringClass().getErasure());
 	}
 
 	private void printSuperCall(IMethodBinding decl, IMethodBinding impl) {
@@ -803,6 +816,13 @@ public class Header {
 
 		print(i1);
 		ITypeBinding irt = impl.getReturnType();
+		if (Modifier.isAbstract(impl.getModifiers())
+				&& !irt.getErasure().isSubTypeCompatible(
+						decl.getReturnType().getErasure())) {
+			// Of two abstract methods, Java takes the one whose return type
+			// is substitutable for the other's
+			irt = decl.getReturnType();
+		}
 		TransformUtil.printSignature(ctx, out, type,
 				decl.getMethodDeclaration(), irt, deps, false);
 

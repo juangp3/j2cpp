@@ -380,7 +380,7 @@
 			],
 			"expected": {
 				"problems": 0,
-				"step": "checks"
+				"step": "builds"
 			}
 		},
 		{
