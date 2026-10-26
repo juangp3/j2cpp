@@ -81,6 +81,18 @@ public class TypeInfo {
 		return closures;
 	}
 
+	/**
+	 * This type when it is local, else the nearest local class around it: a
+	 * member class of a local class reads the variables that class captures
+	 */
+	public TypeInfo closureHolder() {
+		TypeInfo info = this;
+		while (info != null && info.closures == null) {
+			info = info.parent;
+		}
+		return info;
+	}
+
 	public boolean isClosure(IVariableBinding vb) {
 		return closures != null && closures.contains(vb);
 	}

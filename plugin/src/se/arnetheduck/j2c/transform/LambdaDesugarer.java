@@ -763,7 +763,17 @@ final class LambdaDesugarer {
 		}
 
 		String name = typeName(type);
-		if (!type.isParameterizedType()) {
+		ITypeBinding outer = type.getDeclaringClass();
+		// Member interfaces, enums and records are static even when not marked
+		if (type.isMember() && !Modifier.isStatic(type.getModifiers())
+				&& !type.isInterface() && !type.isEnum() && !type.isRecord()
+				&& outer != null && outer.isParameterizedType()) {
+			// An inner class of a parameterized class: Outer<A>.Inner, since
+			// the raw Outer.Inner would erase what its members return
+			name = type(outer, false) + "."
+					+ withoutArguments(type.getErasure().getName());
+		}
+		if (!type.isParameterizedType() || type.getTypeArguments().length == 0) {
 			return name;
 		}
 		StringBuilder parameterized = new StringBuilder(name).append('<');

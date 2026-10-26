@@ -490,6 +490,16 @@ public abstract class TransformWriter extends ASTVisitor {
 				// variable name conflicts which are allowed in Java but not
 				// in C++.
 				print(CName.of(vb, type));
+			} else if (closureHolder(vb) != null) {
+				// A member class of a local class reads the variable that
+				// class captured, through its outer instances
+				ITypeBinding holder = closureHolder(vb).type().getErasure();
+				for (ITypeBinding x = type.getErasure(); !x.isEqualTo(holder); x = x
+						.getDeclaringClass().getErasure()) {
+					hardDep(x.getDeclaringClass());
+					print(TransformUtil.outerThisName(x) + "->");
+				}
+				print(CName.of(vb, holder));
 			} else {
 				print(CName.of(vb));
 			}
@@ -591,6 +601,13 @@ public abstract class TransformWriter extends ASTVisitor {
 		}
 
 		return false;
+	}
+
+	/** The local class around this member class that captured vb, or null */
+	private TypeInfo closureHolder(IVariableBinding vb) {
+		TypeInfo holder = typeInfo.closureHolder();
+		return holder != null && holder != typeInfo && holder.isClosure(vb) ? holder
+				: null;
 	}
 
 	private void qualify(ITypeBinding declaringClass, boolean isStatic) {

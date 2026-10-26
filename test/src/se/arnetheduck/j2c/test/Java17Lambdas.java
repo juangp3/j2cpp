@@ -449,4 +449,60 @@ public class Java17Lambdas {
 		};
 		return fromLambda.get().add(10) + fromAnonymous.get();
 	}
+
+	// A method reference on an inner class of a parameterized class keeps the
+	// type argument: the generated class names Pool<Tally>.Picker, whose
+	// pick() returns Tally, not the raw Pool.Picker, whose pick() returns
+	// Object (G66, found in commons-math)
+	public static class Pool<T> {
+		final T item;
+
+		public Pool(T item) {
+			this.item = item;
+		}
+
+		public class Picker {
+			public T pick() {
+				return item;
+			}
+		}
+
+		public Picker picker() {
+			return new Picker();
+		}
+	}
+
+	public static int innerOfParameterized(int value) {
+		Tally tally = new Tally();
+		tally.add(value);
+		Supplier<Tally> pick = new Pool<Tally>(tally).picker()::pick;
+		return pick.get().total;
+	}
+
+	// A member class of a local or anonymous class reads the variables that
+	// class captured, through its outer instances (G67)
+	public static int memberOfLocal(final int base) {
+		class Local {
+			class Inner {
+				int get() {
+					return base;
+				}
+			}
+		}
+		IntBinaryOperator deeper = new IntBinaryOperator() {
+			class Entry {
+				class Deeper {
+					int get() {
+						return base + 1;
+					}
+				}
+			}
+
+			@Override
+			public int applyAsInt(int left, int right) {
+				return new Entry().new Deeper().get() + left - right;
+			}
+		};
+		return new Local().new Inner().get() * 10 + deeper.applyAsInt(2, 2);
+	}
 }

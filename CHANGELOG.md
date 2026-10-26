@@ -122,6 +122,12 @@ C++20-targeted output.
 - Every translation now includes `java.lang.Class` and
   `java.lang.ArrayStoreException`, which generated code always uses, and
   programs link the program library again after the `-ext` library.
+- A lambda or method reference whose types include an inner class of a
+  parameterized class (`Outer<A>.Inner`) translates; it was a compile error
+  because the inner class was written raw.
+- A member class of a local or anonymous class that reads a variable the
+  local class captured translates; translation crashed with a
+  `NullPointerException` although `--check` found no problems.
 - A lambda that J2C reports instead of translating (such as one using `this`
   of an anonymous class) is no longer also reported, with a runtime, as a
   compile error about `java.lang.invoke.LambdaMetafactory` at line 1.

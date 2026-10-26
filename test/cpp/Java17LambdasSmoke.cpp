@@ -58,5 +58,10 @@ int main() {
 	// IntTicker forwards both erasures of advance() to Ticker, and
 	// EmptyRefStore forwards Store::fill to EmptyStore (G35): 6 + 4 + 2 + 4
 	if (Java17Lambdas::primitiveSpecialization() != 16) return 33;
+	// Pool<Tally>.Picker::pick returns the Tally it holds (G66)
+	if (Java17Lambdas::innerOfParameterized(5) != 5) return 34;
+	// Local.Inner and Entry.Deeper read base through their outer instances
+	// (G67): 4 * 10 + 5
+	if (Java17Lambdas::memberOfLocal(4) != 45) return 35;
 	return 0;
 }

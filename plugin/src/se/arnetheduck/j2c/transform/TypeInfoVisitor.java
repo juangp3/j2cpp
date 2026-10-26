@@ -235,7 +235,10 @@ public class TypeInfoVisitor extends ASTVisitor {
 			IVariableBinding vb = (IVariableBinding) b;
 
 			if (isClosure(node, vb)) {
-				typeInfo.addClosure(vb);
+				TypeInfo holder = typeInfo.closureHolder();
+				if (holder != null) {
+					holder.addClosure(vb);
+				}
 			}
 		}
 

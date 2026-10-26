@@ -916,7 +916,7 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   static until the initializer finishes. Tested by `Java17Features` and
   `test-cli.js`.
 
-#### G65 — Found while writing the agent benchmark (Phase 12 item 9)
+#### G65–G68 — Found by the agent benchmark and the corpus (2026-10-24 to 26)
 
 - **G65, a spurious compile error beside an untranslatable lambda with
   `--runtime`** (fixed 2026-10-25): when a lambda or method reference is reported (for
@@ -931,6 +931,33 @@ from JDK 17 (`Double.MIN_VALUE` prints `5.0E-324` instead of `4.9E-324`).
   with `--runtime bundled`. The runtime now declares an empty
   `java.lang.invoke.LambdaMetafactory`, as it declares `MethodHandles`, so
   only the lambda problem is reported. Tested by `test-cli.js`.
+
+- **G66, a lambda or method reference involving an inner class of a
+  parameterized class** (fixed 2026-10-26): the desugarer wrote the type
+  raw, as `Outer.Inner`, so members returning the outer type parameter
+  returned `Object` and the generated class did not compile ("Type
+  mismatch: cannot convert from Object to int"). Found in commons-math
+  (`innerDistribution.createSampler(rng)::sample`) once its dependencies
+  were configured. The type is now written `Outer<A>.Inner`. Tested by
+  `Java17Lambdas.innerOfParameterized` (translated by `test-cli.js`, built
+  in CI) and `Java17LambdasSmoke.cpp`.
+
+- **G67, a member class of a local or anonymous class that reads a captured
+  variable** (fixed 2026-10-26): translation crashed with a
+  `NullPointerException` ("this.closures" is null), while `--check` reported
+  no problems. Found in commons-math (`RealVector.unmodifiableRealVector`,
+  whose anonymous class declares `UnmodifiableEntry`, which reads `v`). The
+  variable is now captured by the nearest local class around the member
+  class, which reads it through its outer instances
+  (`A_g_1_Entry_this->A_g_1_this->y`). Tested by
+  `Java17Lambdas.memberOfLocal` and `Java17LambdasSmoke.cpp`.
+
+- **G68, commons-math's remaining C++ compile errors** (open): with G66 and
+  G67 fixed, commons-math checks with no problems and translates, but the
+  build stops at 4 distinct errors: `getRowDimension` and
+  `getColumnDimension` are ambiguous in `AbstractRealMatrix.cpp` (declared
+  by more than one of its supertypes), and `DescriptiveStatistics.cpp`
+  converts a `java::lang::Double*` to `double`. Not yet reduced.
 
 ### How to test a gap fix
 
@@ -2284,7 +2311,7 @@ keyboard comes first; the manual steps wait in one list.
 | --- | --- | --- |
 | R0 | `* text=auto` in `.gitattributes`, so a Windows checkout opened from WSL no longer shows every file changed; the progress fix (phases are never throttled); G65; the full local suite | Done (2026-10-25) |
 | R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | Done (2026-10-25) at `8719d6e`: the local suite passes (prepublish, probes, the benchmark self-test, JUnit on the JVM and as GoogleTest, mocks); `npm run runtime` differs only where JDK 25's messages differ from JDK 17's. CI passed on it after the push: run 40351364721, Java 11 and 17 (2026-10-26) |
-| R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Planned, 0.6.1 if not before the freeze |
+| R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Done (2026-10-26): commons-math 918 problems to 0 (checks; its build stops at G68), commons-text 4 to 0 (builds, with `commons-secure-xml`), javaparser 431 to 424; fixed G66 and G67 on the way. The other 23 projects are unchanged |
 | R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Waits for the usage limit |
 | R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
 
