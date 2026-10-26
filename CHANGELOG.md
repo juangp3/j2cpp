@@ -12,8 +12,9 @@
   superclass and from an interface can call it; the call was ambiguous in
   C++.
 
-### Agents
+### Extension and agents
 
+- The VS Code extension and the Claude Code plugin have an icon.
 - The hint for `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` names the safe
   rewrite: a generic interface that extends every type of the intersection.
   It suggested casting to one functional interface, which drops

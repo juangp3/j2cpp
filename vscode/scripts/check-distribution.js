@@ -1,9 +1,9 @@
 // Checks the agent distribution files that the release publishes by hand:
 // the MCP registry server.json, the npm package it names, the Claude Code
-// plugin and marketplace. They must parse, agree with each other, and carry
-// the version of pom.xml and vscode/package.json (or --version <v>, the
-// release tag). With the CLI JAR built, the npm launcher must start the MCP
-// server. Run by prepare.js and the release workflow.
+// plugin and marketplace, and the icons. They must parse, agree with each
+// other, and carry the version of pom.xml and vscode/package.json (or
+// --version <v>, the release tag). With the CLI JAR built, the npm launcher
+// must start the MCP server. Run by prepare.js and the release workflow.
 const assert = require("assert");
 const childProcess = require("child_process");
 const fs = require("fs");
@@ -94,6 +94,21 @@ const entry = marketplace.plugins.find((candidate) => candidate.name === plugin.
 assert(entry, `marketplace.json: no entry for plugin ${plugin.name}`);
 assert.strictEqual(entry.source, "./agents/claude/plugin");
 assert(!entry.version, "marketplace.json: the version comes from plugin.json");
+
+// Icons: square PNGs, 512 to 2048 px for the plugin directory, at least 128
+// px for the VS Code Marketplace
+function pngSize(relative) {
+	const bytes = fs.readFileSync(path.join(repositoryRoot, relative));
+	assert.strictEqual(bytes.toString("latin1", 1, 4), "PNG", `${relative} is not a PNG`);
+	return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+}
+const [pluginIconWidth, pluginIconHeight] = pngSize("agents/claude/plugin/.claude-plugin/icon.png");
+assert(pluginIconWidth === pluginIconHeight && pluginIconWidth >= 512 && pluginIconWidth <= 2048,
+	`agents/claude/plugin/.claude-plugin/icon.png: ${pluginIconWidth}x${pluginIconHeight}`);
+const extensionIcon = `vscode/${readJson("vscode/package.json").icon}`;
+const [extensionIconWidth, extensionIconHeight] = pngSize(extensionIcon);
+assert(extensionIconWidth === extensionIconHeight && extensionIconWidth >= 128,
+	`${extensionIcon}: ${extensionIconWidth}x${extensionIconHeight}`);
 
 // Copilot cloud coding agent: the sample configuration and setup steps run
 // this version
