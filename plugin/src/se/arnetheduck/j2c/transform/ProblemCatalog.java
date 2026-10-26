@@ -75,7 +75,10 @@ public final class ProblemCatalog {
 				"Intersection cast mentions a type variable",
 				"An intersection-cast lambda implements a generated member interface, which "
 						+ "cannot see the type variables of the enclosing method.",
-				"Cast to a single functional interface, or use concrete types in the intersection.");
+				"Declare a generic interface that extends every type of the intersection "
+						+ "(interface SerializableComparator<T> extends Comparator<T>, Serializable {}) "
+						+ "and cast the lambda to it. Casting to only one of the types changes "
+						+ "behavior, such as instanceof Serializable.");
 		add(LAMBDA_NON_DENOTABLE_TYPE,
 				"Lambda involves a type that cannot be written in Java",
 				"The generated class must name every parameter and return type, and inferred "

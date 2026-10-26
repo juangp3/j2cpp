@@ -29,6 +29,9 @@ Guidance for AI coding agents (and people) changing this repository. For
 - `test/probes/`: feature probes with expected outcomes.
 - `test/agent-bench/`: agent benchmark tasks and their graders (see its
   README); `npm run bench:selftest` checks the graders without an agent.
+  After changing a tool description, problem hint or skill, run the
+  affected tasks (`npm run bench -- --task <id>`); `--update` rewrites the
+  scoreboard in `docs/AGENT_BENCHMARK.md` from a full run.
 - `test/projects/`: small Maven and Gradle projects for project auto-setup
   (`ProjectSetup`), checked by `vscode/scripts/test-cli-projects.js`.
 - `runtime/`: the J2C runtime (`--runtime`), Java sources translated by J2C

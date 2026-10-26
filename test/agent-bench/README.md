@@ -26,6 +26,10 @@ The options:
 - `--keep`: keep each trial's workspace.
 - `--claude <program>`: the Claude Code program (default `claude`).
 - `--dry-run`: print the commands only.
+- `--update`: rewrite the scoreboard in
+  [`docs/AGENT_BENCHMARK.md`](../../docs/AGENT_BENCHMARK.md). Only a run of
+  every task (no `--task` or `--tier`) that the usage limit did not stop
+  updates it.
 
 Run it in Linux or WSL, with the CLI JAR built (`mvn -q package
 -DskipTests`).

@@ -2121,8 +2121,20 @@ the agent's work, ordered by value for effort:
           - Those five are to be run again after the limit resets.
         - Found G65 (Phase 9): a misleading `LambdaMetafactory` compile
           error beside an untranslatable lambda with `--runtime`.
+        - Rerun of the five (2026-10-26): four passed. `library-multi`
+          failed its driver: the agent followed the
+          `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` hint ("cast to a single
+          functional interface") and dropped `& Serializable`, which
+          `j2c --check` accepts but changes what the program does. The hint
+          (catalog and both skills) now gives the interface that extends
+          every type of the intersection, and warns that the shortcut
+          changes behavior.
      4. The scoreboard and the docs (`AGENTS.md`, `CHANGELOG`; about half a
-        day).
+        day). **Done (2026-10-26):** `run.js --update` writes the table in
+        [AGENT_BENCHMARK.md](AGENT_BENCHMARK.md), only from a run of every
+        task that the usage limit did not stop. Baseline, three trials per
+        task with `--jobs 2`: 39 of 39 passed, `library-multi` 3/3 with the
+        new hint; 3–15 turns and about $0.05–0.19 API-equivalent per trial.
      5. Runs by hand after changes to the tool descriptions, problem hints
         or skill. Each failure analysis goes to Phase 9 (a translator gap)
         or to those texts, and the task is run again to confirm the fix.
@@ -2335,7 +2347,7 @@ keyboard comes first; the manual steps wait in one list.
 | R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | Done (2026-10-25) at `8719d6e`: the local suite passes (prepublish, probes, the benchmark self-test, JUnit on the JVM and as GoogleTest, mocks); `npm run runtime` differs only where JDK 25's messages differ from JDK 17's. CI passed on it after the push: run 40351364721, Java 11 and 17 (2026-10-26) |
 | R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Done (2026-10-26): commons-math 918 problems to 0 (checks; its build stops at G68), commons-text 4 to 0 (builds, with `commons-secure-xml`), javaparser 431 to 424; fixed G66 and G67 on the way. The other 23 projects are unchanged |
 | R5 | Release 0.6.0: tag `v0.6.0` on `b534a9d` (CI run 40367756837), GitHub pre-release, VS Code Marketplace (`juangp3.j2c`), npm (`@juangp3/j2c-mcp`), MCP registry (`io.github.juangp3/j2c`) | Done (2026-10-26). G68 (commons-math builds) and G69 follow in 0.6.1 |
-| R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Waits for the usage limit |
+| R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Done (2026-10-26): 39 of 39 trials passed (`claude-opus-5-5`, `mcp`), in [AGENT_BENCHMARK.md](AGENT_BENCHMARK.md). The rerun found a misleading hint (`J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE`), fixed before the baseline |
 | R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
 
 Decisions:
@@ -2369,8 +2381,8 @@ commands):
    branch to `main`.
 
 Steps 1–5 and the clean-profile check were done on 2026-10-26. Left: the
-plugin icon, the plugin installed from the marketplace, Copilot, and the
-branch rename. Notes for the next release, all run in a WSL terminal rather
+plugin installed from the marketplace and Copilot. The plugin icon was
+added on 2026-10-26 (`25a1d0d`), and the default branch is `main`. Notes for the next release, all run in a WSL terminal rather
 than through an agent's shell (each waits for input):
 
 - `vsce login juangp3` reads the token from a prompt; it is then kept in
@@ -2394,7 +2406,7 @@ than through an agent's shell (each waits for input):
       license texts, and source locations ship in the JAR and VSIX.
 - [x] Marketplace publisher `juangp3` and publishing token available
       (2026-10-26; `vsce verify-pat juangp3` succeeds).
-- [ ] Default branch renamed to `main`.
+- [x] Default branch renamed to `main`.
 - [x] CLI and Java 17 behavior tests pass.
 - [x] Extension configuration and failure handling are tested (mocked host).
 - [x] Interactive VS Code translation verified in a clean profile

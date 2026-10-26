@@ -12,6 +12,14 @@
   superclass and from an interface can call it; the call was ambiguous in
   C++.
 
+### Agents
+
+- The hint for `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` names the safe
+  rewrite: a generic interface that extends every type of the intersection.
+  It suggested casting to one functional interface, which drops
+  `Serializable` and changes behavior; the agent benchmark caught an agent
+  following it. The benchmark's scoreboard is in `docs/AGENT_BENCHMARK.md`.
+
 ## 0.6.0 — Preview
 
 First release of J2C Modern Edition: a standalone Java-to-C++ CLI and a VS

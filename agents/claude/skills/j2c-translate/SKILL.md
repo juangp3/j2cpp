@@ -98,7 +98,7 @@ one JSON object with the same fields.
 | `J2C-LAMBDA-NON-DENOTABLE-TYPE` | Give the lambda parameters explicit types, or assign the lambda to a variable with an explicit functional interface type. |
 | `J2C-LAMBDA-INTERFACE-SUPER` | `j2c_fix` moves the `Iface.super.m()` call into a private method of the enclosing class, which the lambda calls. |
 | `J2C-TEST-TIMEOUT`, `J2C-TEST-PRIVATE-METHOD` | `j2c_fix` removes the timeout, or the `private` modifier. |
-| `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` | Cast to a single functional interface, or use concrete types in the intersection. |
+| `J2C-LAMBDA-INTERSECTION-TYPE-VARIABLE` | Declare a generic interface extending every type of the intersection (`interface SerializableComparator<T> extends Comparator<T>, Serializable {}`) and cast to it; casting to only one type changes behavior (`instanceof Serializable`). |
 | `J2C-COMPILE-ERROR` | Fix the Java error; add missing source roots (`sourcePaths`) or JARs (`classPath`). |
 
 ## Report back

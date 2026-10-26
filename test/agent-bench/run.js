@@ -5,7 +5,10 @@
 //
 //   node run.js [--task <ids>] [--tier <tiers>] [--trials <k>] [--model <model>]
 //       [--config <mcp,skill,bash>] [--jobs <n>] [--claude <program>] [--keep]
-//       [--dry-run]
+//       [--dry-run] [--update]
+//
+// --update rewrites the scoreboard in docs/AGENT_BENCHMARK.md, only from a
+// run of every task that the usage limit did not stop.
 //
 // An API key in the environment is removed, and a trial whose session
 // reports any API key source stops the run: trials use the login's usage
@@ -316,6 +319,35 @@ function printSummary(summary) {
 	}
 }
 
+const scoreboardFile = path.join(bench.repositoryRoot, "docs", "AGENT_BENCHMARK.md");
+
+function writeScoreboard(summary, records, settings, trials) {
+	const begin = "<!-- agent-bench-scoreboard:begin -->";
+	const end = "<!-- agent-bench-scoreboard:end -->";
+	const text = fs.readFileSync(scoreboardFile, "utf8");
+	const start = text.indexOf(begin);
+	const finish = text.indexOf(end);
+	if (start < 0 || finish < start) {
+		throw new Error(`${scoreboardFile} has no scoreboard markers`);
+	}
+	const versions = [...new Set(records.map((record) => record.claudeCodeVersion).filter(Boolean))];
+	const graded = summary.reduce((sum, row) => sum + row.trials, 0);
+	const passed = summary.reduce((sum, row) => sum + row.passed, 0);
+	const lines = [
+		`${new Date().toISOString().slice(0, 10)}: \`${settings.model}\`, Claude Code ${versions.join(", ") || "unknown"}, `
+			+ `${trials} trial(s) per task; ${passed} of ${graded} graded trials passed.`,
+		"",
+		"| Task | Tier | Config | Passed | Turns | Output tokens | Tokens per success | API-equivalent $ |",
+		"| --- | --- | --- | --- | --- | --- | --- | --- |"
+	].concat(summary.map((row) => `| ${row.task} | ${row.tier} | ${row.config} | ${row.passed}/${row.trials}`
+		+ `${row.infrastructureErrors ? ` (+${row.infrastructureErrors} infra)` : ""}`
+		+ ` | ${row.meanTurns === null ? "-" : row.meanTurns.toFixed(1)}`
+		+ ` | ${row.meanOutputTokens === null ? "-" : Math.round(row.meanOutputTokens)}`
+		+ ` | ${row.tokensPerSuccess === null ? "-" : Math.round(row.tokensPerSuccess)}`
+		+ ` | ${row.meanApiEquivalentUsd === null ? "-" : row.meanApiEquivalentUsd.toFixed(2)} |`));
+	fs.writeFileSync(scoreboardFile, `${text.slice(0, start + begin.length)}\n${lines.join("\n")}\n${text.slice(finish)}`);
+}
+
 async function main() {
 	const configNames = option("--config", "mcp").split(",");
 	for (const config of configNames) {
@@ -332,6 +364,10 @@ async function main() {
 		throw new Error(`${cliJar} is missing: run mvn -q package -DskipTests`);
 	}
 	const tasks = bench.loadTasks(option("--task"), option("--tier"));
+	const update = process.argv.includes("--update");
+	if (update && (option("--task") || option("--tier"))) {
+		throw new Error("--update needs every task: leave out --task and --tier");
+	}
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	const settings = {
 		model: option("--model", "claude-opus-5-5"),
@@ -383,6 +419,10 @@ async function main() {
 	if (stopped) {
 		console.log(`Stopped: ${stopped}`);
 		process.exit(2);
+	}
+	if (update) {
+		writeScoreboard(summary, records, settings, trials);
+		console.log(`Updated ${path.relative(bench.repositoryRoot, scoreboardFile)}`);
 	}
 }
 
