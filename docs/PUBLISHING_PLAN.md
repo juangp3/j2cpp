@@ -2334,6 +2334,7 @@ keyboard comes first; the manual steps wait in one list.
 | R0 | `* text=auto` in `.gitattributes`, so a Windows checkout opened from WSL no longer shows every file changed; the progress fix (phases are never throttled); G65; the full local suite | Done (2026-10-25) |
 | R1 | Release candidate: the changelog, this list, and the checks that need no one (`claude plugin validate`) | Done (2026-10-25) at `8719d6e`: the local suite passes (prepublish, probes, the benchmark self-test, JUnit on the JVM and as GoogleTest, mocks); `npm run runtime` differs only where JDK 25's messages differ from JDK 17's. CI passed on it after the push: run 40351364721, Java 11 and 17 (2026-10-26) |
 | R2 | Corpus: commons-math's dependencies (`[]` in `projects.json`), checked with a JDK 17 as CI uses (JDK 21 and later add errors of their own, such as `List.addFirst` in commons-collections) | Done (2026-10-26): commons-math 918 problems to 0 (checks; its build stops at G68), commons-text 4 to 0 (builds, with `commons-secure-xml`), javaparser 431 to 424; fixed G66 and G67 on the way. The other 23 projects are unchanged |
+| R5 | Release 0.6.0: tag `v0.6.0` on `b534a9d` (CI run 40367756837), GitHub pre-release, VS Code Marketplace (`juangp3.j2c`), npm (`@juangp3/j2c-mcp`), MCP registry (`io.github.juangp3/j2c`) | Done (2026-10-26). G68 (commons-math builds) and G69 follow in 0.6.1 |
 | R3 | Agent benchmark: run the five trials stopped by the usage limit again, then three trials per task as a baseline, and the scoreboard (step 4) | Waits for the usage limit |
 | R4 | Re-runs that rebuild the whole runtime (`j2c run`, `j2c test`): build the runtime once and reuse it | After the release |
 
@@ -2367,6 +2368,20 @@ commands):
 8. Check translation in a clean VS Code profile, and rename the default
    branch to `main`.
 
+Steps 1–5 and the clean-profile check were done on 2026-10-26. Left: the
+plugin icon, the plugin installed from the marketplace, Copilot, and the
+branch rename. Notes for the next release, all run in a WSL terminal rather
+than through an agent's shell (each waits for input):
+
+- `vsce login juangp3` reads the token from a prompt; it is then kept in
+  `~/.vsce` (no credential store in WSL).
+- With a passkey as npm's second factor, `npm publish` prints an
+  `https://www.npmjs.com/auth/cli/...` link: open it in the Windows browser
+  by hand (WSL has none, and pressing Enter fails). The package can take a
+  few minutes to appear.
+- The registry's token expires quickly: run `mcp-publisher login github &&
+  mcp-publisher publish` together.
+
 ## Go/no-go checklist
 
 - [x] Destination repository owner/name/visibility selected.
@@ -2377,19 +2392,22 @@ commands):
 - [x] Product scope and limitations are accurate in both READMEs.
 - [x] Version and license information are consistent; third-party notices,
       license texts, and source locations ship in the JAR and VSIX.
-- [ ] Marketplace publisher `juangp3` verified and publishing token available
-      (needed only for Phase 8 step 6; the GitHub release can proceed
-      without it).
+- [x] Marketplace publisher `juangp3` and publishing token available
+      (2026-10-26; `vsce verify-pat juangp3` succeeds).
 - [ ] Default branch renamed to `main`.
 - [x] CLI and Java 17 behavior tests pass.
 - [x] Extension configuration and failure handling are tested (mocked host).
-- [ ] Interactive VS Code translation verified in a clean profile.
+- [x] Interactive VS Code translation verified in a clean profile
+      (2026-10-26, the release VSIX on Windows: check and translate of
+      `test/projects/maven-simple`; found G69, cosmetic).
 - [x] Generated-C++ compile proof passes in CI for representative fixtures.
 - [x] CI passes on the exact frozen release commit (run ID recorded):
       run 40351364721 on `172e8eb` (2026-10-26), Java 11 and 17 both green.
 - [x] Release workflow builds artifacts from the tag, writes checksums and
       notes, and drafts a pre-release; rollback path documented.
-- [ ] Draft release assets downloaded and verified against `SHA256SUMS`.
+- [x] Draft release assets downloaded and verified against `SHA256SUMS`
+      (2026-10-26, release run 40379340115 on `b534a9d`; the VSIX, the npm
+      tarball and the JAR hold the same `j2c-cli.jar`).
 - [ ] Agent tools checked with a real client: Copilot agent mode lists the
       J2C tools, and Claude Code completes the check, fix and translate
       workflow (Phase 11). Claude Code half done (2026-10-24): headless
@@ -2400,9 +2418,9 @@ commands):
 - [x] Distribution files prepared and checked against the release version
       (`server.json`, `@juangp3/j2c-mcp`, Claude Code plugin and
       marketplace, Copilot cloud agent configuration; Phase 12 item 6).
-- [ ] npm package published from the release tarball, and the MCP registry
-      entry published with `mcp-publisher` (Phase 8 steps 9–10; user steps,
-      after the GitHub release).
+- [x] npm package published from the release tarball, and the MCP registry
+      entry published with `mcp-publisher` (2026-10-26: `@juangp3/j2c-mcp`
+      0.6.0, and `io.github.juangp3/j2c` 0.6.0, active).
 - [ ] Claude Code plugin installed from the marketplace and the Copilot
       cloud agent configuration tried in a test repository (Phase 8 steps
       11–12; user steps).
