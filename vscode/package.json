@@ -2,7 +2,7 @@
   "name": "j2c",
   "displayName": "J2C Java to C++",
   "description": "Translate Java source code to C++ using the J2C converter.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "juangp3",
   "license": "EPL-1.0",
   "preview": true,

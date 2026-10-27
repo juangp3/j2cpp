@@ -1,6 +1,6 @@
 {
   "name": "@juangp3/j2c-mcp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "J2C as an MCP server: check Java 17 code for translation problems, fix them, and translate it to C++20.",
   "mcpName": "io.github.juangp3/j2c",
   "license": "EPL-1.0",

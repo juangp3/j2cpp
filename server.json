@@ -8,13 +8,13 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/juangp3/j2cpp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@juangp3/j2c-mcp",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

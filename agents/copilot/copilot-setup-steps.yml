@@ -28,6 +28,6 @@ jobs:
           node-version: "22"
       # Downloads the server once, so the agent's first call is fast
       - name: Cache the J2C MCP server
-        run: npx -y -p @juangp3/j2c-mcp@0.6.0 j2c --version
+        run: npx -y -p @juangp3/j2c-mcp@0.6.1 j2c --version
       - name: Install a C++20 compiler and make
         run: sudo apt-get update && sudo apt-get install -y g++ make

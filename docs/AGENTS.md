@@ -105,7 +105,7 @@ Copilot > MCP servers** page, in its MCP configuration. Paste
     "j2c": {
       "type": "local",
       "command": "npx",
-      "args": ["-y", "@juangp3/j2c-mcp@0.6.0", "--root", "."],
+      "args": ["-y", "@juangp3/j2c-mcp@0.6.1", "--root", "."],
       "tools": ["j2c_check", "j2c_report", "j2c_fix", "j2c_translate", "j2c_build", "j2c_test", "j2c_run", "j2c_explain", "j2c_capabilities"]
     }
   }
